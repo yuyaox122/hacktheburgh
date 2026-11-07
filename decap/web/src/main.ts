@@ -181,7 +181,7 @@ health().then((h) => {
 }).catch(() => {
   app.api = false;
   $("#apiStatus").innerHTML = `<i class="bad"></i> API offline`;
-  $("#apiStatus").title = "Static data only. Start it with: npm run dev:all (or npm run api)";
+  $("#apiStatus").title = "Static data only. Start it with: npm run dev:all";
 });
 
 // Test hook (used by the headless browser check; harmless in production).
