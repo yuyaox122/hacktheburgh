@@ -1,6 +1,8 @@
 # Decap: View Source for silicon
 
-> **Status (Sat 7 Nov 2026, late evening, v4):** §0 distils the plan to one product, one pain point and three numbers, with a pitch per track, and records a passing Yosys smoke test on a real TT08 chip (§0.7). The v3 status follows.
+> **Status (Sat 7 Nov 2026, ~21:30, v4.1):** The decompiler is built and benchmarked (`decap/README.md`, decompiler `5dc6bfd`). §0, §2.6–2.8, §8 and §9 now carry the **measured** numbers and corrections from a fact-check (claims vs `bench.json`, demo path, external sources, judge Q&A; each finding re-checked by a second agent). **As built there is no LLM in the decompiler or the proof**: it is templates + exact logic + Yosys. The only LLM is the optional guide chat. Older text that says otherwise describes the plan, not the code: §4 ("with AI help"), §5 features 6–7, 11, 12 and 14 plus the priority ladder and cut order, §6.1, §6.6, §6.7's diagram, §10 step 4, §11 and §12. Where they disagree with §0, §2.6, the §6.7/§6.8 as-built notes or §9, those win. The newer team plan, **Decap Witness** (proven agent claims about a region of a chip), is in `docs/decap/research/witness-plan.md` and builds on this engine; check the board for which pitch is final.
+>
+> **v4 status (Sat 7 Nov 2026, late evening):** §0 distils the plan to one product, one pain point and three numbers, with a pitch per track, and records a passing Yosys smoke test on a real TT08 chip (§0.7). The v3 status follows.
 >
 > **v3 status:** Rebuilt around the council's combined pick: a **proven silicon decompiler, scored on held-out Tiny Tapeout chips, with the judge's hidden number as the finale** (§1–3, §5, §6.7–6.8, §9–13). Council results are in §13. It has not been rescored yet. The previous find-and-fix plan is now Plan B (§5.1). Yuyao's proposal for HackTheBurgh 2026. The **team direction is NOT decided yet**: Alex and Ian lean towards Fault Lines (see `ideas/README.md`). Confirm direction on the board (issue #1) before assigning work. Original idea: issue #4. Council variant: `ideas/08-glassdie.md`.
 >
@@ -18,38 +20,56 @@ v3 had one good product buried under four pitches and nineteen features. This se
 ### 0.2 The pain point (one sentence)
 **The source code isn't what gets manufactured. The netlist is, and nobody can read it, so nobody can check it does only what the source says.**
 
-- **The software parallel is the xz backdoor (2024):** the code that switched it on was in the release tarball, not in the git repo people had reviewed. Chips have the same gap between what was reviewed and what was shipped, and no way to read what was shipped.
-- **Third-party chip parts are often delivered as netlists only** (to protect the vendor's secrets). The research literature calls trojan detection in them hard because there is no trusted version to compare against.
-- **AI now writes chip code, and AI can hide things in it.** GHOST (arXiv 2412.02816, 2024) used LLMs to insert hardware trojans that its authors report all evaded an ML detector. CSAW 2025 ran an "AI Hardware Attack Challenge". Cadence, Synopsys and Siemens all sell agentic RTL tools (2026).
+- **The software parallel is the xz backdoor (2024):** the build-script line that switched it on was only in the release tarball, not in git ([Freund, oss-security, 29 Mar 2024](https://www.openwall.com/lists/oss-security/2024/03/29/4)). (The payload itself *was* in git, disguised as test files, so don't say the backdoor was absent from git.) Chips have the same gap between what was reviewed and what was shipped, and no way to read what was shipped.
+- **Third-party chip parts are often delivered as netlists only** (to protect the vendor's secrets). Quote WordRev (HOST 2013, abstract on the authors' page) word for word: *"Often times only post-synthesis gate-level netlists or actual Silicon chips are available for security inspection."* (The IEEE abstract reads "Often only ... or actual silicons ...".) Avoid percentages or "most IP".
+- **AI now writes chip code, and AI can hide things in it.**
+  - GHOST (arXiv 2412.02816, Dec 2024, a preprint): none of 14 synthesisable trojans inserted by LLMs was caught by one open-source ML detector (Hw2vec): 9 went undetected and 5 timed out after 4 hours.
+  - CSAW 2025 ran an "AI Hardware Attack Challenge": students used generative AI to plant flaws in open RISC-V and crypto designs.
+  - In 2026 Cadence, Synopsys and Siemens all *announced* AI agents for chip design. Siemens' Questa One RTL Code Agent writes RTL and is in early access. Cadence's RTL agent is early access from Q4 2026. Say "announced", not "sell".
 - **Today's tools give a verdict, not something to read.** An equivalence checker says "N points don't match"; a trojan detector names a wire. Decap's answer is **a line of code**.
 
 **User:** a security reviewer handed a chip block they didn't write. One persona. (The student and "AI touched my chip" personas are out of the pitch.)
 
 ### 0.3 The claim, and the three numbers that back it
-On N real Tiny Tapeout chips Decap has never seen (names stripped):
-1. **Proven:** X of N decompiles proven equivalent by Yosys.
-2. **Readable:** Y% of logic cells explained by recognised blocks (counters, adders, comparators, muxes, registers), and the decompile's line count vs the author's. *This is the hard part.* A gate-by-gate transliteration passes the proof trivially, so "proven" alone proves nothing about readability. Block coverage is the field's own measure (Subramanyan et al., IEEE TETC 2014: 68% of a 375k-gate SoC).
-3. **Finds what doesn't belong:** planted-trigger catch rate, and false alarms on clean copies.
+On 18 real Tiny Tapeout chips held out from tuning (names stripped; 27–260 logic cells; measured, `decap/out/bench.json`, decompiler `5dc6bfd`):
+1. **Proven: 15 of 18** decompiles proven equal by Yosys. 1 is "tested, not proven" (its clock relies on real gate delays). 2 can't be read (they contain a hard macro whose netlist isn't published). The first scored run (`911f15a`) was also 15 proven, with 3 failed. `dpmu` and `dpmunit` are the same design, so the 15 are 14 distinct designs.
+2. **Readable:**
+   - **52% of logic cells** are explained by recognised blocks (mean per chip; **37% weighted by cell count**; median 37%).
+   - The decompile is **shorter than the author's code on all 9 test chips with hand-written Verilog**: 480 vs 1,307 lines in total (37%), from 4% to 96% per chip. The author total still includes some unused modules.
+   - *This is the hard part.* A gate-by-gate transliteration passes the proof trivially, so "proven" alone proves nothing about readability.
+   - Don't quote the README's 675 vs 1,769: 462 of those author lines are the generic 77-line Wokwi `cells.v` on 6 schematic chips.
+   - Don't set 52% beside Subramanyan's 68% as if they were comparable. Theirs is "68% of the gates left after simplification" of a 375k-gate SoC, and 45–93% on smaller designs. We count every cell, buffers included.
+3. **Finds what doesn't belong:** **16 of 16** planted triggers caught (the first run caught 15 of 16), with false alarms on **3 of 16** clean chips. One of them is a combination lock (`ui_in == 8'd118`): legitimate, and the same shape as a backdoor.
 
-**The moment:** the judge picks a number; it comes back as a line of recovered code nobody wrote, and as the counterexample input from the formal checker.
+**The moment:** the judge picks a number; it comes back as a line of recovered code nobody wrote: `assign uo_out[0] = … | (ui_in == 8'd<N>);`. The author check (only through the agent route `POST /api/chips/{chip}/prove`, not in the web UI, and only on the 6 of 18 test chips whose author source Yosys can read) fails on the planted copy. **Don't promise the counterexample is `ui_in = N`:** `core/chip.py` `_parse_cex` reports the inputs at the last of 20 steps, not the step where the outputs differ (measured: `tt_um_mac` + 137 returns `ui_in = 55`). Fix that first.
 
 ### 0.4 The pitch per track (one build; only the first 15 s and the headline number change)
 | Track | Opening line | Headline number | First moment |
 |---|---|---|---|
-| **G-Research** (security angle) | "The netlist is where tampering hides, and nobody can read it." | Trigger catch rate / false alarms, then X/N proven | The judge's number |
-| **MetaView** (best overall) | "Software has View Source. Silicon doesn't." | X/N real chips read back, beside each author's code | Reading a chip, then the judge's number |
+| **G-Research** (security angle) | "The netlist is where tampering hides, and nobody can read it." | 16/16 triggers caught, false alarms on 3/16 clean chips, then 15/18 proven | The judge's number |
+| **MetaView** (best overall) | "Software has View Source. Silicon doesn't." | 15/18 real chips read back and proven, beside the author's code where it exists | Reading a chip, then the judge's number |
 | JetBrains | "What did my Verilog turn into?" | n/a | Only if we ship a plugin. Default: skip. |
 | HRT | n/a | n/a | Skip: no real prediction driving a decision |
 
 Don't build features for a second track; the council penalises a forced second track.
 
 ### 0.5 What stays and what goes
-- **Keep:** the decompile + proof engine, the proof wall (X/N), block coverage, the planted trigger + judge's number, the author's code side by side.
+- **Keep:** the decompile + proof engine, the proof wall (15/18 test chips proven), block coverage, the planted trigger + judge's number, the author's code side by side.
 - **Keep only if free from the prototype:** the 3D warm-up chip as a 10-second opener.
-- **Cut from the plan:** Compare / "chips like mine", the AI guide, Fix, the JetBrains plugin, HRT. (They can return as Q&A answers.)
+- **Built, but kept out of the main 90 s:** Fix (optional Close), Compare / "chips like mine" and the AI guide chat (Q&A answers only). **Cut:** the JetBrains plugin, HRT.
 
 ### 0.6 Prior art (say it plainly)
-HAL (github.com/emsec/hal, netlist RE framework), Subramanyan et al. 2014 and WordRev (block recovery), GenEDA (arXiv 2504.09485, ICCAD'25: netlist → RTL with LLMs), Gate-Breaker (IEEE IPCCC 2025: LLM netlist-to-RTL; only its record was found, read it before Q&A). None that we found proves each output and scores it against real authors' code on held-out chips. **That combination is the edge, not the idea of decompiling.**
+Checked against the sources (Sat evening):
+- **Earlier decompilers that verify formally** (our nearest prior art, since our decompiler has no AI):
+  - **Sisco et al., "Loop Rerolling for Hardware Decompilation", PLDI 2023** (doi 10.1145/3591237): introduced "hardware decompilation", rerolls loops in 52 of 53 netlists, and checks each output wire's equivalence with an SMT solver.
+  - **Narayanan et al., ISQED 2023** (arXiv 2303.02762): checks recovered RTL against the source HDL with JasperGold.
+  - **Subramanyan et al., IEEE TETC 2014**, and WordRev (HOST 2013): block recovery confirmed with SAT, BDDs and QBF. Subramanyan includes a trojan-detection case study.
+- **AI netlist → RTL, checked only by simulation:**
+  - GenEDA (arXiv 2504.09485, ICCAD'25): 9 small arithmetic netlists, about 60% pass rate in its best setup.
+  - Gate-Breaker (IEEE IPCCC 2025, github.com/NMSU-PEARL/Gate-Breaker): scored by testbench pass rate and AST/CFG similarity.
+- **Netlist exploration for experts:** HAL (github.com/emsec/hal, MPI-SP) aims to be the hardware equivalent of IDA or Ghidra. It helps a human explore, but it doesn't output short, proven Verilog.
+
+**Never say "first decompiler", "first to prove", or "first to find trojans by decompiling".** Name Sisco 2023 and Subramanyan 2014 yourself. The defensible edge: *earlier decompilers proved pieces on benchmark designs, and the AI ones only test. Decap proves whole decompiled chips, blind, on 18 real Tiny Tapeout chips it never tuned on, scored against the authors' code where it exists, with a trigger the judge picks, live.* **That combination is the edge, not the idea of decompiling.**
 
 ### 0.7 Smoke test, done (Sat 7 Nov, ~18:30): the proof step works
 On `tt_um_Electom_cla_4bits` (TT08, 59 logic cells, 5 flip-flops; author's source is a hand-written 4-bit carry-lookahead adder with registered outputs):
@@ -65,12 +85,12 @@ On `tt_um_Electom_cla_4bits` (TT08, 59 logic cells, 5 flip-flops; author's sourc
 - **Cell models:** generated from per-cell Liberty JSON in `google/skywater-pdk-libs-sky130_fd_sc_hd` (`cells/<c>/sky130_fd_sc_hd__<c>_<n>__tt_025C_1v80.lib.json`). There is **no merged `.lib` at `timing/`** in that repo. Fill/tap/decap become empty modules. Script: `docs/decap/smoke/`.
 - **Trap found:** `miter -ignore_gold_x` made the planted-trigger check pass silently. Never use it, and run a planted control alongside every proof.
 - **Leak found:** TT08 netlists keep the author's internal wire names (`co`, `co_w`, `s_w[0]`). Strip them (`rename -hide w:* c:*; opt_clean -purge`) before anything "blind".
-- **Still untested:** a chip with counters/FSMs where the decompile's state doesn't map 1:1, and an automatic (not hand-written) decompile. That's the next gate.
+- **Since then (measured):** the automatic decompile is built and benchmarked (§0.3). Counter blocks are proven on `kapilan_alarm`, `i2s_to_pwm`, `factory_test`, `fountaincoder` and `yuri_panchul`. **Still not attempted, by design:** re-encoding state. Flip-flops stay 1:1 with the netlist.
 
 ### 0.8 What to do next
 1. **Settle the direction with Alex and Ian** (Decap, possibly merged with GlassDie, vs Fault Lines). The lead's call.
-2. If Decap: **automatic decompile on 3 dev chips** (adder/comparator/register templates + functional probes), proven with the §0.7 scripts. That's the hour-6 gate.
-3. **Rescore §0 with the council** under both lenses (G-R security, MetaView) to choose which to lead with.
+2. **Done:** automatic decompile built and benchmarked (§0.3, `decap/README.md`). Next: rehearse §9 on the steered chips, and check the board for whether the final pitch is Decap or Decap Witness (`docs/decap/research/witness-plan.md`).
+3. **Rescore §0 with the council** under both lenses (G-R security, MetaView), using the measured numbers, to choose which to lead with.
 
 ## 1. The pitch
 
@@ -82,7 +102,7 @@ On `tt_um_Electom_cla_4bits` (TT08, 59 logic cells, 5 flip-flops; author's sourc
 
 **One-liner (technical audience):** Decap decompiles real chips it has never seen (gate-level netlists with every name stripped) back into readable Verilog, formally proves each result is the same circuit, and scores itself against the authors' real source code. Because the output is code, hidden logic shows up as a line you can review.
 
-**The shape of the pitch:** one problem (silicon can't be read, so it can't be reviewed), measured at scale (proven on N real chips it never saw), with one moment the judge controls (their secret number surfaces as a line of recovered code). The 90-second script is in §9.
+**The shape of the pitch:** one problem (silicon can't be read, so it can't be reviewed), measured on real chips (15 of 18 held-out Tiny Tapeout chips proven), with one moment the judge controls (their secret number surfaces as a line of recovered code). The 90-second script is in §9.
 
 ## 2. Story, pain point and purpose
 
@@ -92,12 +112,12 @@ On `tt_um_Electom_cla_4bits` (TT08, 59 logic cells, 5 flip-flops; author's sourc
 ### 2.2 Why it matters now: two pressures
 - **People: chips are built from parts you didn't make.** These include third-party IP blocks, outsourced layout and someone else's factory. A few extra gates (a *hardware trojan*, e.g. a comparator waiting for a secret value) appear in no source file. Code review can't catch what isn't in the code.
 - **AI: AI is starting to write chip code.** A change nobody can read back is a change nobody can check.
-- **Hardware is permanent.** Software bugs get patched; a shipped chip can't be. Intel's 1994 Pentium division bug cost it about $475M (verify before stage, §2.8).
+- **Hardware is permanent.** Software bugs get patched; a shipped chip can't be. Intel took a $475 million charge for its 1994 Pentium division bug (§2.8).
 
 ### 2.3 Why it's possible now: the unlock
 - **Every gate has a known meaning:** each SKY130 standard cell's function is published (Liberty).
 - **Open tools can prove two circuits identical:** Yosys equivalence checking.
-- **Real chips come with answer keys:** every Tiny Tapeout 08 chip ships its gate-level netlist and a `commit_id.json` pointing at the author's source at the exact commit (verified, §8). So we can measure how well Decap reads chips it has never seen.
+- **Real chips come with answer keys:** almost every digital Tiny Tapeout 08 chip ships its gate-level netlist and a `commit_id.json` pointing at the author's source at the exact commit (verified, §8). So we can measure how well Decap reads chips it has never seen.
 
 ### 2.4 The argument chain (pitch order; each step earns the next)
 | # | Argument | Job it does | Line |
@@ -106,7 +126,7 @@ On `tt_um_Electom_cla_4bits` (TT08, 59 logic cells, 5 flip-flops; author's sourc
 | 2 | Silicon can't be read | The pain | "Every chip is one. There's no View Source for silicon." |
 | 3 | Two pressures | Stakes, why now | "Chips are built from parts you didn't make, and AI is starting to write them. And you can't patch a chip." |
 | 4 | Decap reads it back, with proof | The answer | "Decap turns gates back into code, and proves the code is exactly right." |
-| 5 | Measured on real chips it never saw | Credibility (G-Research's criterion) | "Proven on N of M real Tiny Tapeout chips. Here's each author's own code beside ours." |
+| 5 | Measured on real chips it never tuned on | Credibility (G-Research's criterion) | "Proven on 15 of 18 real Tiny Tapeout chips held out from tuning. Here's the author's own code beside ours." |
 | 6 | The judge's number | The moment | "You picked a number. Here it is, as a line of code nobody wrote." |
 | 7 | Close | The line they repeat | "You can't review what you can't read. Now you can read silicon." |
 
@@ -114,7 +134,7 @@ On `tt_um_Electom_cla_4bits` (TT08, 59 logic cells, 5 flip-flops; author's sourc
 Make silicon readable, and therefore reviewable: turn any open chip back into code, prove it's right, and let people see what doesn't belong.
 
 ### 2.6 What the pitch leaves out, and why
-- **The agentic AI editor as the headline.** The council scored it about 54 (§13): "Cursor for X" is crowded, and an 8-bit "make it faster" shows nothing. The AI has a real job inside Decap (naming signals, writing leftover logic, proposing the fix); it isn't the headline.
+- **The agentic AI editor as the headline.** The council scored it about 54 (§13): "Cursor for X" is crowded, and an 8-bit "make it faster" shows nothing. As built, the AI has no job in the decompiler or the proof. It is only the optional guide chat that explains a proven result, and it can't change a verdict (`decap/core/guide.py`). Witness (`docs/decap/research/witness-plan.md`) gives it a checked job: proposing claims that Yosys must prove.
 - **3D as the argument.** It's the stage for the warm-up chip, not the reason. 3D chip viewers already exist (§2.7).
 - **"Microscope, tour guide, scalpel."** Three heroes read as a feature list.
 - **The Jane Street ASIC puzzle.** Not the motivation (Yuyao's call). The warm-up files are data only (§7), and the hero number is the *judge's*.
@@ -122,29 +142,34 @@ Make silicon readable, and therefore reviewable: turn any open chip back into co
 **Honesty rules (say these if asked; never contradict them):**
 - We plant the trigger ourselves and say so. The judge picks the number; we don't know it in advance.
 - Decap reads design files (netlists, layouts), not manufactured chips.
-- Small open chips (20–300 logic cells) today. We report the proven rate exactly as measured, including failures.
-- "Proven" means a Yosys equivalence proof passed. Anything checked only by simulation is labelled "tested, not proven".
+- Small open chips (27–260 logic cells in the benchmark, the small end of Tiny Tapeout, whose median is about 800) today. We report the proven rate exactly as measured, including failures, and both scored runs.
+- "Proven" means a Yosys equivalence proof passed with flip-flops paired 1:1 (same outputs and next state from any matching state), and a deliberately broken control copy failed. It says nothing about timing, the factory, or readability. "Tested, not proven" means a 20-cycle bounded formal check from reset passed, not random simulation.
+- The planted trigger is always `uo_out[0] |= (ui_in == N)` on the input pins. That is the easy case for a rare-signal flag. Multi-cycle triggers, triggers split across a register stage, and triggers over more than 18 bits are not caught today.
 - Confirmed trojans in real chips are rare, and some famous reports are disputed. Say "can't be checked", never "is happening everywhere".
-- Turning gates into code with AI has been published before (§2.7). Our claim is proof on every result, scored on real held-out chips, live, not that the idea is new.
+- Hardware decompilation with formal checks has been published before (Sisco PLDI 2023, Subramanyan 2014), and so has AI netlist → RTL (§0.6). There is no AI in our decompiler. Our claim is proven whole chips, blind, scored on real held-out chips, live, not that the idea is new.
+- The test split was frozen before tuning. After the first scored run we made general fixes, and we report both runs. Don't say "never touched after the first run".
 
 ### 2.7 Prior art and our edge
 | Tool or work | What it does | What Decap adds |
 |---|---|---|
 | Tiny Tapeout GDS viewer, Tiny Tapeout Explorer | 3D shapes of real open chips | Meaning: readable code recovered blind, with proof |
 | DigitalJS (BSD-2) | Browser simulation of Yosys netlists as schematics | Readable code, not a schematic; a proof, not a simulation |
-| HAL (gate-level netlist reverse-engineering framework, academic) | Netlist analysis for experts | A proven decompile anyone can read, live, in a browser *(found by a council judge; not yet checked)* |
-| Gate-Breaker (2025), GenEDA (arXiv 2504.09485) | Research on LLMs turning netlists back into RTL | Every result formally proven and scored against real authors' code on held-out chips *(found by a council judge; read them before Q&A)* |
+| HAL (github.com/emsec/hal, MPI-SP, MIT licence) | Aims to be "the hardware-reverse-engineering-equivalent of tools like IDA or Ghidra": exploration and manipulation for experts; its writers emit the netlist, not readable RTL | A short, proven decompile anyone can read, live, in a browser *(checked)* |
+| Sisco et al. PLDI 2023; Narayanan et al. ISQED 2023; Subramanyan et al. TETC 2014 / WordRev HOST 2013 | Hardware decompilation and block recovery, **checked formally** (SMT, JasperGold, SAT/QBF) on benchmark designs | Whole-chip proofs on 18 real Tiny Tapeout chips held out from tuning, scored against the authors' code, with a live judge-chosen trigger *(checked)* |
+| Gate-Breaker (IPCCC 2025), GenEDA (ICCAD'25, arXiv 2504.09485) | LLMs turning netlists back into RTL, **checked by testbench or simulation** (GenEDA: 9 arithmetic designs, about 60% pass) | Every result formally proven; no AI in the decompiler *(checked)* |
 | EXERT and other SAT-based trigger finders; ML detectors on Trust-Hub | Find trojan triggers in netlists | The trigger appears as readable code, measured against clean controls |
 | Commercial equivalence tools (Cadence Conformal, Synopsys Formality) | Prove two netlists equal, for specialists | The same kind of proof, used to certify a decompile |
 
-**Our edge:** blind decompile + formal proof + an answer key (real authors' code) + live. Nobody else shows all four at once.
+**Our edge:** blind decompile + formal proof + an answer key (real authors' code) + live. The academic decompilers have the first two, on benchmarks. We found none that shows all four at once on real held-out chips.
 
 ### 2.8 Facts to verify before saying them on stage
 | Claim | Status |
 |---|---|
-| Pentium FDIV cost Intel ~$475M | Widely reported; confirm the source |
-| "AI is starting to write chip code" | Find one or two solid, citable examples |
-| Gate-Breaker, GenEDA, HAL, EXERT: what each actually does | Not checked; a council judge found them by search |
+| Pentium FDIV cost Intel ~$475M | **OK:** say "Intel took a $475 million charge" (Jan 1995). It was a design bug, not a trojan. |
+| "AI is starting to write chip code" | **OK:** Siemens Questa One RTL Code Agent (27 Feb 2026, early access); CSAW 2025 AI Hardware Attack Challenge. The Synopsys "10–30% RTL productivity" figure is one customer's own quote (Fujitsu, on Synopsys' industry-quotes page; the blog calls it "one customer engagement"). It is vendor-published, not a benchmark, and covers assertions, wrappers and refactoring. |
+| Gate-Breaker, GenEDA, HAL | **Checked**, see §0.6 and §2.7. EXERT not checked. |
+| xz, GHOST, WordRev quote | **Checked**; use the wording in §0.2. |
+| "Every TT08 chip ships its netlist" | Say **"almost every digital TT08 chip"**: some are analog or ROM stubs, and 2 of our test chips contain an unpublished hard macro. |
 | Tiny Tapeout Explorer and the GDS viewer are live | Not checked |
 
 ## 3. Users
@@ -160,7 +185,7 @@ Make silicon readable, and therefore reviewable: turn any open chip back into co
 - **Transistor** → **logic gate** (AND/OR/XOR/NOT, a few transistors) → **flip-flop** (stores 1 bit, updates on each clock tick) → **blocks** (adder, counter, register, comparator) → chip.
 - **Standard cells:** the factory's pre-made Lego bricks. SKY130 HD (`sky130_fd_sc_hd__*`) has a few hundred, each with a known function (in the **Liberty** `.lib` file) and a known shape. Cell height is 2.72 µm; widths are multiples of a 0.46 µm "site".
 - **Flow:** Verilog → **synthesis** (Yosys) → **netlist** (cells plus wires) → **place & route** (OpenROAD/OpenLane/LibreLane) → **DEF** (cell positions and routing, with names) and **GDS** (final polygons on every layer, usually with internal names removed) → factory.
-- **Three views of one design:** code (intent), netlist (circuit), layout (physical). Decap's job is moving between them, with AI help.
+- **Three views of one design:** code (intent), netlist (circuit), layout (physical). Decap's job is moving between them, with proof.
 - **Decompiling** (software term): turning compiled output back into readable source. For chips, it means netlist → Verilog.
 - **Equivalence checking:** a formal tool (here Yosys) proves two circuits give the same outputs for *every* input and state, not just the ones you tested. "Proven" in this doc always means this.
 - **Hardware trojan:** extra logic hidden in a chip, usually a *trigger* (a rare condition, like one secret value) plus a *payload* (what it does when triggered).
@@ -224,7 +249,7 @@ This reuses the proof wall's data (every benchmark chip is already decompiled), 
 - **Dev set:** the warm-up plus about 5 TT08 chips. Templates and prompts are tuned only on these.
 - **Test set:** every other candidate. **Frozen before any tuning.** Nobody opens its source until the run is scored. Report the proven rate, the tested-only rate and the failure rate, all three.
 - **Trojan test:** for each test chip, one planted copy (random N) and one clean copy. Report recall and false positives.
-- **Wokwi chips:** their "source" is a diagram, not Verilog. Score their proofs, but reveal the diagram link instead of code.
+- **Wokwi chips:** their "source" is a diagram, not Verilog. Score their proofs. As built, the author pane shows only the generic `cells.v`, so steer judges away from them (§9).
 
 ### Priority ladder (cut from the bottom; P0 and P1 are never cut)
 | P | Feature | Acceptance criteria |
@@ -311,6 +336,8 @@ Fall back to the previous find-and-fix plan on the warm-up chip alone: a planted
 5. If Yosys is unavailable at demo time, fall back to pre-computed surgery results, labelled as such.
 
 ### 6.7 Decompiler and proof pipeline (the hero, P0/P1)
+> **As built (`decap/core/`, see `decap/README.md`):** no LLM. Rejected parts are rewritten as plain logic and proven again (max 2 retries, then gate for gate). "Tested" is a 20-cycle bounded formal check from reset, not random simulation. The diagram below is the original plan.
+
 ```
 TT08 netlist (.v) ──► Yosys read + SKY130 functional models ──► strip names (keep cell types + wires)
                                                                    │
@@ -337,6 +364,15 @@ TT08 netlist (.v) ──► Yosys read + SKY130 functional models ──► stri
 - **The proof direction:** decompiled Verilog is synthesised with the same Yosys script as path C, then checked against the original netlist. Nothing is "proven" unless Yosys says so.
 
 ### 6.8 Plant and flag (Find, P1/P2)
+> **As built (`decap/core/find.py`):**
+> - **Plant:** compares the 8-bit input port `ui_in` and ORs it into the first driven output, `uo_out[0]` on every Tiny Tapeout chip. The warm-up has no `ui_in`, so it uses its widest register and output `S`.
+> - **Flag:** a 4096-sample prefilter keeps nets that are 1 (or 0) on at most 1/64 of samples. Nets with 8–18 support bits are then truth-tabled exhaustively and flagged at ≤1/256. There is no sampled or SAT path.
+> - **Fix:** proves the repaired chip equal to the **clean decompile**, not to the author's source.
+> - **No per-cell "unexplained logic" check exists.** Only the whole-chip author check does.
+> - **Known gap:** if `uo_out[0]` is already 1 at `ui_in == N`, the trigger is redundant: the flag card still names `ui_in == N` (the planted gates are there), but the decompiled code is identical to the clean one and shows no `== N` line. This happens on 2 of 16 planted test copies (on a third, `wokwi_407306`, decompiled gate for gate, the trigger shows as an AND of the eight `ui_in` bits), and on about half of all N for `wokwi_408216` and `wokwi_408231`. The fix is to pick a target bit that is 0 at N.
+>
+> The bullets below are the original plan.
+
 - **Plant:** synthesise `if (a == N) out |= 1` (an 8-bit comparator on an internal register, OR'd into one output) to SKY130 cells, splice it into the netlist, and record the inserted cells. For the warm-up, place it into free sites with the incremental placer (labelled "approximate").
 - **Blind flag (rare-trigger):** for each single-output cone feeding an output or a flop, estimate how often it is 1. Exhaustive when the cone has ≤20 inputs, else sampled, with SAT for the exact satisfying value. Cones that fire for ≤1 in 2^k inputs are flagged, with the satisfying value shown, e.g. `a == 8'd137`.
 - **With source (exact):** unexplained logic = cells in the decompile that no author-source construct accounts for (from the equivalence check of the decompile vs the author's source).
@@ -364,36 +400,52 @@ TT08 netlist (.v) ──► Yosys read + SKY130 functional models ──► stri
 | **TT08 sizes (logic cells, excluding fill/tap/decap/diode/conb):** 121 netlists fetched (14 failed, mostly analog/ROM projects); median 819; **20 Verilog/SystemVerilog chips with 20–300 logic cells** (e.g. obstacle detection 27, 4-bit CLA 59, signed add/sub 65, 4-bit ALU 91, 7-seg decode 94, clock divider 106, MAC 118, alarm clock 119, I2C peripheral 190, I2S→PWM 231, 4-bit ALU 260), plus **6 Wokwi** chips (28–168). Some may be near-duplicates (`dpmu`/`dpmunit`, two micro-tile containers). Counts include buffers. | Downloaded all netlists with `gh api`; regex count; `info.yaml` for language and title |
 | A TT08 `commit_id.json` points to the author's repo + commit, and the source exists there (`tt_um_Electom_cla_4bits` → `Electom/tt08_CSA_4bits@213ea90`, `src/project.v`) | `gh api` (checked on 1 chip; check all candidates at setup) |
 | Yosys proves a TT08 netlist equal to its author's source and to a hand-written blind decompile, and catches a swapped gate and a planted trigger (counterexample = the trigger value) | §0.7; scripts in `docs/decap/smoke/` |
-| **Not verified:** KLayout geometric connectivity extraction on SKY130; the LEF paths; Yosys proofs on chips with counters/FSMs; whether JetBrains accepts a JCEF-wrapped web app | |
+| **Benchmark (decompiler `5dc6bfd`):** 27 TT08 chips (9 dev, 18 test, frozen split) + warm-up. Test: 15 proven, 1 tested, 2 failed; 52.4% mean coverage (36.9% weighted); 16/16 triggers caught, 3/16 clean chips flagged; author check proven on 6 of 18. Dev: 9/9 proven. Counter blocks proven on 5 chips. Slowest proof 15.2 s; slowest whole chip 72.6 s (`yuri_panchul`: clean pass, author check and planted copy; the API reuses the saved author check, so it takes about 2 s in the demo). | `decap/out/bench.json`, recounted per chip |
+| **Not verified:** KLayout geometric connectivity extraction on SKY130; the LEF paths; whether JetBrains accepts a JCEF-wrapped web app | |
 
 ## 9. Demo script (90 s) and judging moments
 
-**Before the timer:** ask a judge for a number from 0 to 255, and let them pick a test chip from the proof wall. Planting runs in the background (<60 s) during the hook. If it fails, use a pre-planted copy and say so.
+**Before the timer:** ask a judge for a number from 0 to 255, and let them pick a test chip from the proof wall. Planting runs in the background during the hook; planted proofs take ≤15 s. Press "Plant now" as soon as they pick. If it fails, use a pre-planted copy and say so.
+
+**Steer the chip pick** (measured; check each before rehearsal):
+- **Best:** `tt_um_emmyxu_obstacle_detection` (100% coverage, author check proven, 0 false alarms, 25 vs 59 lines; bench N = 73).
+- **Next:** `tt_um_kb2ghz_xalu` (N = 128) or `tt_um_dpmu` (N = 198).
+- **`tt_um_Richard28277`: for every N, the page jumps to its clean false alarm** (line 89, `ui_in[3:0] != 4'd1 || …`), because it is listed before the trigger (line 108). Click the trigger's flag card by hand, or pick another chip.
+- **Avoid:**
+  - **The Wokwi chips:** their author pane shows a generic `cells.v`, and on `408216` / `408231` about half of all N leave no line in the code (only the flag card shows N).
+  - **`brailliance`:** the repo is a Braille converter, but the shipped top is the template adder, and the author pane opens on an unused file.
+  - **`yuri_panchul`:** no author check (its bounded check doesn't finish), and its 292-line author source includes four unused buffer variants.
+  - **The two red `micro_tiles` chips.**
+- **Warm the chosen chip** (open it once through the API) after starting uvicorn.
 
 > **(0–15 s) Hook.** "You'd never merge a pull request you can't read. Every chip is one. Software has decompilers; silicon has no View Source. That matters, because chips are built from parts you didn't make, AI is starting to write them, and you can't patch a chip."
 >
 > **(15–30 s) Stage.** *(the warm-up chip in 3D, credited to Jane Street; click a gate, run it, wires glow)* "This is real silicon. Every gate has a meaning, but nobody can read hundreds of them."
 >
-> **(30–55 s) Read.** *(the proof wall: real Tiny Tapeout chips Decap has never seen)* "Decap turned every one of these back into code. Green means a formal checker *proved* the code is exactly the same circuit." *(the judge's chip: names stripped, blocks recovered, Verilog appears, **"Equivalence: proven"**)* "And here's what the author actually wrote." *(side by side)*
+> **(30–55 s) Read.** *(the proof wall: real Tiny Tapeout chips Decap has never seen)* "Decap read 15 of these 18 back into code, blind. Green means a formal checker *proved* the code is exactly the same circuit." *(the judge's chip, precomputed by the benchmark: names stripped, blocks recovered, Verilog, **"Equivalence: proven"**)* "And here's what the author actually wrote." *(side by side)* Don't say "watch it decompile": the clean read is cached. The planted copy is the live part.
 >
-> **(55–80 s) Find.** "You picked a number, and we hid a trigger for it in this chip." *(re-run: one flagged block; the decompiled code shows `if (a == 8'd<N>)`)* "There it is: your number, as a line of code nobody wrote. And here's everything it can reach." *(cone)* "Across all test chips, Decap catches X of Y planted triggers, with Z false alarms on clean chips."
+> **(55–80 s) Find.** "You picked a number, and we hid a trigger for it in this chip." *(flagged line: `assign uo_out[0] = … | (ui_in == 8'd<N>);`)* "There it is: your number, as a line of code nobody wrote. And it reaches exactly one output pin." Click the trigger's flag card, not "Light the cone", which lights every flag's cone. "Across the test chips, Decap caught 16 of 16 planted triggers, with false alarms on 3 of 16 clean chips." Press 2 for the wall if you want the numbers on screen. Don't promise "one flagged block": some chips flag a legitimate comparator too.
 >
-> **(80–90 s) Close.** *(optional: remove it, then "proven equal to the author's code")* "You can't review what you can't read. **Now you can read silicon.**"
+> **(80–90 s) Close.** *(optional, needs the API: remove it, then "proven equal to the chip before tampering", plus "and to the author's code" only on chips whose author check is proven)* "You can't review what you can't read. **Now you can read silicon.**"
 
 **The moments that win:**
-- The X/N proven number on chips we never saw (G-Research's criterion).
+- 15 of 18 proven on chips we never tuned on (G-Research's criterion).
 - The judge's own number appearing as code. It can't be rehearsed or faked.
 
 ### Likely questions
 | They'll ask | We answer |
 |---|---|
-| "Isn't AI decompiling unreliable?" | "That's why every result is proven, not trusted. The AI only names things and fills gaps; a formal checker decides. Failures are shown in red." |
-| "Has this been done?" | "LLM netlist-to-code has been published. We add a proof on every result, scored live against real authors' code on chips we never saw." |
+| "Isn't AI decompiling unreliable?" | "There's no AI in the decompiler. It's fixed templates plus exact logic, and Yosys proves every result. Failures are shown in red. The AI is only an optional chat that explains a proven result, and it can't change a verdict." |
+| "Of course it's proven: you built the code from the netlist." | "Matching isn't the hard part; being both short and exact is. The decompiler guesses blocks from random samples. The proof rejected a guess on 5 chips; the rejected parts were rewritten as plain logic, and 4 of them (3 distinct designs) then proved. The fifth is the delay-line chip we label 'tested'. A gate-for-gate copy would pass trivially, so we measure readability separately: on average 52% of each chip's logic is recognised blocks (37% weighted by size)." |
+| "Has this been done?" | "Decompiling chips isn't new, and neither is proving it: Sisco at PLDI 2023, Subramanyan in 2014. The AI versions only test. We prove whole chips, blind, on 18 real Tiny Tapeout chips we never tuned on, against the authors' own code, live." |
 | "You planted the trigger yourselves." | "Yes, and you chose the number. We also report false alarms on clean chips." |
-| "Real chips have millions of gates." | "Today, small open chips, and we say so. The proof method is what industry uses at scale." |
+| "Would it catch a stealthier trojan?" | "Not with the blind flag alone. It's the classic rare-signal check, and published trojans are built to evade it (multi-cycle, split across registers). We test the easy case and say so. The stronger guarantee is the proof: whatever is in the chip is in the proven code, and against the author's source any difference fails with a counterexample." |
+| "3 false alarms on 16 clean chips?" | "One is a combination lock: `input == 118`. A lock and a backdoor look identical to a blind check. Decap shows you the line in seconds; deciding whether it belongs needs the author's intent or source." |
+| "Real chips have millions of gates." | "Today, tiny ones: 27 to 260 cells, the small end even of Tiny Tapeout. Proofs take seconds. The proof is the same kind industry runs on big designs; recognising blocks at that scale is the open problem." |
 | "Can it check a manufactured chip?" | "No. It reads the design files, the last point before the factory where you can still check." |
 | "Can I try it on my own design?" | "Yes: import it and Decap shows the most similar real chips and how they built the same blocks." (Compare, P2) |
-| "Did you tune on the test chips?" | "No. The test set was frozen before any tuning, and its sources were opened only for scoring." |
+| "Did you tune on the test chips?" | "The split was frozen before any tuning, and we tuned on the dev chips. Our first scored run was 15 of 18 proven, with 15 of 16 triggers caught, and we keep it. After seeing its failures we made general fixes (derived clocks, hierarchical netlists, flag wording, the warm-up planter), which turned one failed chip into 'tested' and caught one more trigger. We report both runs." |
+| "Is the AI writing any of this?" | "No. Every line comes from templates and is proven by Yosys." (If pitching Witness: "The AI proposes short claims, and only a formal proof lets one count.") |
 
 **Backups:** a recorded video, pre-planted copies, cached proof-wall results, and offline guide answers.
 
@@ -431,12 +483,12 @@ Fill the owner table in `AGENTS.md` §4 once agreed (Ian's PR #5 owner guard rea
 ## 12. Risks and fallbacks
 | Risk | Fallback |
 |---|---|
-| Yosys can't prove equivalence on SKY130 cells / these netlists | Hour-6 gate → Plan B (§5.1). Within the plan: prove combinational cones only, and label the rest "tested, not proven" (random simulation) |
-| Templates don't cover a chip's logic | The LLM writes the leftover glue; if that fails, the chip shows red on the wall. Report it honestly. |
+| Yosys can't prove equivalence on SKY130 cells / these netlists | Hour-6 gate → Plan B (§5.1). Did not happen (15/18 proven, §0.3). As built: anything unproven gets a 20-cycle bounded formal check from reset and is labelled "tested, not proven" |
+| Templates don't cover a chip's logic | As built: the rest is written as plain logic (gate for gate if a proof rejects it), so coverage drops but the proof still holds. No LLM. |
 | Low proven rate on the test set | Report it as measured. A smaller honest number beats a big claimed one. Shrink scope to the smallest chips, but never below 10 test chips. |
 | A sequential design's state doesn't map 1:1 | Keep flip-flops 1:1 by construction (the decompiler names registers after netlist flops); otherwise "tested, not proven" |
-| Rare-trigger flag has many false positives (legit comparators) | Show them. The with-source check (unexplained logic) separates them exactly; blind mode is a ranked list for a human |
-| Prior art (Gate-Breaker, GenEDA) undercuts novelty | Read them before Q&A. Our claim is proof + held-out score + live, not novelty of the idea |
+| Rare-trigger flag has false positives (legit comparators; 3 of 16 clean test chips) | Show them. There is no per-cell with-source check; the whole-chip author check (6 of 18 test chips) tells a planted copy from the author's design. Blind flags are for a human to judge. |
+| Prior art undercuts novelty | Checked (§0.6): name Sisco PLDI 2023 and Subramanyan 2014 ourselves. Our claim is whole-chip proofs, blind, on held-out real chips, scored against authors' code, live, not novelty of the idea |
 | JS sim doesn't match iverilog | Use iverilog in the API to drive values (slower but correct) |
 | DEF parsing or routing rendering eats time | Render cells only, with straight-line "flylines" for connectivity |
 | Jane Street data can't be used publicly | The Stage uses a TT08 chip instead (cells from GDS via KLayout) or the prototype counter |
