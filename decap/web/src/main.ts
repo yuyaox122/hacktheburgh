@@ -9,7 +9,7 @@ import { ComparePage } from "./ui/comparePage";
 import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
-import { $, $$, esc, isTyping } from "./ui/dom";
+import { $, $$, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
 import { icon } from "./ui/icons";
 import { app, type PaletteCommand } from "./ui/state";
 
@@ -146,6 +146,7 @@ const palette = new Palette((): PaletteCommand[] => [
   { label: "Ask the guide", key: "G", run: () => guide.open() },
   { label: "Presenter mode", key: "D", run: () => demo.toggle() },
   { label: "Larger text", key: "", run: () => document.body.classList.toggle("projector") },
+  { label: "Wrap long code lines", key: "W", run: () => setWrap(!wrapOn()) },
   ...(app.pageCommands?.() ?? []),
 ]);
 
@@ -171,6 +172,7 @@ addEventListener("keydown", (e) => {
   else if (k === "3") location.hash = "#/chip";
   else if (k === "4") location.hash = "#/compare";
   else if (k === "g" || k === "G") { e.preventDefault(); guide.toggle(); }
+  else if (k === "w" || k === "W") setWrap(!wrapOn());
   else if (k === "d" || k === "D") demo.toggle();
   else if (app.route === "stage" && stage) {
     if (k === " " && !/^(BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) { e.preventDefault(); stage.isRunning ? stage.pause() : stage.run(); }
@@ -202,5 +204,9 @@ health().then((h) => {
 
 // Test hook (used by the headless browser check; harmless in production).
 (window as unknown as { __decap: unknown }).__decap = { get stage() { return stage; }, get chip() { return chip; }, app };
+
+setWrap(wrapOn());
+// Wrap toggles live in page templates; one delegated listener serves them all.
+addEventListener("click", (e) => { if ((e.target as HTMLElement).closest("[data-wrap]")) setWrap(!wrapOn()); });
 
 route();

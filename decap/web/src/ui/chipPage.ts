@@ -4,7 +4,7 @@
 import type { BenchChip, ChipResult, FixResult, Lib } from "../data/types";
 import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plant as apiPlant, type Source } from "../data/load";
 import { NetGraph } from "./graph";
-import { $, $$, esc, hiVerilog, toast } from "./dom";
+import { $, $$, codeText, esc, toast, wrapOn } from "./dom";
 import { icon } from "./icons";
 import { app } from "./state";
 
@@ -136,7 +136,7 @@ export class ChipPage {
       </header>
       <div class="codes">
         <section class="pane" aria-label="Decompiled Verilog">
-          <div class="pane-h">Decompiled by Decap<span class="sub">${r.variant === "planted" ? "with trigger, names stripped" : "from the stripped netlist"}</span><span class="grow"></span><span class="sub">${r.decompiled.lines} lines</span></div>
+          <div class="pane-h">Decompiled by Decap<span class="sub">${r.variant === "planted" ? "with trigger, names stripped" : "from the stripped netlist"}</span><span class="grow"></span><span class="sub">${r.decompiled.lines} lines</span><button class="btn plain sm" type="button" data-wrap aria-pressed="${wrapOn()}" title="Wrap long lines (W)">${icon.wrap}Wrap</button></div>
           <div class="pane-b"><ol class="code click" id="cpCode"></ol></div>
         </section>
         <section class="pane" aria-label="Author source">
@@ -184,7 +184,7 @@ export class ChipPage {
       const cls = [active ? "active" : "", f ? "flag" : "", isRemoved ? "removed" : ""].join(" ");
       const bar = b ? `background:${KIND_COLOUR[b.kind] ?? "var(--faint)"};opacity:${b.recognised ? 0.9 : 0.35}` : "";
       const badge = f ? `<span class="badge" title="Fires for ${esc(f.rate)} of inputs">Rare trigger</span>` : b && ln === b.lines[0] ? `<span class="badge" title="${b.cells.length} cells">${esc(KIND_WORD[b.kind] ?? b.kind)}${b.width ? `, ${b.width} bit` : ""}</span>` : "<span></span>";
-      return `<li data-ln="${ln}" class="${cls}"><span class="n">${ln}</span><span class="bk" style="${bar}"></span><span class="t">${hiVerilog(t) || " "}</span>${badge}</li>`;
+      return `<li data-ln="${ln}" class="${cls}"><span class="n">${ln}</span><span class="bk" style="${bar}"></span>${codeText(t)}${badge}</li>`;
     }).join("");
   }
 
@@ -192,7 +192,7 @@ export class ChipPage {
     const a = this.author;
     const ol = $("#cpAuthor", this.el);
     if (!a || !this.file || !ol) return;
-    ol.innerHTML = (a.files[this.file] ?? "").split("\n").map((t, i) => `<li><span class="n">${i + 1}</span><span class="bk"></span><span class="t">${hiVerilog(t) || " "}</span><span></span></li>`).join("");
+    ol.innerHTML = (a.files[this.file] ?? "").split("\n").map((t, i) => `<li><span class="n">${i + 1}</span><span class="bk"></span>${codeText(t)}<span></span></li>`).join("");
   }
 
   private renderSide() {
@@ -269,7 +269,7 @@ export class ChipPage {
       ${f ? `<div class="callout ${f.data.verdict === "proven" ? "good" : f.data.verdict === "tested" ? "warn" : "bad"}"><b>${f.data.verdict === "proven" ? "Proven. The chip is back to what the author wrote." : f.data.verdict === "tested" ? "Tested, not proven." : "The fix did not prove."}</b>
         <span>${esc(f.data.detail)}</span><span>${f.data.removed_cells.length} cells removed in ${f.data.seconds.toFixed(1)} s${f.source === "fixture" ? ". Sample result." : ""}</span></div>
         <div class="group"><span class="eyebrow">Removed</span><div class="chips">${f.data.removed_cells.map((c) => `<button type="button" class="linkbtn" data-cell="${esc(c)}">${esc(c)}</button>`).join("")}</div></div>
-        <details><summary>Fixed Verilog</summary><ol class="code">${f.data.verilog.split("\n").map((t, i) => `<li><span class="n">${i + 1}</span><span class="bk"></span><span class="t">${hiVerilog(t) || " "}</span><span></span></li>`).join("")}</ol></details>` : ""}
+        <details><summary>Fixed Verilog</summary><ol class="code">${f.data.verilog.split("\n").map((t, i) => `<li><span class="n">${i + 1}</span><span class="bk"></span>${codeText(t)}<span></span></li>`).join("")}</ol></details>` : ""}
       ${this.err ? `<div class="callout bad">${esc(this.err)}</div>` : ""}</div>`;
   }
 

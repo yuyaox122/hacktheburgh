@@ -27,6 +27,9 @@ import struct
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from pathlib import Path as _Path
+
+CHIP_NOTES: dict = json.loads((_Path(__file__).with_name("chip_notes.json")).read_text()) if _Path(__file__).with_name("chip_notes.json").is_file() else {}
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -406,6 +409,9 @@ def build(chip: str) -> dict:
         "intro": f"This is a real chip: {title}{f' by {author}' if author else ''}, manufactured on Tiny Tapeout 8 in SkyWater's 130 nm process. "
                  "Every coloured block is a standard cell (a tiny pre-made circuit); the metal above it is the real wiring from the published layout.",
         "hint": "Click any cell, wire or pin to see what it is. Set the inputs below and press Step (one clock): wires carrying a 1 glow.",
+        "author": author or None,
+        # Hand-written plain-English notes (ingest/chip_notes.json): how the chip works, and one thing to try in the simulator.
+        **{k: v for k, v in CHIP_NOTES.get(chip, {}).items() if k in ("how", "try")},
         "counts": {"components": len(cells) + len(phys), "logic_cells": sum(1 for c in cells if not c["type"].startswith("conb")), "route_segments": sum(1 for r in routes if len(r["pts"]) == 2),
                    "vias": sum(1 for r in routes if len(r["pts"]) == 1), "named_routes": named,
                    "nets_on_wires": len({r['net'] for r in routes if r['net']}), "signal_nets": len(sig_nets),
