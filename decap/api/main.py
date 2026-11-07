@@ -25,7 +25,7 @@ from fastapi import Body, FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from core import compare, guide, service  # noqa: E402
+from core import claims, compare, guide, service  # noqa: E402
 
 from .scope import Scope, ScopeIn, probe, public, region_of, resolve, touched  # noqa: E402  (region scope for agent tools)
 
@@ -381,6 +381,26 @@ def probe_truth(chip: str, body: ProbeIn = Body(default_factory=ProbeIn)) -> dic
     bits, otherwise random; `fix` holds chosen inputs). Free to call. Samples are evidence, not proof: a pattern that
     held on samples can still be false, and only propose_claim decides."""
     return {"chip": chip, **probe(_get(chip), body.scope, body.n, body.seed, body.fix)}
+
+
+class ClaimIn(ScopeIn):
+    claim: str = Field(description="One Verilog expression about the region, e.g. \"uo_out[4:0] == ui_in[3:0] + ui_in[7:4]\". "
+                                   "Names: ports and flip-flops exactly as get_region lists them; next(x) = x one clock "
+                                   "later; 'A when B' means B -> A. rst_n = 1 and ena = 1 are assumed.")
+    label: str = Field("", description="Known shape, if any: adder, incrementer, counter, comparator, mux, decoder, constant.")
+    check: bool = Field(True, description="False: only parse and render the English (the confirm step), no verdict.")
+
+
+@app.post("/api/chips/{chip}/claim", operation_id="propose_claim")
+def propose_claim(chip: str, body: ClaimIn) -> dict:
+    """Submit one claim about the region to the checker (Yosys; no LLM decides). Verdicts: proven (for every input
+    and register value), inductive (true from reset, proven by induction), bounded (holds 30 cycles from reset, not
+    proven), refuted (with the counterexample), partial (true, but doesn't fix its outputs for every input), restated
+    (true, but no shorter than the decompile and no known shape), tautology, unparseable, timeout. Only proven or
+    inductive claims with credit.cleared explain the region."""
+    v = _get(chip)
+    region = region_of(v, body.scope)
+    return claims.check(v, body.claim, body.label, region=region, do_check=body.check)
 
 
 @app.get("/api/chips/{chip}/critical-path", operation_id="critical_path")
