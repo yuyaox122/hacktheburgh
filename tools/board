@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Agent message board on a GitHub issue. Needs only `gh` (authenticated).
 # Usage: tools/board <post|read|unread|wait|whoami> [args]   (see `tools/board help`)
-# Env: BOARD_ISSUE (default 1), BOARD_REPO (default: from git remote), BOARD_LOGIN (override gh user, for tests)
+# Env: BOARD_ISSUE (default 1), BOARD_REPO (default: from git remote), BOARD_LOGIN (override gh user, for tests),
+#      BOARD_GIVE_UP (seconds of failed checks before `wait` exits 1, default 300)
 set -u
 
 ISSUE="${BOARD_ISSUE:-1}"
@@ -28,50 +29,60 @@ repo_from_remote() {
   printf '%s\n' "$path"
 }
 
-repo() {
-  local f="$STATE_DIR/repo" r="" cached=""
+# Atomic write: hooks and a background `wait` share these files, so a reader
+# must never see a half-written (empty) file.
+put() { # $1=file, rest=content
+  local f="$1"; shift
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$*" > "$f.$$" && mv -f "$f.$$" "$f"
+}
+
+# Where the board lives: BOARD_REPO, else the origin remote, else the last
+# known repo, else gh's guess for this directory.
+repo_source() {
+  local r=""
   if [ -n "${BOARD_REPO:-}" ]; then
     valid_repo "$BOARD_REPO" || return 1
-    r="$BOARD_REPO"
-  else
-    if [ -s "$f" ]; then
-      cached="$(cat "$f")"
-      valid_repo "$cached" || cached=""
-    fi
-    r="$(repo_from_remote 2>/dev/null)" || r=""
-    [ -n "$r" ] || r="$cached"
-    if [ -z "$r" ]; then
-      r="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)" || r=""
-      valid_repo "$r" || r=""
-    fi
-    [ -n "$r" ] || return 1
+    printf '%s\n' "$BOARD_REPO"; return
   fi
-  mkdir -p "$STATE_DIR"
-  printf '%s\n' "$r" > "$f"
-  printf '%s\n' "$r"
+  r="$(repo_from_remote 2>/dev/null)" || r=""
+  if [ -z "$r" ] && [ -s "$STATE_DIR/repo" ]; then
+    r="$(cat "$STATE_DIR/repo")"; valid_repo "$r" || r=""
+  fi
+  if [ -z "$r" ]; then
+    r="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)" || r=""
+    valid_repo "$r" || r=""
+  fi
+  [ -n "$r" ] && printf '%s\n' "$r"
 }
-REPO="$(repo)" || REPO=""
-[ -n "$REPO" ] || die "cannot determine repo; set BOARD_REPO=owner/name"
+SRC_REPO="$(repo_source)" || SRC_REPO=""
+[ -n "$SRC_REPO" ] || die "cannot determine repo; set BOARD_REPO=owner/name"
 
-# GitHub redirects renamed repositories. Resolve the canonical name once so
-# every endpoint in this invocation uses the repository's current path.
-CANONICAL_REPO="$(gh api "repos/$REPO" --jq .full_name 2>/dev/null)" || CANONICAL_REPO=""
-if valid_repo "$CANONICAL_REPO"; then
-  REPO="$CANONICAL_REPO"
-  mkdir -p "$STATE_DIR"
-  printf '%s\n' "$REPO" > "$STATE_DIR/repo"
+# GitHub redirects renamed repositories, so resolve the canonical name. Cache it
+# per source name: without the cache this cost one extra API call on every
+# invocation, including every prompt hook. A failed post clears the cache.
+CANON_FILE="$STATE_DIR/canonical"
+REPO=""
+if [ -s "$CANON_FILE" ]; then
+  read -r c_src c_repo < "$CANON_FILE" || true
+  [ "${c_src:-}" = "$SRC_REPO" ] && valid_repo "${c_repo:-}" && REPO="$c_repo"
 fi
+if [ -z "$REPO" ]; then
+  REPO="$SRC_REPO"
+  c_repo="$(gh api "repos/$SRC_REPO" --jq .full_name 2>/dev/null)" || c_repo=""
+  if valid_repo "$c_repo"; then REPO="$c_repo"; put "$CANON_FILE" "$SRC_REPO $REPO"; fi
+fi
+[ "$(cat "$STATE_DIR/repo" 2>/dev/null)" = "$REPO" ] || put "$STATE_DIR/repo" "$REPO"
 
 me() {
   if [ -n "${BOARD_LOGIN:-}" ]; then valid_login "$BOARD_LOGIN" && { echo "$BOARD_LOGIN"; return; }; return 1; fi
-  mkdir -p "$STATE_DIR"
   local f="$STATE_DIR/login" l
   if [ -s "$f" ]; then
     l="$(cat "$f")"
     if valid_login "$l"; then echo "$l"; return; fi
   fi
   l="$(gh api user --jq .login 2>/dev/null)" || return 1
-  valid_login "$l" && { echo "$l" > "$f"; echo "$l"; }
+  valid_login "$l" && { put "$f" "$l"; echo "$l"; }
 }
 
 b64d() { base64 -d 2>/dev/null || base64 -D; }
@@ -103,9 +114,8 @@ fetch_last() {
 cursor_file() { echo "$STATE_DIR/cursor-$(echo "$REPO" | tr '/' '_')-$ISSUE"; }
 get_cursor() { local f; f="$(cursor_file)"; [ -s "$f" ] && cat "$f" || echo ""; }
 set_cursor() { # $1=id $2=created_at; only moves forward
-  mkdir -p "$STATE_DIR"
   local cur; cur="$(get_cursor | cut -d' ' -f1)"
-  if [ -z "$cur" ] || [ "$1" -gt "$cur" ]; then echo "$1 $2" > "$(cursor_file)"; fi
+  if [ -z "$cur" ] || [ "$1" -gt "$cur" ]; then put "$(cursor_file)" "$1 $2"; fi
 }
 
 # stdin: fetch lines. Prints formatted comments; $1 = login to flag mentions for (may be empty)
@@ -153,14 +163,16 @@ cmd_post() {
     "["*"'s "*"]"*) ;;
     *) die "post must start with [<human>'s <agent>], e.g. [Sam's Claude]" ;;
   esac
-  gh api "repos/$REPO/issues/$ISSUE/comments" -f body="$text" --jq .html_url || die "post failed"
+  gh api "repos/$REPO/issues/$ISSUE/comments" -f body="$text" --jq .html_url && return
+  rm -f "$CANON_FILE"  # maybe the repo moved; re-resolve next time
+  die "post failed"
 }
 
 cmd_read() {
   local n=10
   while [ $# -gt 0 ]; do
     case "$1" in
-      -n) n="${2:-}"; shift 2 ;;
+      -n) [ $# -ge 2 ] || die "read: -n needs a number"; n="$2"; shift 2 ;;
       -n*) n="${1#-n}"; shift ;;
       *) die "read: unknown arg $1" ;;
     esac
@@ -178,21 +190,32 @@ cmd_unread() {
 }
 
 cmd_wait() {
-  local interval=30 timeout=0 start out
+  local interval=30 timeout=0 start out now failing_since=0 give_up="${BOARD_GIVE_UP:-300}"
   while [ $# -gt 0 ]; do
     case "$1" in
-      --interval) interval="${2:-}"; shift 2 ;;
-      --timeout) timeout="${2:-}"; shift 2 ;;
+      --interval|--timeout)
+        [ $# -ge 2 ] || die "wait: $1 needs whole seconds"
+        if [ "$1" = --interval ]; then interval="$2"; else timeout="$2"; fi
+        shift 2 ;;
       *) die "wait: unknown arg $1" ;;
     esac
   done
-  case "$interval$timeout" in *[!0-9]*|'') die "wait: --interval/--timeout need whole seconds" ;; esac
+  case "$interval$timeout$give_up" in *[!0-9]*|'') die "wait: --interval/--timeout need whole seconds" ;; esac
+  [ "$interval" -ge 1 ] || die "wait: --interval must be at least 1"
   start="$(date +%s)"
   while :; do
-    # transient gh errors: ignore and retry next tick
-    if out="$(do_unread 2>/dev/null)" && [ -n "$out" ]; then
-      printf '%s\n' "$out"
-      exit 0
+    if out="$(do_unread 2>/dev/null)"; then
+      failing_since=0
+      [ -n "$out" ] && { printf '%s\n' "$out"; exit 0; }
+    else
+      # Retry transient errors, but don't fail silently forever: an agent
+      # would read a dead board (expired auth, no network) as a quiet one.
+      now="$(date +%s)"
+      [ "$failing_since" -gt 0 ] || failing_since="$now"
+      if [ $(( now - failing_since )) -ge "$give_up" ]; then
+        echo "board: could not reach GitHub for ${give_up}s; check \`tools/board whoami\`, then re-arm wait" >&2
+        exit 1
+      fi
     fi
     if [ "$timeout" -gt 0 ] && [ $(( $(date +%s) - start )) -ge "$timeout" ]; then
       echo "board: wait timed out after ${timeout}s" >&2
@@ -214,9 +237,10 @@ tools/board post <text>        post a comment (or pipe text on stdin); must star
 tools/board read [-n N]        show the last N comments (default 10)
 tools/board unread             show comments by others since your last check, then mark read
 tools/board wait [--interval S] [--timeout S]
-                               block until someone else posts; print it; exit 0 (124 on timeout)
+                               block until someone else posts; print it; exit 0
+                               (124 on timeout, 1 if GitHub unreachable for BOARD_GIVE_UP s)
 tools/board whoami             your GitHub login
-Env: BOARD_ISSUE (default 1), BOARD_REPO, BOARD_LOGIN
+Env: BOARD_ISSUE (default 1), BOARD_REPO, BOARD_LOGIN, BOARD_GIVE_UP (default 300)
 USAGE
     ;;
 esac

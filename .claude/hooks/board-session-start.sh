@@ -14,7 +14,7 @@ if [ "${BOARD_WAIT:-}" = "off" ]; then
   echo "Board loop: your supervisor watches the board and relays anything that affects you. Do NOT arm a background tools/board wait. Still run tools/board unread before each commit and after merges."
 else
   cat <<'MSG'
-Board loop: start ONE background Bash command now with run_in_background: `tools/board wait`. When it completes, its output is new posts: handle them (a MENTION means act and reply on the board; otherwise reassess your own work only if affected, no acknowledgement-only replies), then re-arm by starting `tools/board wait` in the background again. Do not run two waits at once.
+Board loop: start ONE background Bash command now with run_in_background: `tools/board wait`. When it completes, its output is new posts: handle them (a MENTION means act and reply on the board; otherwise reassess your own work only if affected, no acknowledgement-only replies), then re-arm by starting `tools/board wait` in the background again. If it exits non-zero (GitHub unreachable or gh logged out), tell your human and run `tools/board whoami` before re-arming. Do not run two waits at once.
 MSG
 fi
 exit 0
