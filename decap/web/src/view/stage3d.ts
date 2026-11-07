@@ -12,7 +12,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { Design, DesignCell, Lib } from "../data/types";
 import { category, CATEGORY_VAR, type Category } from "./describe";
 import { css, reduceMotion } from "../ui/dom";
-import { cellBox, OVERVIEW_DIR, Y } from "./geometry";
+import { cellBox, OVERVIEW_DIR, Y, usedArea, type Rect } from "./geometry";
 
 export type LayerKey = "pkg" | "cell" | "m1" | "via" | "m2" | "m3" | "m4" | "power";
 export const LAYERS: { key: LayerKey; label: string; colour: string; on: boolean }[] = [
@@ -60,6 +60,10 @@ const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 
 
 export class Stage3D {
   readonly W: number; readonly H: number; readonly RH: number;
+  /** The used part of the die (DEF microns); the scene draws only this, not the whole Tiny Tapeout tile. */
+  readonly V: Rect;
+  /** Physical (filler/tap/decap) cells inside V, in mPhys instance order. */
+  private physShown: Design["phys"] = [];
   renderer!: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(36, 1, 0.5, 3000);
@@ -102,6 +106,7 @@ export class Stage3D {
 
   constructor(private host: HTMLElement, private design: Design, private lib: Lib, private cb: StageCallbacks) {
     this.W = design.die.w; this.H = design.die.h; this.RH = design.rowHeight;
+    this.V = usedArea(design);
     this.cells = design.cells;
     this.cells.forEach((c, i) => {
       this.cellIdx.set(c.id, i);
@@ -129,7 +134,9 @@ export class Stage3D {
   private sz = (y: number) => this.H - y;
 
   private build() {
-    const { W, H, RH } = this;
+    const { RH, V } = this;
+    // The used rectangle in scene space: width W, depth H, with its top-left corner at (x0, z0).
+    const W = V.x1 - V.x0, H = V.y1 - V.y0, x0 = V.x0, z0 = this.sz(V.y1), xc = x0 + W / 2, zc = z0 + H / 2;
     const r = this.renderer;
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -157,7 +164,7 @@ export class Stage3D {
     const desk = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x0a0e14, roughness: 0.6, metalness: 0.45, envMapIntensity: 0.3 }));
     desk.rotation.x = -Math.PI / 2; desk.position.y = -4; desk.receiveShadow = true; this.scene.add(desk);
 
-    this.chip.position.set(-W / 2, 0, -H / 2); this.scene.add(this.chip);
+    this.chip.position.set(-xc, 0, -zc); this.scene.add(this.chip);
     for (const k of Object.keys(EXPLODE_IDX) as Group[]) { this.G[k] = new THREE.Group(); this.chip.add(this.G[k]); }
     const box = new THREE.BoxGeometry(1, 1, 1);
     const std = (o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.1, envMapIntensity: 0.55, ...o });
@@ -171,26 +178,27 @@ export class Stage3D {
     };
 
     /* package: epoxy, cavity, lead frame, gold bond wires */
-    const PW = W + 64, PD = H + 56;
-    add(this.G.pkg, std({ color: 0x0b0e13, roughness: 0.86, metalness: 0, envMapIntensity: 0.25 }), PW, 3, PD, W / 2, -2.2, H / 2);
-    add(this.G.pkg, std({ color: 0x161b23, roughness: 0.95, metalness: 0 }), W + 34, 0.05, H + 34, W / 2, -0.68, H / 2);
-    add(this.G.pkg, std({ color: 0x8b919b, metalness: 0.9, roughness: 0.35 }), W + 14, 0.08, H + 14, W / 2, -0.62, H / 2);
+    // A snug package: leads start LEAD um beyond the die edge and run LEN um out.
+    const LEAD = 8, LEN = 8;
+    add(this.G.pkg, std({ color: 0x0b0e13, roughness: 0.86, metalness: 0, envMapIntensity: 0.25 }), W + 2 * (LEAD + LEN + 2), 3, H + 2 * (LEAD + LEN + 2), xc, -2.2, zc);
+    add(this.G.pkg, std({ color: 0x161b23, roughness: 0.95, metalness: 0 }), W + 2 * (LEAD - 1), 0.05, H + 2 * (LEAD - 1), xc, -0.68, zc);
+    add(this.G.pkg, std({ color: 0x8b919b, metalness: 0.9, roughness: 0.35 }), W + 6, 0.08, H + 6, xc, -0.62, zc);
     const leadMat = std({ color: 0xc2ab84, metalness: 0.9, roughness: 0.3 });
     const goldMat = std({ color: 0xe0b45a, metalness: 0.95, roughness: 0.22, envMapIntensity: 0.9 });
     const ports = this.design.ports;
     const pads = [
       ...ports.map((p) => ({ name: p.name, label: p.label ?? p.name, dir: p.dir as string, x: p.x, y: p.y })),
-      { name: "VPWR", label: "VPWR", dir: "pwr", x: W * 0.35, y: H - 0.4 }, { name: "VGND", label: "VGND", dir: "pwr", x: W * 0.65, y: 0.4 },
+      { name: "VPWR", label: "VPWR", dir: "pwr", x: x0 + W * 0.35, y: V.y1 - 0.4 }, { name: "VGND", label: "VGND", dir: "pwr", x: x0 + W * 0.65, y: V.y0 + 0.4 },
     ];
     for (const p of pads) {
       const px = this.sx(p.x), pz = this.sz(p.y);
-      const left = p.x < W * 0.25, right = p.x > W * 0.75, top = p.y > H * 0.75;
+      const left = p.x < x0 + W * 0.25, right = p.x > x0 + W * 0.75, top = p.y > V.y0 + H * 0.75;
       const dx = left ? -1 : right ? 1 : 0, dz = dx ? 0 : top ? -1 : 1;
       const padX = px + dx * -1.6, padZ = pz + dz * -1.6;
       add(this.G.pkg, goldMat, 2.4, 0.16, 2.4, padX, 0.08, padZ);
-      const lx = dx ? (dx < 0 ? -15 : W + 15) : padX, lz = dz ? (dz < 0 ? -15 : H + 15) : padZ + (padZ - H / 2) * 0.12;
-      const lead = new THREE.Vector3(lx, -0.55, dx ? H / 2 + (padZ - H / 2) * 1.12 : lz);
-      add(this.G.pkg, leadMat, dx ? 14 : 1.4, 0.08, dx ? 1.4 : 14, lead.x + dx * 7, -0.6, lead.z + dz * 7);
+      const lx = dx ? (dx < 0 ? x0 - LEAD : x0 + W + LEAD) : padX, lz = dz ? (dz < 0 ? z0 - LEAD : z0 + H + LEAD) : padZ + (padZ - zc) * 0.12;
+      const lead = new THREE.Vector3(lx, -0.55, dx ? zc + (padZ - zc) * 1.12 : lz);
+      add(this.G.pkg, leadMat, dx ? LEN : 1.4, 0.08, dx ? 1.4 : LEN, lead.x + (dx * LEN) / 2, -0.6, lead.z + (dz * LEN) / 2);
       const a = new THREE.Vector3(padX, 0.18, padZ);
       const out = lead.clone().sub(a).setY(0).normalize();
       const curve = new THREE.CubicBezierCurve3(a, a.clone().add(out.clone().multiplyScalar(1.5)).setY(8), lead.clone().sub(out.clone().multiplyScalar(3)).setY(4.5), lead);
@@ -211,22 +219,26 @@ export class Stage3D {
     }
 
     /* die: oxide-coated silicon, seal ring, rows of wells, met1 power rails */
-    add(this.G.sub, new THREE.MeshPhysicalMaterial({ color: 0x151d29, metalness: 0.5, roughness: 0.3, iridescence: 1, iridescenceIOR: 1.9, iridescenceThicknessRange: [280, 1150], envMapIntensity: 1 }), W, 0.4, H, W / 2, -0.2, H / 2);
+    add(this.G.sub, new THREE.MeshPhysicalMaterial({ color: 0x151d29, metalness: 0.5, roughness: 0.3, iridescence: 1, iridescenceIOR: 1.9, iridescenceThicknessRange: [280, 1150], envMapIntensity: 1 }), W, 0.4, H, xc, -0.2, zc);
     const seal = irid({ color: 0x9aa4b4 });
-    add(this.G.sub, seal, W - 1, 0.1, 0.5, W / 2, 0.05, 1); add(this.G.sub, seal, W - 1, 0.1, 0.5, W / 2, 0.05, H - 1);
-    add(this.G.sub, seal, 0.5, 0.1, H - 1, 1, 0.05, H / 2); add(this.G.sub, seal, 0.5, 0.1, H - 1, W - 1, 0.05, H / 2);
-    const core = this.design.core ?? { x0: 0, y0: 0, x1: W, y1: H };
+    add(this.G.sub, seal, W - 1, 0.1, 0.5, xc, 0.05, z0 + 1); add(this.G.sub, seal, W - 1, 0.1, 0.5, xc, 0.05, z0 + H - 1);
+    add(this.G.sub, seal, 0.5, 0.1, H - 1, x0 + 1, 0.05, zc); add(this.G.sub, seal, 0.5, 0.1, H - 1, x0 + W - 1, 0.05, zc);
+    const die = this.design.core ?? { x0: 0, y0: 0, x1: this.W, y1: this.H };
+    // Wells and rails run the width of the core, cut to the used rectangle.
+    const core = { x0: Math.max(die.x0, x0 + 1.5), x1: Math.min(die.x1, x0 + W - 1.5) };
     const cw = core.x1 - core.x0;
+    const inV = (y: number) => y >= V.y0 && y <= V.y1;
     const well = std({ color: 0x22314a, roughness: 0.8 }), well2 = std({ color: 0x1b2638, roughness: 0.85 });
     const rows = this.design.rows ?? [];
     for (const row of rows) {
+      if (!inV(row.y) || !inV(row.y + RH)) continue;
       const flip = row.orient.includes("S");
       add(this.G.sub, flip ? well2 : well, cw, 0.02, RH / 2 - 0.1, core.x0 + cw / 2, 0.045, this.sz(row.y + RH * 0.75));
       add(this.G.sub, flip ? well : well2, cw, 0.02, RH / 2 - 0.1, core.x0 + cw / 2, 0.045, this.sz(row.y + RH * 0.25));
     }
     const railY = new Set<number>(); rows.forEach((r0) => { railY.add(+r0.y.toFixed(3)); railY.add(+(r0.y + RH).toFixed(3)); });
     let k = 0;
-    for (const y of [...railY].sort((a, b) => a - b)) add(this.G.m1, irid({ color: k++ % 2 ? 0x3d5f9c : 0x324c80 }), cw, 0.05, 0.48, core.x0 + cw / 2, Y.m1, this.sz(y));
+    for (const y of [...railY].filter(inV).sort((a, b) => a - b)) add(this.G.m1, irid({ color: k++ % 2 ? 0x3d5f9c : 0x324c80 }), cw, 0.05, 0.48, core.x0 + cw / 2, Y.m1, this.sz(y));
 
     /* cells: body, diffusion, poly fingers, top strip that glows when the output is 1 */
     const n = this.cells.length;
@@ -234,7 +246,8 @@ export class Stage3D {
     this.mTop = inst(box, glow(), n, this.G.cell);
     this.mDiff = inst(box, std({ roughness: 0.5, metalness: 0.05, color: 0x6f5a3a }), n * 2, this.G.cell);
     this.mPoly = inst(box, std({ roughness: 0.35, metalness: 0.2, color: new THREE.Color(css("--poly")) }), n * 30, this.G.cell);
-    this.mPhys = inst(box, std({ roughness: 0.8 }), this.design.phys.length, this.G.cell);
+    this.physShown = this.design.phys.filter((p) => p.x >= V.x0 && p.x + p.w <= V.x1 && inV(p.y) && inV(p.y + RH));
+    this.mPhys = inst(box, std({ roughness: 0.8 }), this.physShown.length, this.G.cell);
     let pi = 0, di = 0;
     this.cells.forEach((c, i) => {
       const b = cellBox(c, this.H, RH);
@@ -245,12 +258,12 @@ export class Stage3D {
       for (let f = 0; f < nf; f++) setBox(this.mPoly, pi++, c.x + ((f + 0.5) * c.w) / nf, Y.cellTop + 0.03, cz, 0.09, 0.04, RH - 0.9);
     });
     this.mLogic.count = n; this.mDiff.count = di; this.mPoly.count = pi;
-    this.design.phys.forEach((p, i) => {
+    this.physShown.forEach((p, i) => {
       const tap = p.type.startsWith("tap");
       setBox(this.mPhys, i, p.x + p.w / 2, 0.1, this.sz(p.y + RH / 2), p.w - 0.05, tap ? 0.22 : 0.14, RH - 0.5);
       this.mPhys.setColorAt(i, new THREE.Color(tap ? 0x3a4c66 : p.type.startsWith("decap") ? 0x253141 : 0x1c2532));
     });
-    this.mPhys.count = this.design.phys.length;
+    this.mPhys.count = this.physShown.length;
     this.updateTop();
 
     /* routes from the DEF: wires per layer (base + glow), vias */
@@ -286,9 +299,13 @@ export class Stage3D {
       vs.forEach((v, i) => setBox(m, i, v.x, spec.y, v.z, spec.s, layer === "mcon" ? 0.08 : 0.16, spec.s));
       m.count = vs.length;
     }
+    const clip = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
     for (const p of this.design.power ?? []) {
-      const [[x1, y1], [x2, y2]] = p.pts;
+      let [[x1, y1], [x2, y2]] = p.pts;
       const horiz = Math.abs(x2 - x1) >= Math.abs(y2 - y1);
+      // Power stripes cross the whole tile: keep the ones that cross the used rectangle, cut to it.
+      if (horiz ? !inV(y1) : x1 < V.x0 || x1 > V.x1) continue;
+      if (horiz) { x1 = clip(x1, V.x0, V.x1); x2 = clip(x2, V.x0, V.x1); } else { y1 = clip(y1, V.y0, V.y1); y2 = clip(y2, V.y0, V.y1); }
       const len = Math.abs(horiz ? x2 - x1 : y2 - y1);
       const mat = std({ color: p.layer === "met5" ? 0xb69344 : 0xc9a24a, metalness: 0.9, roughness: 0.3, transparent: true, opacity: 0.55 });
       add(this.G.power, mat, horiz ? len : p.width, 0.12, horiz ? p.width : len, (x1 + x2) / 2, p.layer === "met5" ? Y.m5 : Y.m4 + 0.08, this.sz((y1 + y2) / 2));
@@ -303,7 +320,7 @@ export class Stage3D {
     this.tagObj = new CSS2DObject(tagEl); this.G.cell.add(this.tagObj);
     for (const [g, text, y] of [["cell", "cells · transistors", Y.cellTop], ["m1", "met1 · power rails + local wires", Y.m1], ["m2", "met2 · vertical wires", Y.m2], ["m3", "met3 · long wires", Y.m3], ["m4", "met4", Y.m4]] as [Group, string, number][]) {
       const el = document.createElement("div"); el.className = "layerlabel"; el.textContent = text; el.style.opacity = "0";
-      const o = new CSS2DObject(el); o.position.set(-3, y, this.H * 0.55); o.userData.layerLabel = true; this.G[g].add(o);
+      const o = new CSS2DObject(el); o.position.set(this.V.x0 - 3, y, this.sz(this.V.y0 + (this.V.y1 - this.V.y0) * 0.45)); o.userData.layerLabel = true; this.G[g].add(o);
     }
     this.chip.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -457,7 +474,7 @@ export class Stage3D {
   flyTo(ids: string[] | null, opts: { dir?: THREE.Vector3; instant?: boolean } = {}) {
     if (!this.ok) return;
     const box = new THREE.Box3();
-    if (!ids || !ids.length) box.set(new THREE.Vector3(-8, 0, -8), new THREE.Vector3(this.W + 8, 1, this.H + 8));
+    if (!ids || !ids.length) box.set(new THREE.Vector3(this.V.x0 - 8, 0, this.sz(this.V.y1) - 8), new THREE.Vector3(this.V.x1 + 8, 1, this.sz(this.V.y0) + 8));
     else for (const id of ids) {
       const c = this.cells[this.cellIdx.get(id) ?? -1];
       if (!c) continue;
@@ -510,7 +527,7 @@ export class Stage3D {
         const hit = targets.length ? ray.intersectObjects(targets, false)[0] : undefined;
         if (!hit || hit.instanceId === undefined) continue;
         if (hit.object === this.mLogic) return { kind: "cell" as const, id: this.cells[hit.instanceId].id };
-        if (hit.object === this.mPhys) return { kind: "phys" as const, p: this.design.phys[hit.instanceId] };
+        if (hit.object === this.mPhys) return { kind: "phys" as const, p: this.physShown[hit.instanceId] };
         for (const w of this.wires.values()) if (hit.object === w.base) return { kind: "net" as const, net: w.segs[hit.instanceId].net };
       }
       return null;

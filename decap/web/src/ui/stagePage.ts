@@ -4,6 +4,7 @@ import type { Design, DesignCell, IoField, Lib } from "../data/types";
 import type { StageChip } from "../data/load";
 import { Sim } from "../sim/sim";
 import { Stage3D, LAYERS, type LayerKey } from "../view/stage3d";
+import { usedArea } from "../view/geometry";
 import { category, CATEGORY_LABEL, CATEGORY_VAR, describe, fullName, toWordsSafe } from "../view/describe";
 import { parse, evalExpr, vars } from "../sim/expr";
 import { $, $$, esc, hiVerilog } from "./dom";
@@ -371,7 +372,8 @@ export class StagePage {
       el.innerHTML = `<p class="insp-role">${esc(this.design.intro ?? "This is a real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell (a tiny pre-made circuit). The gold labels are its pins.")}</p>
         <p class="muted" style="font-size:13px">${this.design.hint ? esc(this.design.hint) : "Click any cell, wire or pin to see what it is. Press <b>Run</b> to clock it: wires carrying a 1 glow. Use <b>Shift in</b> to load two numbers; S lights up when they add to 496."}</p>
         <dl class="kv">${this.design.title ? `<dt>Chip</dt><dd>${esc(this.design.title)}</dd>` : ""}<dt>Design</dt><dd>${esc(this.design.name)}</dd><dt>Process</dt><dd>${esc(this.design.pdk)}</dd>
-        <dt>Die</dt><dd>${this.design.die.w} × ${this.design.die.h} µm</dd><dt>Logic cells</dt><dd>${this.logicCount}</dd>
+        <dt>Shown</dt><dd>${this.usedSize} µm, the part the logic uses</dd>
+        <dt>Tile</dt><dd>${this.design.die.w} × ${this.design.die.h} µm (fixed slot; the rest is filler)</dd><dt>Logic cells</dt><dd>${this.logicCount}</dd>
         <dt>Flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>Physical cells</dt><dd>${this.design.phys.length} (fill, tap, decap)</dd>
         <dt>Wires</dt><dd>${this.design.counts?.route_segments ?? "?"} segments, ${this.design.counts?.vias ?? "?"} vias</dd></dl>`;
       return;
@@ -461,9 +463,14 @@ export class StagePage {
       `<div class="bus"><small>cycle</small><span>${this.sim.cycles}${this.shiftQueue.length ? ` <span class="muted">(shifting, ${this.shiftQueue.length} left)</span>` : ""}</span></div>`,
     ].join("");
   }
+  /** Width x height of the part of the tile the design uses (what the 3D view draws). */
+  private get usedSize() {
+    const v = usedArea(this.design);
+    return `${(v.x1 - v.x0).toFixed(0)} × ${(v.y1 - v.y0).toFixed(0)}`;
+  }
   private renderStats() {
     $("#stStats", this.el).innerHTML = `<dt>logic cells</dt><dd>${this.logicCount}</dd><dt>cell types</dt><dd>${new Set(this.design.cells.map((c) => c.type)).size}</dd>
-      <dt>flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>wires</dt><dd>${this.design.counts?.nets ?? this.design.counts?.nets_on_wires ?? "?"}</dd><dt>die</dt><dd>${this.design.die.w}×${this.design.die.h} µm</dd>`;
+      <dt>flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>wires</dt><dd>${this.design.counts?.nets ?? this.design.counts?.nets_on_wires ?? "?"}</dd><dt>size</dt><dd>${this.usedSize} µm</dd>`;
   }
   private renderLegend() {
     const byModule = $("[data-colour='module']", this.el)?.getAttribute("aria-pressed") === "true";
