@@ -16,7 +16,7 @@ export interface DemoHooks {
 
 const STEPS = [
   { key: "hook", label: "0 Hook", t: "0–15 s", note: "“You'd never merge a pull request you can't read. Every chip is one. Software has decompilers; silicon has no View Source. Chips are built from parts you didn't make, AI is starting to write them, and you can't patch a chip.”" },
-  { key: "stage", label: "1 Stage", t: "15–30 s", note: "“This is real silicon (warm-up chip, credit Jane Street). Every gate has a meaning, but nobody can read hundreds of them.” Click a gate; it runs; wires glow." },
+  { key: "stage", label: "1 Stage", t: "15–30 s", note: "“This is real silicon: a Tiny Tapeout chip, every cell and wire from its published layout. Every gate has a meaning, but nobody can read hundreds of them.” Click a gate; set 9 + 8; wires glow." },
   { key: "wall", label: "2 Proof wall", t: "30–40 s", note: "“Decap turned every one of these real Tiny Tapeout chips back into code. Green means a formal checker proved the code is exactly the same circuit.”" },
   { key: "read", label: "3 Read", t: "40–55 s", note: "The judge's chip: names stripped, blocks recovered, Verilog appears, “Equivalence: proven”. “And here's what the author actually wrote.”" },
   { key: "find", label: "4 Find", t: "55–80 s", note: "“You picked a number, and we hid a trigger for it in this chip.” Point at the red line: “your number, as a line of code nobody wrote. And here's everything it can reach.” Then the catch rate and false alarms." },

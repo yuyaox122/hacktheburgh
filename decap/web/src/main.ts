@@ -60,7 +60,7 @@ async function route() {
     if (!stage) {
       const d = document.createElement("div");
       d.className = "empty";
-      d.innerHTML = `<h3>No Stage data yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>decap/web</code> to build <code>public/data/design.json</code> and <code>lib.json</code> from the warm-up DEF and the SKY130 Liberty JSON.</p>`;
+      d.innerHTML = `<h3>No Stage data yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>decap/web</code> to build <code>public/data/design.json</code> (a Tiny Tapeout chip, from its GDS) and <code>lib.json</code> (SKY130 Liberty).</p>`;
       show(d, true); return;
     }
     const s = stage;
@@ -103,7 +103,7 @@ const demo = new Demo({
       if (!stage) return;
       const g = stage.findCell(/^xor2/);
       if (g) stage.selectCell(g);
-      stage.shiftIn(250, 246);
+      stage.demoShow();
     });
   },
   chipVariant: (planted) => {
@@ -118,7 +118,7 @@ const demo = new Demo({
 root.append(demo.el);
 
 const palette = new Palette((): PaletteCommand[] => [
-  { label: "Go to Stage (the warm-up chip in 3D)", key: "1", run: () => (location.hash = "#/stage") },
+  { label: "Go to Stage (a real chip in 3D)", key: "1", run: () => (location.hash = "#/stage") },
   { label: "Go to Proof wall", key: "2", run: () => (location.hash = "#/wall") },
   { label: "Go to Chip", key: "3", run: () => (location.hash = "#/chip") },
   { label: "Go to Compare", key: "4", run: () => (location.hash = "#/compare") },

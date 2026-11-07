@@ -1,6 +1,6 @@
-// Stage page: the warm-up chip in 3D, the source it came from, an inspector, and the live simulator.
+// Stage page: a real chip in 3D (a Tiny Tapeout chip from its GDS, or the warm-up), its source, an inspector, and the live simulator.
 
-import type { Design, DesignCell, Lib } from "../data/types";
+import type { Design, DesignCell, IoField, Lib } from "../data/types";
 import { Sim } from "../sim/sim";
 import { Stage3D, LAYERS, type LayerKey } from "../view/stage3d";
 import { category, CATEGORY_LABEL, CATEGORY_VAR, describe, fullName, toWordsSafe } from "../view/describe";
@@ -31,6 +31,10 @@ export class StagePage {
   private buses: { name: string; bits: string[] }[] = [];
   private srcFile: string;
   private srcLines: string[];
+  /** Named numbers from the chip's pinout (Tiny Tapeout): the sim bar shows these instead of one button per pin. */
+  private io: { in: IoField[]; out: IoField[] } | null;
+  private waveSigs: string[];
+  private waveLabel = new Map<string, string>();
 
   constructor(private design: Design, private lib: Lib) {
     for (const c of design.cells) {
@@ -45,7 +49,7 @@ export class StagePage {
     this.inputs = design.ports.filter((p) => p.dir === "in").map((p) => p.name);
     this.outputs = design.ports.filter((p) => p.dir === "out").map((p) => p.name);
     this.clk = this.inputs.find((n) => /^clk$/i.test(n)) ?? null;
-    for (const n of this.inputs) if (/^(rst_?n|en|ena)$/i.test(n)) this.sim.set(n, 1);
+    for (const n of new Set([...this.inputs, ...this.sim.names])) if (/^(rst_?n|en|ena)$/i.test(n)) this.sim.set(n, 1);
     this.sim.settle();
     // Named internal buses (a_reg[7:0], sum[8:0], ...) for the readout.
     const groups = new Map<string, number[]>();
@@ -54,6 +58,13 @@ export class StagePage {
       if (m) { if (!groups.has(m[1])) groups.set(m[1], []); groups.get(m[1])!.push(+m[2]); }
     }
     this.buses = [...groups].filter(([, b]) => b.length >= 2).slice(0, 4).map(([name, b]) => ({ name, bits: b.sort((x, y) => x - y).map((i) => `${name}[${i}]`) }));
+    this.io = design.io && (design.io.in.length || design.io.out.length) ? design.io : null;
+    if (this.io) {
+      for (const f of [...this.io.in, ...this.io.out]) f.bits.forEach((b, k) => this.waveLabel.set(b, f.bits.length > 1 ? `${f.name}${k}` : f.name));
+      this.waveSigs = [...this.io.in, ...this.io.out].flatMap((f) => f.bits);
+    } else {
+      this.waveSigs = [...this.inputs.filter((x) => x !== this.clk), ...this.outputs];
+    }
     this.srcFile = Object.keys(design.source.files)[0] ?? "";
     this.srcLines = (design.source.files[this.srcFile] ?? "").split("\n");
 
@@ -92,7 +103,7 @@ export class StagePage {
           <select class="sel" id="stSpeed" aria-label="Clock speed"><option value="900">slow</option><option value="450" selected>normal</option><option value="120">fast</option></select>
         </div>
         <div class="ins" id="stIns" aria-label="Inputs"></div>
-        <div class="shiftin" title="Shift two 8-bit numbers into the chip's shift registers, most significant bit first">
+        <div class="shiftin" ${this.io ? "hidden" : ""} title="Shift two 8-bit numbers into the chip's shift registers, most significant bit first">
           <span class="muted">Shift in</span>
           <input class="num" id="stA" type="number" min="0" max="255" value="250" aria-label="Number for A">
           <span class="muted">+</span>
@@ -117,6 +128,8 @@ export class StagePage {
       if (innerWidth < 1300) { $("#stLayersB", this.el).hidden = true; $("#stLayersT", this.el).setAttribute("aria-expanded", "false"); }
       this.renderSource(); this.renderInsp(); this.renderInputs(); this.renderRead(); this.renderStats(); this.renderLegend();
       this.view.setValues((n) => this.sim.get(n));
+      // Tiny Tapeout tiles are mostly filler: open on the logic, not the whole die.
+      if (this.io) setTimeout(() => this.view?.flyTo(this.design.cells.map((c) => c.id)), 400);
     }
     this.view.start();
   }
@@ -143,6 +156,10 @@ export class StagePage {
       const li = (e.target as HTMLElement).closest<HTMLElement>("[data-ln]");
       if (li) this.selectLine(+li.dataset.ln!);
     });
+    $("#stIns", el).addEventListener("input", (e) => {
+      const f = (e.target as HTMLElement).closest<HTMLInputElement>("[data-io]");
+      if (f) this.setField(f.dataset.io!, +f.value);
+    });
     $("#stIns", el).addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>("[data-in]");
       if (!b) return;
@@ -165,7 +182,7 @@ export class StagePage {
     for (const [k, v] of Object.entries(ins)) this.sim.set(k, v);
     if (this.clk) this.sim.clock(this.clk); else this.sim.settle();
     const snap: Record<string, number> = {};
-    for (const n of [...this.inputs.filter((x) => x !== this.clk), ...this.outputs]) snap[n] = this.sim.get(n);
+    for (const n of this.waveSigs) snap[n] = this.sim.get(n);
     this.history.push(snap); if (this.history.length > 40) this.history.shift();
     this.after();
     if (!this.shiftQueue.length && q && !this.running) this.renderRead();
@@ -184,6 +201,21 @@ export class StagePage {
     if (rst) { this.step({ [rst]: 0 }); this.sim.apply({ [rst]: 1 }); } else { this.sim.zero(); }
     this.sim.cycles = 0; this.history = [];
     this.after();
+  }
+  /** Set a named input number (from the pinout) on its pins. */
+  setField(name: string, value: number) {
+    const f = this.io?.in.find((x) => x.name === name);
+    if (!f) return;
+    const v = Math.max(0, Math.min((1 << f.bits.length) - 1, Math.floor(value) || 0));
+    this.sim.apply(Object.fromEntries(f.bits.map((b, k) => [b, (v >> k) & 1])));
+    this.after();
+  }
+  private fieldVal(f: IoField) { return f.bits.reduce((s, n, i) => s + (this.sim.get(n) << i), 0); }
+  /** Demo: a visible computation. Pinout chips: the first two inputs get 9 and 8, then one clock; the warm-up: shift in 250 + 246. */
+  demoShow() {
+    if (!this.io) { this.shiftIn(250, 246); return; }
+    this.io.in.forEach((f, i) => this.setField(f.name, i === 0 ? 9 : i === 1 ? 8 : 0));
+    this.pause(); this.step();
   }
   /** Shift a and b into the A/B serial inputs, MSB first (8 clocks), with en = 1. */
   shiftIn(a?: number, b?: number) {
@@ -328,10 +360,10 @@ export class StagePage {
   private renderInsp() {
     const el = $("#stInsp", this.el), id = this.selected;
     if (!id) {
-      el.innerHTML = `<p class="insp-role">This is a real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell (a tiny pre-made circuit). The gold labels are its pins.</p>
-        <p class="muted" style="font-size:13px">Click any cell, wire or pin to see what it is. Press <b>Run</b> to clock it: wires carrying a 1 glow. Use <b>Shift in</b> to load two numbers; S lights up when they add to 496.</p>
-        <dl class="kv"><dt>Design</dt><dd>${esc(this.design.name)}</dd><dt>Process</dt><dd>${esc(this.design.pdk)}</dd>
-        <dt>Die</dt><dd>${this.design.die.w} × ${this.design.die.h} µm</dd><dt>Logic cells</dt><dd>${this.design.cells.length}</dd>
+      el.innerHTML = `<p class="insp-role">${esc(this.design.intro ?? "This is a real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell (a tiny pre-made circuit). The gold labels are its pins.")}</p>
+        <p class="muted" style="font-size:13px">${this.design.hint ? esc(this.design.hint) : "Click any cell, wire or pin to see what it is. Press <b>Run</b> to clock it: wires carrying a 1 glow. Use <b>Shift in</b> to load two numbers; S lights up when they add to 496."}</p>
+        <dl class="kv">${this.design.title ? `<dt>Chip</dt><dd>${esc(this.design.title)}</dd>` : ""}<dt>Design</dt><dd>${esc(this.design.name)}</dd><dt>Process</dt><dd>${esc(this.design.pdk)}</dd>
+        <dt>Die</dt><dd>${this.design.die.w} × ${this.design.die.h} µm</dd><dt>Logic cells</dt><dd>${this.logicCount}</dd>
         <dt>Flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>Physical cells</dt><dd>${this.design.phys.length} (fill, tap, decap)</dd>
         <dt>Wires</dt><dd>${this.design.counts?.route_segments ?? "?"} segments, ${this.design.counts?.vias ?? "?"} vias</dd></dl>`;
       return;
@@ -386,14 +418,35 @@ export class StagePage {
     return `<div><p class="fine" style="margin-bottom:4px">Truth table (the highlighted row is what it sees right now)</p><table class="tt"><tr>${ins.map((p) => `<th>${esc(p)}</th>`).join("")}<th>${esc(o)}</th></tr>${rows.join("")}</table></div>`;
   }
 
+  private get logicCount() { return Number(this.design.counts?.logic_cells ?? this.design.cells.length); }
   private renderInputs() {
-    $("#stIns", this.el).innerHTML = this.inputs.filter((n) => n !== this.clk).map((n) => {
+    const host = $("#stIns", this.el);
+    if (this.io) {
+      if (!host.querySelector("[data-io]")) {
+        host.innerHTML = this.io.in.map((f) => `<label class="inbtn iofield" title="${esc(f.name)}: ${esc(f.bits.join(", "))}">${esc(f.name)}
+          <input class="num" type="number" min="0" max="${(1 << f.bits.length) - 1}" data-io="${esc(f.name)}" value="0" aria-label="Input ${esc(f.name)}"></label>`).join("") +
+          (this.clk ? `<span class="inbtn" id="stClkI" title="Clock: driven by Step / Run">${esc(this.clk)} <span class="bit">↑</span></span>` : "");
+      }
+      host.querySelectorAll<HTMLInputElement>("[data-io]").forEach((inp) => {
+        const f = this.io!.in.find((x) => x.name === inp.dataset.io);
+        if (f && document.activeElement !== inp) inp.value = String(this.fieldVal(f));
+      });
+      return;
+    }
+    host.innerHTML = this.inputs.filter((n) => n !== this.clk).map((n) => {
       const v = this.sim.get(n);
       return `<button type="button" class="inbtn${v ? " on" : ""}" data-in="${esc(n)}" title="Toggle input ${esc(n)}">${esc(n)} <span class="bit${v ? " on" : ""}">${v}</span></button>`;
     }).join("") + (this.clk ? `<span class="inbtn" title="Clock: driven by Step / Run">${esc(this.clk)} <span class="bit${this.sim.get(this.clk) ? " on" : ""}">↑</span></span>` : "");
   }
   private renderRead() {
     const busVal = (b: { bits: string[] }) => b.bits.reduce((s, n, i) => s + (this.sim.get(n) << i), 0);
+    if (this.io) {
+      $("#stRead", this.el).innerHTML = [
+        ...this.io.out.map((f) => { const v = this.fieldVal(f); return `<div class="bus"><small>output</small><span class="big">${esc(f.name)} <b>${v}</b> <span class="muted">${v.toString(2).padStart(f.bits.length, "0")}</span></span></div>`; }),
+        `<div class="bus"><small>cycle</small><span>${this.sim.cycles}</span></div>`,
+      ].join("");
+      return;
+    }
     $("#stRead", this.el).innerHTML = [
       ...this.outputs.map((o) => `<div class="bus"><small>output</small><span class="big">${esc(o)} <span class="bit${this.sim.get(o) ? " on" : ""}">${this.sim.get(o)}</span></span></div>`),
       ...this.buses.map((b) => `<div class="bus"><small>${esc(b.name)}</small><span>${busVal(b)} <span class="muted">${busVal(b).toString(2).padStart(b.bits.length, "0")}</span></span></div>`),
@@ -401,8 +454,8 @@ export class StagePage {
     ].join("");
   }
   private renderStats() {
-    $("#stStats", this.el).innerHTML = `<dt>logic cells</dt><dd>${this.design.cells.length}</dd><dt>cell types</dt><dd>${new Set(this.design.cells.map((c) => c.type)).size}</dd>
-      <dt>flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>wires</dt><dd>${this.design.counts?.nets ?? "?"}</dd><dt>die</dt><dd>${this.design.die.w}×${this.design.die.h} µm</dd>`;
+    $("#stStats", this.el).innerHTML = `<dt>logic cells</dt><dd>${this.logicCount}</dd><dt>cell types</dt><dd>${new Set(this.design.cells.map((c) => c.type)).size}</dd>
+      <dt>flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>wires</dt><dd>${this.design.counts?.nets ?? this.design.counts?.nets_on_wires ?? "?"}</dd><dt>die</dt><dd>${this.design.die.w}×${this.design.die.h} µm</dd>`;
   }
   private renderLegend() {
     const byModule = $("[data-colour='module']", this.el)?.getAttribute("aria-pressed") === "true";
@@ -423,12 +476,12 @@ export class StagePage {
     cv.width = w * dpr; cv.height = h * dpr;
     const g = cv.getContext("2d")!;
     g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
-    const sigs = [...this.inputs.filter((x) => x !== this.clk), ...this.outputs];
+    const sigs = this.waveSigs;
     const rowH = h / Math.max(1, sigs.length), lw = 44, n = 40, step = (w - lw) / n;
     g.font = "10px JetBrains Mono, monospace";
     sigs.forEach((s, r) => {
       const y0 = r * rowH, hi = y0 + rowH * 0.2, lo = y0 + rowH * 0.85;
-      g.fillStyle = "#8995a9"; g.fillText(s, 2, y0 + rowH * 0.7);
+      g.fillStyle = "#8995a9"; g.fillText(this.waveLabel.get(s) ?? s, 2, y0 + rowH * 0.7);
       g.strokeStyle = this.outputs.includes(s) ? "#ffd45e" : "#4f7fe0"; g.lineWidth = 1.3; g.beginPath();
       const hist = this.history;
       let prevY: number | null = null;
@@ -450,7 +503,8 @@ export class StagePage {
       { label: "Stage: run or pause the clock", key: "Space", run: () => (this.running ? this.pause() : this.run()) },
       { label: "Stage: step one clock edge", key: ".", run: () => { this.pause(); this.step(); } },
       { label: "Stage: reset the chip", key: "R", run: () => this.reset() },
-      { label: "Stage: shift in 250 + 246 (S lights at 496)", key: "", run: () => this.shiftIn(250, 246) },
+      this.io ? { label: "Stage: set the inputs to 9 and 8 and clock once", key: "", run: () => this.demoShow() }
+        : { label: "Stage: shift in 250 + 246 (S lights at 496)", key: "", run: () => this.shiftIn(250, 246) },
       { label: "Stage: toggle exploded view", key: "X", run: () => this.toggleExplode() },
       { label: "Stage: fly to the whole die", key: "F", run: () => this.view?.flyTo(null) },
       ...this.design.cells.map((c) => ({ label: `Go to cell ${c.id}`, key: c.type, run: () => this.selectCell(c.id) })),
