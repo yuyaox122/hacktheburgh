@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 
 from core import compare, guide, service  # noqa: E402
 
-from .scope import Scope, ScopeIn, resolve, touched  # noqa: E402  (region scope for agent tools)
+from .scope import Scope, ScopeIn, probe, public, region_of, resolve, touched  # noqa: E402  (region scope for agent tools)
 
 OUT = ROOT / "out"
 
@@ -357,6 +357,30 @@ def remove_trigger(chip: str) -> dict:
         raise HTTPException(400, str(e))
     return {"chip": chip, **{k: out[k] for k in ("verdict", "detail", "removed_cells", "seconds", "flag", "author_check")},
             "verilog": out["verilog"], "touched": {"cells": list(out["removed_cells"]), "nets": [], "lines": []}}
+
+
+class ProbeIn(BaseModel):
+    scope: Scope = Field(default_factory=Scope, description="Region to probe (empty = whole chip).")
+    n: int = Field(1024, ge=1, le=4096, description="Random input vectors to try (every vector if the region has <= 14 input bits).")
+    seed: int = Field(1, description="Random seed, so a probe can be repeated.")
+    fix: dict[str, int] = Field(default_factory=dict, description="Hold some region inputs at fixed values while the rest "
+                                                                  "vary, e.g. {\"bit0\": 0, \"ui_in\": 37}. Names as get_region lists them.")
+
+
+@app.post("/api/chips/{chip}/region", operation_id="get_region")
+def get_region(chip: str, body: ScopeIn = Body(default_factory=ScopeIn)) -> dict:
+    """Describe a region before making a claim about it: the outputs it feeds (output-port bits, flip-flops' next
+    values), the ports and flip-flops they depend on (the only names a claim may use), the decompiled lines it covers
+    and how many literals they have. rst_n = 1 and ena = 1 are assumed. Call this first."""
+    return {"chip": chip, **public(region_of(_get(chip), body.scope))}
+
+
+@app.post("/api/chips/{chip}/probe", operation_id="probe_truth")
+def probe_truth(chip: str, body: ProbeIn = Body(default_factory=ProbeIn)) -> dict:
+    """Try many input vectors on the region and show what its outputs did (every vector if the region has few input
+    bits, otherwise random; `fix` holds chosen inputs). Free to call. Samples are evidence, not proof: a pattern that
+    held on samples can still be false, and only propose_claim decides."""
+    return {"chip": chip, **probe(_get(chip), body.scope, body.n, body.seed, body.fix)}
 
 
 @app.get("/api/chips/{chip}/critical-path", operation_id="critical_path")
