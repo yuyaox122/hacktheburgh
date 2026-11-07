@@ -24,7 +24,7 @@ const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 const root = $("#app");
 root.innerHTML = `
   <header class="top">
-    <a class="brand" href="#/stage" aria-label="Decap home">${icon.logo}<b>Decap</b></a>
+    <a class="brand" href="#/stage" aria-label="bASIC home">${icon.logo}<b><span class="b">b</span>ASIC</b></a>
     <nav class="main" aria-label="Pages">
       <a href="#/stage" data-r="stage" title="A real chip in 3D, live (1)">Explore</a>
       <a href="#/wall" data-r="wall" title="Every benchmark chip and its proof (2)">Results</a>
@@ -252,12 +252,12 @@ health().then((h) => {
   app.api = true; app.llm = !!h.llm;
   const s = $("#apiStatus");
   s.innerHTML = `<i class="ok"></i><span>Live</span>`;
-  s.title = `Connected to the Decap API.${h.yosys === false ? " Yosys is missing, so proofs are off." : ""} The guide is ${h.llm ? "on" : "off"}.`;
+  s.title = `Connected to the bASIC API.${h.yosys === false ? " Yosys is missing, so proofs are off." : ""} The guide is ${h.llm ? "on" : "off"}.`;
 }).catch(() => {
   app.api = false;
   const s = $("#apiStatus");
   s.innerHTML = `<i class="bad"></i><span>Offline</span>`;
-  s.title = "Showing saved results. Live planting, Fix, Compare and the guide need the Decap API.";
+  s.title = "Showing saved results. Live planting, Fix, Compare and the guide need the bASIC API.";
 });
 
 // Test hook (used by the headless browser check; harmless in production).
