@@ -9,6 +9,7 @@
   decap formalise "sentence" [CHIP]    the judge's sentence -> a formal line + the checker's English (--check: verdict)
   decap bench --split dev              Witness bench: a region agent per unrecognised block, first drafts scored
   decap bench --freeze-hash            the hash to post before scoring the test split (--split test needs --frozen)
+  decap timeline FILE... -o page.html  the Witness timeline page from transcripts (--bench, --ablation)
   decap mcp [--http PORT]              serve the tools over MCP (stdio by default)
   decap replay FILE [--check]          step through a recorded run; --check re-runs and compares
   decap stream FILE [--port 8790]      serve a transcript to the UI (SSE /events)
@@ -188,6 +189,12 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--freeze-hash", action="store_true", help="print the freeze hash and exit")
     b.add_argument("--ablate", metavar="TRANSCRIPT", help="re-check every claim in a bench transcript with random and "
                                                           "biased simulation instead of Yosys (no LLM; real core only)")
+    tl = sub.add_parser("timeline", help="render the Witness timeline page from transcripts")
+    tl.add_argument("files", nargs="+")
+    tl.add_argument("-o", "--out", default=str(Path(__file__).resolve().parent.parent / "prototypes" / "witness-timeline.html"))
+    tl.add_argument("--bench", help="bench JSON (for region sizes)")
+    tl.add_argument("--ablation", help="ablation JSON from 'decap bench --ablate FILE --out X'")
+    tl.add_argument("--include-fallback", action="store_true", help="also show simulation-checked runs")
     m = sub.add_parser("mcp", help="serve tools over MCP")
     m.add_argument("--http", type=int, metavar="PORT", help="streamable HTTP on this port instead of stdio")
     r = sub.add_parser("replay", help="step through a recorded run")
@@ -202,6 +209,13 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
         from .events import create_events_app
         uvicorn.run(create_events_app(Path(args.file)), host="127.0.0.1", port=args.port, log_level="warning")
+        return 0
+
+    if args.cmd == "timeline":
+        from .timeline import write
+        out = write([Path(f) for f in args.files], Path(args.out), Path(args.bench) if args.bench else None,
+                    Path(args.ablation) if args.ablation else None, args.include_fallback)
+        print(f"[decap] timeline: {out}", file=sys.stderr)
         return 0
 
     if args.cmd == "replay":
@@ -263,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.ablate:
             from .bench import ablate
             res = ablate(load(Path(args.ablate)))
+            if args.out:
+                Path(args.out).write_text(json.dumps(res, indent=1))
             _print({k: v for k, v in res.items() if k != "rows"})
             return 0
         if args.split == "test" and not args.frozen:
