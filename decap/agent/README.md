@@ -131,6 +131,15 @@ decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the check
   instead of ui_in[0]) passed 4096 plain random vectors, because the 11-bit alarm match almost never happens at
   random. Biased patterns caught it; Yosys catches it by construction.
 
+- **Credit needs the WHOLE region covered.** With Yuyao's real checker (core/claims.py, PR #39), the live agent's
+  next trick was `uio_out[7] == bit0`: true, complete, 2 literals vs 50, credited. But that pin is only a buffered
+  copy of the alarm flip-flop, so the claim skipped the 50-literal logic. The stub and fallback now require every
+  output bit of the region to be covered (through any alias), otherwise `partial` "missing next(bit0)"; proposed
+  for claims.py on the board.
+- **LLM backend when the API key is capped:** `--model cli:sonnet` (or `DECAP_LLM=cli`) runs each request through
+  the local `claude` CLI login (decap_agent/cli_model.py: no tools, no MCP, no user settings so no hooks, no saved
+  session, API key removed from its env). Opt-in only, because it spends the logged-in account.
+
 ### The formaliser (judge's moment)
 
 ```

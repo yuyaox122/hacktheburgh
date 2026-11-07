@@ -216,10 +216,15 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
                                                          "literals": out["literals"], "cone_literals": cone_lits}}
     rng = random.Random(3)
     envs = [chip_values(a, planted) for a in rng.sample(list(_assignments(srcs)), min(48, 1 << sum(SOURCES[x] for x in srcs)))]
-    complete = is_complete(ev, node, envs, output_bits(node, want, WIDTHS | {"count": 8}))
+    need = {o for c in cones for o in REGION[c]["outputs"]}
+    said = {f"next({n})" if k == "next" else n for k, n in names(node)} | {f"next(count)" for k, n in names(node)
+                                                                             if k == "next" and n in FLOPS}
+    missing = sorted(o for o in need if o not in said and o.split("[")[0] not in said)
+    complete = is_complete(ev, node, envs, output_bits(node, want, WIDTHS | {"count": 8})) and not missing
     if not complete:
         return {"verdict": "partial", **out, "credit": {"cleared": False, "complete": complete,
-                "reason": "true, but it does not say what the output is for every input",
+                "reason": f"does not cover every output of the region: missing {', '.join(missing)}" if missing
+                          else "true, but it does not say what the output is for every input",
                 "literals": out["literals"], "cone_literals": cone_lits}}
     if label_ok or short:
         reason = f"labelled shape: {label}" if label_ok else f"{out['literals']} literals vs {cone_lits} in the decompiled cone"

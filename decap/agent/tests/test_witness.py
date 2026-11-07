@@ -163,7 +163,7 @@ REAL = os.environ.get("DECAP_REAL_CORE_ROOT")
 
 
 @pytest.mark.skipif(not REAL, reason="set DECAP_REAL_CORE_ROOT to a checkout of main with decap/data fetched")
-def test_real_chip_fallback_checker_catches_a_planted_bug(monkeypatch):
+def test_real_chip_checker_catches_a_planted_bug(monkeypatch):
     monkeypatch.syspath_prepend(REAL)
     monkeypatch.chdir(REAL)
     from decap_agent.core_witness import app
@@ -175,7 +175,32 @@ def test_real_chip_fallback_checker_catches_a_planted_bug(monkeypatch):
             return result_payload(await c.call_tool("propose_claim", {"chip": "tt_um_kapilan_alarm", "scope": alarm,
                                                                       "claim": claim}, raise_on_error=False))
     good = run(go("next(bit0) == (bit0 | ({count0, count1} == {uio_in[2:0], ui_in}))"))
-    assert good["verdict"] == "tested" and good["credit"]["complete"] and good["source"] == "fallback-sim"
+    # the core's own checker (core/claims.py, Yosys) answers once it exists; the fallback only fills the gap
+    assert (good["verdict"], good["source"]) in {("proven", "yosys"), ("tested", "fallback-sim")} and good["credit"]["complete"]
     bad = run(go("next(bit0) == (bit0 | ({count0, count1} == {uio_in[2:0], ui_in[7:1], 1'b0}))"))
     assert bad["verdict"] == "refuted" and "count0" in bad["counterexample"]
     assert run(go("next(bit0) == 1'b1 when bit0"))["verdict"] == "partial"
+
+
+def test_cli_backend_is_opt_in(monkeypatch):
+    import shutil
+    from decap_agent.cli_model import resolve
+    monkeypatch.delenv("DECAP_LLM", raising=False)
+    assert resolve(None, "anthropic:x") == "anthropic:x"            # never switches on by itself
+    if shutil.which("claude"):
+        assert resolve("cli:haiku", "anthropic:x").model_name == "claude-cli:haiku"
+        monkeypatch.setenv("DECAP_LLM", "cli")
+        assert resolve(None, "anthropic:x").model_name.startswith("claude-cli:")
+
+
+@pytest.mark.skipif(not REAL, reason="set DECAP_REAL_CORE_ROOT to a checkout of main with decap/data fetched")
+def test_real_chip_claim_must_cover_every_region_output(monkeypatch):
+    monkeypatch.syspath_prepend(REAL)
+    monkeypatch.chdir(REAL)
+    from decap_agent.core_witness import ClaimIn, check_claim
+    alarm = {"cone_of": "uio_out[7]"}
+    easy = check_claim("tt_um_kapilan_alarm", ClaimIn(claim="uio_out[7] == bit0", scope=alarm))
+    assert easy["verdict"] == "partial" and "next(bit0)" in easy["credit"]["reason"]   # skipped the alarm logic
+    full = check_claim("tt_um_kapilan_alarm", ClaimIn(
+        claim="(uio_out[7] == bit0) && (next(bit0) == (bit0 | ({count0, count1[4:0]} == {uio_in[2:0], ui_in})))", scope=alarm))
+    assert full["verdict"] == "tested" and full["credit"]["cleared"]

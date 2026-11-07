@@ -36,9 +36,11 @@ from .transcript import Transcript, result_payload
 DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
 LOOK_TOOLS = {"probe_truth"}          # the region and a first probe are already in the prompt
 LIMITS = UsageLimits(request_limit=6, input_tokens_limit=120_000)   # per attempt: a 23-bit region cost 1.37M tokens uncapped
-DONE = {"proven", "inductive", "bounded", "tested"}   # verdicts that end the loop ('tested' = fallback checker only)
+# `verdict` is the credit outcome (core/claims.py, CONTRACTS §4): proven/inductive only when credited; `truth` says
+# whether the claim holds. 'tested' = credited by the fallback simulation checker (never a proof).
+DONE = {"proven", "inductive", "tested"}   # credited: the loop ends
 PROOF = {"proven", "inductive"}
-PROMPT_VERSION = "witness-v3"
+PROMPT_VERSION = "witness-v5"
 
 INSTRUCTIONS = """You explain one region of a real chip in ONE short claim. A formal checker (Yosys) then tries
 to prove the claim against the chip's gates. It is shown to people only if it is proven, so a wrong claim
@@ -57,6 +59,8 @@ The claim is a Verilog expression:
 - rst_n = 1 and ena = 1 are assumed (the chip is running, not in reset).
 - Verilog widths apply: an unsized number such as 1 is 32 bits wide and does not wrap; write 8'd1 when an
   8-bit value should wrap around.
+- Cover EVERY output of the region (all of them, joined with &&): a claim about one easy output (e.g. a pin that
+  just copies a register) while skipping the logic that computes another earns nothing.
 - Say what the output IS for every input, in the form `output == expression` (use ?: for cases). A true but
   partial fact ("once set it stays set", "x == 5 when en") is rejected as partial: it leaves the output open for
   some inputs. For a register, describe next(reg) completely, including when it holds its value.
@@ -75,7 +79,8 @@ class Claim(BaseModel):
 
 def build_region_agent(server: FastMCP, model: Any = None) -> Agent:
     look = MCPToolset(server).filtered(lambda ctx, tool: tool.name in LOOK_TOOLS)
-    return Agent(model or os.environ.get("DECAP_WITNESS_MODEL", DEFAULT_MODEL), instructions=INSTRUCTIONS,
+    from .cli_model import resolve
+    return Agent(resolve(model, os.environ.get("DECAP_WITNESS_MODEL", DEFAULT_MODEL)), instructions=INSTRUCTIONS,
                  toolsets=[look], output_type=Claim, defer_model_check=True)
 
 
@@ -83,17 +88,25 @@ def feedback(verdict: dict) -> str:
     """What the LLM is told after a claim that did not end the loop."""
     v = verdict.get("verdict")
     if v == "refuted":
-        return (f"REFUTED. Counterexample (rst_n=1, ena=1): {json.dumps(verdict.get('counterexample'))}. "
+        return (f"REFUTED ({verdict.get('refute_kind') or 'semantic'}). Counterexample (rst_n=1, ena=1, registers as "
+                f"shown): {json.dumps(verdict.get('counterexample'))}. "
                 f"Your claim is false for that input; the values shown are what the chip really does. "
                 f"Refine the claim so it holds for every input, including this one.")
     if v == "tautology":
         return "REJECTED as a tautology: it is true of any chip, so it says nothing about this region. Claim something specific."
     if v == "unparseable":
         return f"UNPARSEABLE: {verdict.get('error')}. Fix the syntax or the names (use get_region's names)."
+    if v == "partial" and "missing" in str((verdict.get("credit") or {}).get("reason")):
+        return (f"TRUE but INCOMPLETE, so no credit: {verdict['credit']['reason']}. Add a conjunct (&&) that says what "
+                "each missing output is, as `output == expression`.")
     if v == "partial":
         return ("TRUE but PARTIAL, so no credit: for some inputs your claim allows more than one value of the output. "
                 "Write `output == expression` that gives the output for EVERY input (use ?: for the cases), e.g. "
                 "next(r) == (cond ? new_value : r) for a register that holds.")
+    if v == "bounded":
+        return ("NOT PROVEN: it holds for 30 cycles after reset, but fails for some register values the chip never "
+                f"reaches (counterexample with free registers: {json.dumps(verdict.get('counterexample'))}). Make it hold "
+                "for every register value, e.g. describe next() as a function of the current registers and inputs.")
     if v == "restated":
         credit = verdict.get("credit") or {}
         return (f"PROVEN but no credit: {credit.get('reason')}. Say the same thing more compactly, or name its shape "
@@ -180,7 +193,8 @@ async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any 
             row = {
                 "chip": chip, "scope": scope, "attempt": attempt, "first_draft": attempt == 0,
                 "claim": claim.claim, "label": claim.label, "gist": claim.gist,
-                "verdict": verdict.get("verdict"), "formal": verdict.get("formal"), "english": verdict.get("english"),
+                "verdict": verdict.get("verdict"), "truth": verdict.get("truth"), "formal": verdict.get("formal"),
+                "english": verdict.get("english"), "checker_s": verdict.get("seconds"),
                 "counterexample": verdict.get("counterexample"), "refute_kind": verdict.get("refute_kind"),
                 "error": verdict.get("error"), "credit": verdict.get("credit"),
                 "cells": (verdict.get("touched") or {}).get("cells", []),
@@ -201,6 +215,7 @@ async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any 
            "netlist_sha": region.get("netlist_sha"), "decompiler": region.get("decompiler"),
            "cone_literals": region.get("cone_literals"),
            "first_draft": attempts[0]["verdict"], "final": final["verdict"],
+           "first_truth": attempts[0].get("truth"), "first_refute_kind": attempts[0].get("refute_kind"),
            "explained": final["verdict"] in DONE and bool((final.get("credit") or {}).get("cleared")),
            "proof": final["verdict"] in PROOF,
            "attempts": attempts}
