@@ -100,8 +100,8 @@ def check_claim(chip: str, body: ClaimIn, mode: str = "biased", n: int = 4096) -
         return {**base, "verdict": "tautology", "truth": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
 
     sel = []
-    for k, n, hi, lo in ref_bits(node):
-        bits = m.bits_of(k, n)
+    for kind, name, hi, lo in ref_bits(node):   # not k/n: n is the vector count
+        bits = m.bits_of(kind, name)
         sel += bits if hi is None else bits[lo:hi + 1]
     sup = m.support(sel) | {b for b in sel if isinstance(b, int) and (b in m.in_bit or b in m.q_of)
                             and not (b in m.in_bit and m.in_bit[b][0] in FIXED)}
@@ -125,8 +125,8 @@ def check_claim(chip: str, body: ClaimIn, mode: str = "biased", n: int = 4096) -
                         cex[reg[0]] = cex.get(reg[0], 0) | (bit << reg[1])
                     else:
                         cex[f"q_{fid}"] = bit
-            for k, n in refs:
-                cex.setdefault(f"next({n})" if k == "next" else n, env[(k, n)])
+            for kind, name in refs:
+                cex.setdefault(f"next({name})" if kind == "next" else name, env[(kind, name)])
             return {**base, "verdict": "refuted", "truth": "refuted", **out, "counterexample": cex,
                     "refute_kind": "unclassified (fallback: no reset BMC)"}
 
