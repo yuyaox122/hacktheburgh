@@ -47,7 +47,7 @@ export interface RsState {
 
 export interface RsHealth { ok: boolean; players: string; lan_ip: string; game_port: number; version: string }
 
-export interface RsCompileIn { verilog: string; name?: string; id?: string; title?: string; origin?: RsBuild["origin"] }
+export interface RsCompileIn { preset?: string; verilog?: string; name?: string; id?: string; title?: string; origin?: RsBuild["origin"] }
 
 async function call<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(`/redstone/${path}`, body === undefined ? undefined : {
@@ -67,6 +67,8 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 export const rs = {
   health: () => call<RsHealth>("health"),
   builds: () => call<RsBuild[]>("builds"),
+  presets: () => call<{ id: string; title: string }[]>("presets"),
+  compilePreset: (preset: string) => call<RsBuild>("compile", { preset }),
   compile: (b: RsCompileIn) => call<RsBuild>("compile", b),
   build: (id: string) => call<RsBuild & { build_s: number; commands: number }>(`build/${id}`, {}),
   layout: (id: string) => call<RsBuild & { layout: RsLayout }>(`layout/${id}`),

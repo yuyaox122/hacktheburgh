@@ -6,7 +6,8 @@ flips its levers and reads its lamps through this small HTTP server (stdlib only
 Routes (JSON in and out):
     GET  /redstone/health                      server reachable? LAN address for the Minecraft client
     GET  /redstone/builds                      every build the page can drive (prebuilt chips + web builds)
-    POST /redstone/compile  {verilog, name}    or {chip, variant: clean|planted}: Yosys -> redstone layout, plus a
+    GET  /redstone/presets                     ready-made designs in examples/ (Decap's CLA with and without trigger 77, ...)
+    POST /redstone/compile  {verilog, name}    or {chip, variant: clean|planted} or {preset}: Yosys -> redstone layout, plus a
                                                software check (redstone netlist vs iverilog on the source)
     POST /redstone/build/<id>                  place it in the world (one datapack function, about a second)
     GET  /redstone/layout/<id>                 the blocks, for the browser's 3-D view
@@ -61,6 +62,16 @@ PREBUILT = {
     "tt_um_Electom_cla_4bits": ("4-bit carry-lookahead adder (real TT08 layout, 2-D)", "chip"),
     "counter": ("4-bit counter (examples/counter.v)", "verilog"),
     "tiny_fpga": ("Tiny FPGA: 2 CLBs, 30-lever bitstream (examples/fpga.v)", "verilog"),
+}
+
+# Ready-made designs in examples/, so the trojan demo works on a laptop without Decap's generated data.
+PRESETS = {
+    "cla_trigger77": ("examples/decap_cla_trigger77.v", "4-bit CLA adder, trigger 77 planted (decompiled by Decap)",
+                      {"chip": "tt_um_Electom_cla_4bits", "variant": "planted", "n": 77, "operand": "ui_in"}),
+    "cla_clean": ("examples/decap_cla_clean.v", "4-bit CLA adder, clean (decompiled by Decap)",
+                  {"chip": "tt_um_Electom_cla_4bits", "variant": "clean"}),
+    "mul2": ("examples/mul2.v", "3x3 multiplier (examples/mul2.v)", {}),
+    "counter_web": ("examples/counter.v", "4-bit up/down counter (examples/counter.v)", {}),
 }
 
 LOCK = threading.RLock()          # one RCON connection and one registry, shared by the handler threads
@@ -230,6 +241,11 @@ def shift(lay: pnr.Layout, dz: int) -> None:
 
 
 def compile_design(body: dict) -> dict:
+    if body.get("preset"):
+        if body["preset"] not in PRESETS:
+            raise Fail(f"no preset '{body['preset']}'", 404)
+        path, title, origin = PRESETS[body["preset"]]
+        body = {"verilog": (ROOT / path).read_text(), "id": body["preset"], "title": title, "origin": origin}
     if body.get("chip"):
         variant = body.get("variant", "clean")
         if variant not in ("clean", "planted"):
@@ -487,6 +503,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET":
             if what == "health":
                 return health()
+            if what == "presets":
+                return [{"id": k, "title": t} for k, (_, t, _) in PRESETS.items()]
             if what == "builds":
                 with LOCK:
                     return [summary(e) for e in registry().values()]

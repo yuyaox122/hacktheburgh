@@ -99,7 +99,17 @@ python3 bridge.py                          # http://127.0.0.1:8002/redstone/
 cd ../decap/web && npm run dev             # Vite proxies /redstone to the bridge; open #/minecraft
 ```
 
-**Playing on another laptop (the pitch):** the server listens on every interface. The Minecraft page shows the address to join (Multiplayer → Direct Connect → `<LAN IP>:25565`). Then run `python3 demo.py op` so that player can use `/tick`. If the venue Wi-Fi blocks laptop-to-laptop traffic, use a phone hotspot.
+**Everything on one laptop (the pitch: Alex's, Windows).** You need Python 3, JDK 21, Node, Yosys (or `pip install yowasp-yosys` plus a `yosys` shim), and Minecraft Java 1.21.11. iverilog is optional: without it the pre-build check is skipped.
+1. `git fetch && git switch 58-redstone-web`
+2. `cd redstone`, then `python chipdata.py fetch tt_um_Electom_cla_4bits` (once), then `python demo.py start` (first run: put the 1.21.11 `server.jar` at `tools/server-1.21.11.jar`).
+3. In a second terminal: `python bridge.py`
+4. In a third: `cd decap/web && npm install && npm run dev`, then open `http://localhost:5173/#/minecraft`.
+5. In Minecraft: Multiplayer → Direct Connect → `localhost`, then `python demo.py op`.
+6. On the page: **Ready-made → 4-bit CLA adder, trigger 77 planted**. It builds in about 3 s. Click **Levers** to teleport, then **Type 77 into ui_in**: the `uo_out[0]` lamp lights. Build the clean copy too: on 77 its lamp stays dark.
+
+The Decompile page's *Build in Minecraft* button needs Decap's generated results (`decap/out`, not in git). The ready-made designs don't.
+
+**Playing on another laptop:** the server listens on every interface. The Minecraft page shows the address to join (Multiplayer → Direct Connect → `<LAN IP>:25565`). Then run `python3 demo.py op` so that player can use `/tick`. If the venue Wi-Fi blocks laptop-to-laptop traffic, use a phone hotspot.
 
 ## Run it
 
