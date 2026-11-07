@@ -74,16 +74,21 @@ async def _demo(server, n: int) -> dict:
         await call("list_chips")
         planted = (await call("plant_trigger", chip=base, n=n))["chip"]
         await call("strip_names", chip=planted)
-        flagged = (await call("find_rare_triggers", chip=planted))["flagged"]
+        # The user points at the output logic in the 3D view; the agent works only inside that region.
+        region = {"cone_of": "out"}
+        selected = await call("resolve_scope", chip=planted, scope=region)
+        flagged = (await call("find_rare_triggers", chip=planted, scope=region))["flagged"]
         suspect = next(f for f in flagged if f["likely"] == "unexplained")
-        dec = await call("decompile", chip=planted)
-        vs_netlist = await call("prove_equiv", chip=planted, cone="all", against="netlist")
-        vs_source = await call("prove_equiv", chip=planted, cone="all", against="author_source")
+        focus = {"cells": selected["touched"]["cells"]}
+        dec = await call("decompile", chip=planted, scope=focus)
+        vs_netlist = await call("prove_equiv", chip=planted, scope=focus, against="netlist")
+        vs_source = await call("prove_equiv", chip=planted, scope=focus, against="author_source")
         reach = await call("cone_of_influence", chip=planted, cone=suspect["cone"])
-    return {"chip": planted, "found": suspect["code_line"], "decompiled_proven": f"{dec['proven']}/{dec['total']}",
+    return {"chip": planted, "region": region, "region_cells": len(selected["touched"]["cells"]),
+            "found": suspect["code_line"], "decompiled_proven": f"{dec['proven']}/{dec['total']}",
             "decompile_vs_netlist": vs_netlist["verdict"], "netlist_vs_author_source": vs_source["verdict"],
-            "counterexample": vs_source["counterexample"], "trigger_reaches": reach["reaches"],
-            "source": vs_source["source"]}
+            "counterexample": vs_source["counterexample"], "trigger_cells": vs_source["touched"]["cells"][:3] + ["…"],
+            "trigger_reaches": reach["reaches"], "source": vs_source["source"]}
 
 
 def main(argv: list[str] | None = None) -> int:
