@@ -31,8 +31,8 @@ export function isTyping(): boolean {
 
 export function toast(text: string, kind: "good" | "bad" | "" = "") {
   const t = document.createElement("div");
-  t.className = `overlay callout ${kind}`;
-  Object.assign(t.style, { position: "fixed", left: "50%", bottom: "64px", transform: "translateX(-50%)", zIndex: "30", maxWidth: "min(92vw, 640px)" });
+  t.className = `toast ${kind}`;
+  t.setAttribute("role", "status");
   t.textContent = text;
   document.body.append(t);
   setTimeout(() => t.remove(), 4200);

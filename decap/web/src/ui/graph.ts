@@ -149,7 +149,7 @@ export class NetGraph {
       this.cv.style.cursor = n ? "pointer" : "grab";
       if (n) {
         const r = this.host.getBoundingClientRect();
-        this.tip.innerHTML = n.kind === "cell" ? `${n.id} <small>${n.type}</small>${this.cb.label ? ` · ${this.cb.label(n.id)}` : ""}` : `${n.kind === "in" ? "input" : "output"} ${n.id.slice(n.id.indexOf(":") + 1)}`;
+        this.tip.innerHTML = n.kind === "cell" ? `<span>${n.id}</span><small>${n.type}</small>${this.cb.label ? `<small>${this.cb.label(n.id)}</small>` : ""}` : `<small>${n.kind === "in" ? "input" : "output"}</small><span>${n.id.slice(n.id.indexOf(":") + 1)}</span>`;
         this.tip.hidden = false; this.tip.style.left = `${e.clientX - r.left}px`; this.tip.style.top = `${e.clientY - r.top}px`;
       } else this.tip.hidden = true;
     });
@@ -232,7 +232,7 @@ export class NetGraph {
     }
     g.setLineDash([]); g.globalAlpha = 1;
     const showText = this.view.s > 0.55;
-    g.font = "9px JetBrains Mono, monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = `9px ${css("--font-mono") || "monospace"}`; g.textAlign = "center"; g.textBaseline = "middle";
     for (const n of this.nodes) {
       const vis = on(n.id);
       g.globalAlpha = vis ? 1 : 0.22;
@@ -246,7 +246,7 @@ export class NetGraph {
         g.stroke();
       }
       if (showText) {
-        g.fillStyle = n.kind === "cell" ? "#0b0f15" : accent;
+        g.fillStyle = n.kind === "cell" ? "#0b0b0d" : accent;
         g.fillText(n.label.length > 10 ? n.label.slice(0, 9) + "…" : n.label, n.x, n.y + 0.5);
       }
     }

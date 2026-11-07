@@ -5,12 +5,14 @@ import type { BenchChip, ChipResult, FixResult, Lib } from "../data/types";
 import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plant as apiPlant, type Source } from "../data/load";
 import { NetGraph } from "./graph";
 import { $, $$, esc, hiVerilog, toast } from "./dom";
+import { icon } from "./icons";
 import { app } from "./state";
 
 const KIND_COLOUR: Record<string, string> = {
   adder: "var(--adder)", subtractor: "var(--adder)", counter: "var(--reg)", register: "var(--reg)", shift: "var(--reg)",
   comparator: "var(--detect)", mux: "var(--mux)", reduce: "var(--gate)", const: "var(--const)", copy: "var(--const)", logic: "var(--faint)",
 };
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const KIND_WORD: Record<string, string> = {
   adder: "adder", subtractor: "subtractor", counter: "counter", register: "register", shift: "shift register", comparator: "comparator",
   mux: "multiplexer", reduce: "reduction", const: "constant", copy: "wire copy", logic: "leftover logic",
@@ -43,7 +45,7 @@ export class ChipPage {
   constructor(readonly chip: string) {
     this.el.className = "chippage";
     this.n = app.judge.n ?? 137;
-    this.el.innerHTML = `<div class="empty"><span class="spin"></span> Loading ${esc(chip)}…</div>`;
+    this.el.innerHTML = `<div class="empty"><span class="spin"></span>Loading ${esc(chip)}</div>`;
   }
 
   get result(): ChipResult | null { return this.showPlanted && this.planted ? this.planted : this.clean; }
@@ -75,7 +77,7 @@ export class ChipPage {
       if (app.planted.has(key)) void this.adoptPlant(key, false); // started by the demo prep: keep the clean view for now
       this.render();
     } catch (e) {
-      this.el.innerHTML = `<div class="empty"><p>${esc((e as Error).message)}</p><p><a href="#/wall">Back to the proof wall</a></p></div>`;
+      this.el.innerHTML = `<div class="empty"><h3>This chip could not be loaded</h3><p>${esc((e as Error).message)}</p><p><a href="#/wall">Back to Results</a></p></div>`;
     }
   }
 
@@ -107,43 +109,51 @@ export class ChipPage {
     const r = this.result;
     if (!r) return;
     const a = this.author;
+    const verdictWord = r.verdict === "proven" ? "Proven equivalent" : r.verdict === "tested" ? "Tested, not proven" : "Proof failed";
+    const variantNote = this.plantSource === "fixture" ? " (sample)" : this.plantSource === "preplanted" ? " (saved)" : "";
     this.el.innerHTML = `
       <header class="chiphead">
-        <h2>${esc(r.title || r.chip)} <small>${esc(r.chip)}</small></h2>
-        <span class="verdict ${r.verdict}" title="${esc(r.proof.detail ?? "")}">Equivalence: ${r.verdict === "tested" ? "tested, not proven" : r.verdict}</span>
-        <span class="pill">${esc(r.split)}${r.split === "test" ? " · held out" : ""}</span>
-        ${this.planted ? `<div class="seg" role="group" aria-label="Which copy"><button type="button" data-variant="clean" aria-pressed="${!this.showPlanted}">clean copy</button><button type="button" data-variant="planted" aria-pressed="${this.showPlanted}">planted copy, N = ${this.planted.plant?.n ?? "?"}${this.plantSource === "fixture" ? " (fixture)" : this.plantSource === "preplanted" ? " (pre-planted)" : ""}</button></div>` : ""}
-        <div class="chipstats">
-          <span><b>${r.stats.logic_cells}</b> logic cells</span><span><b>${r.stats.flops}</b> flip-flops</span>
-          <span><b>${r.stats.cell_types}</b> cell types</span><span><b>${r.stats.area_um2.toFixed(0)}</b> µm²</span>
-          <span class="cov" title="Cells explained by recognised blocks (not leftover logic)">coverage <span class="bar"><i style="width:${Math.min(100, r.coverage.pct)}%"></i></span><b>${r.coverage.pct.toFixed(1)}%</b> <span>(${r.coverage.explained_cells}/${r.coverage.logic_cells})</span></span>
-          <span><b>${r.decompiled.lines}</b> lines decompiled${a ? ` vs <b>${a.lines}</b> by the author` : ""}</span>
+        <div class="ttlblock">
+          <h2>${esc(r.title || r.chip)} <small>${esc(r.chip)}</small></h2>
+          <div class="badges">
+            <span class="verdict ${r.verdict}" title="${esc(r.proof.detail ?? "")}">${verdictWord}</span>
+            <span class="pill" title="${r.split === "test" ? "Held out: never used for tuning" : "Used while tuning Decap"}">${r.split === "test" ? "Held-out test chip" : r.split === "dev" ? "Dev chip" : esc(r.split)}</span>
+            ${this.source === "fixture" ? `<span class="pill warn">Sample data</span>` : ""}
+          </div>
         </div>
-        <span class="grow" style="flex:1"></span>
-        ${this.source === "fixture" ? `<span class="pill warn">fixture data</span>` : ""}
-        ${this.in3d ? `<a class="btn sm" href="#/stage/${encodeURIComponent(this.chip)}" title="This chip's real layout in 3D, with a live simulator">View in 3D</a>` : ""}
-        <button class="btn sm" type="button" id="cpGuide">Ask the guide <kbd>G</kbd></button>
+        ${this.planted ? `<div class="seg" role="group" aria-label="Which copy"><button type="button" data-variant="clean" aria-pressed="${!this.showPlanted}">Clean</button><button type="button" data-variant="planted" aria-pressed="${this.showPlanted}">With trigger ${this.planted.plant?.n ?? "?"}${variantNote}</button></div>` : ""}
+        <div class="chipstats">
+          <span><b>${r.stats.logic_cells}</b>Logic cells</span>
+          <span><b>${r.stats.flops}</b>Flip-flops</span>
+          <span><b>${r.decompiled.lines}${a ? `<small> vs ${a.lines}</small>` : ""}</b>Lines${a ? ", ours vs author" : ""}</span>
+          <span class="cov" title="Logic cells explained by recognised blocks: ${r.coverage.explained_cells} of ${r.coverage.logic_cells}"><b>${r.coverage.pct.toFixed(0)}%</b><span class="bar"><i style="width:${Math.min(100, r.coverage.pct)}%"></i></span>Readable</span>
+        </div>
+        <span class="grow"></span>
+        <div class="acts">
+          ${this.in3d ? `<a class="btn" href="#/stage/${encodeURIComponent(this.chip)}" title="This chip's real layout in 3D, with a live simulator">${icon.cube}Explore in 3D</a>` : ""}
+          <button class="btn" type="button" id="cpGuide" title="Ask about this chip (G)">${icon.sparkle}Ask</button>
+        </div>
       </header>
       <div class="codes">
         <section class="pane" aria-label="Decompiled Verilog">
-          <div class="pane-h">Decompiled by Decap <b>${r.variant === "planted" ? "planted copy" : "names stripped"}</b><span class="grow"></span><span>${r.decompiled.lines} lines</span></div>
+          <div class="pane-h">Decompiled by Decap<span class="sub">${r.variant === "planted" ? "with trigger, names stripped" : "from the stripped netlist"}</span><span class="grow"></span><span class="sub">${r.decompiled.lines} lines</span></div>
           <div class="pane-b"><ol class="code click" id="cpCode"></ol></div>
         </section>
         <section class="pane" aria-label="Author source">
-          <div class="pane-h">What the author wrote ${a ? `<span class="filetabs">${Object.keys(a.files).map((f) => `<button type="button" data-file="${esc(f)}" aria-pressed="${f === this.file}">${esc(f)}</button>`).join("")}</span>` : ""}<span class="grow"></span>
-            ${a ? `<span>${a.lines} lines</span> <span class="pill ${a.check === "proven" ? "ok" : a.check === "bounded" ? "warn" : a.check === "failed" ? "bad" : ""}" title="${esc(a.check_detail ?? "")}">netlist ≡ source: ${esc(a.check)}</span> ${this.repoLink(a)}` : ""}</div>
+          <div class="pane-h">Written by the author ${a ? `<span class="filetabs">${Object.keys(a.files).map((f) => `<button type="button" data-file="${esc(f)}" aria-pressed="${f === this.file}">${esc(f)}</button>`).join("")}</span>` : ""}<span class="grow"></span>
+            ${a ? `<span class="pill ${a.check === "proven" ? "ok" : a.check === "bounded" ? "warn" : a.check === "failed" ? "bad" : ""}" title="${esc(a.check_detail ?? "")}">Matches netlist: ${esc(a.check)}</span>${a.repo ? `<span class="sub">${this.repoLink(a)}</span>` : ""}` : ""}</div>
           <div class="pane-b">${a && this.file ? `<ol class="code" id="cpAuthor"></ol>` : `<div class="empty">No author source for this chip.</div>`}</div>
         </section>
       </div>
       <div class="lower">
         <section class="pane" aria-label="Netlist graph">
-          <div class="pane-h">Stripped netlist <b>${r.netlist.cells.length} cells, no names</b><span class="grow"></span><button class="btn sm" type="button" id="cpFit" title="Fit (0)">Fit</button></div>
+          <div class="pane-h">Netlist<span class="sub">${r.netlist.cells.length} cells, no names</span><span class="grow"></span><button class="btn plain sm" type="button" id="cpFit" title="Fit (0)">${icon.fit}Fit</button></div>
           <div class="graphwrap" id="cpGraph"><div class="overlay glegend" id="cpGLegend"></div></div>
         </section>
         <section class="pane" aria-label="Details">
-          <nav class="tabs" role="tablist">
-            ${(["proof", "find", "fix", "blocks"] as Tab[]).map((t) => `<button type="button" role="tab" data-tab="${t}" aria-selected="${this.tab === t}">${{ proof: "Proof", find: "Find a trigger", fix: "Fix", blocks: `Blocks (${r.blocks.length})` }[t]}</button>`).join("")}
-          </nav>
+          <div class="tabsbar"><div class="seg" role="tablist">
+            ${(["proof", "find", "fix", "blocks"] as Tab[]).map((t) => `<button type="button" role="tab" data-tab="${t}" aria-selected="${this.tab === t}">${{ proof: "Proof", find: "Find", fix: "Fix", blocks: `Blocks ${r.blocks.length}` }[t]}</button>`).join("")}
+          </div></div>
           <div class="pane-b" id="cpSide"></div>
         </section>
       </div>`;
@@ -154,7 +164,7 @@ export class ChipPage {
       label: (id) => (r.cell_lines[id] ? `line ${r.cell_lines[id]}` : "unexplained"),
     });
     this.applyMarks();
-    $("#cpGLegend", this.el).innerHTML = `<span>scroll to zoom · drag to pan · click a cell</span>${r.flags.length ? `<span style="color:var(--del)">■ flagged cone</span>` : ""}${this.fixRes ? `<span style="color:var(--fall)">■ removed by Fix</span>` : ""}`;
+    $("#cpGLegend", this.el).innerHTML = `<span>Scroll to zoom, drag to pan</span>${r.flags.length ? `<span><i style="background:var(--del)"></i>Flagged</span>` : ""}${this.fixRes ? `<span><i style="background:var(--fall)"></i>Removed by Fix</span>` : ""}`;
     this.bind();
   }
 
@@ -173,7 +183,7 @@ export class ChipPage {
       const isRemoved = this.showPlanted && cellsHere.length > 0 && cellsHere.every((c) => removed.has(c));
       const cls = [active ? "active" : "", f ? "flag" : "", isRemoved ? "removed" : ""].join(" ");
       const bar = b ? `background:${KIND_COLOUR[b.kind] ?? "var(--faint)"};opacity:${b.recognised ? 0.9 : 0.35}` : "";
-      const badge = f ? `<span class="badge">flag: fires ${esc(f.rate)}</span>` : b && ln === b.lines[0] ? `<span class="badge" title="${b.cells.length} cells">${esc(KIND_WORD[b.kind] ?? b.kind)}${b.width ? ` · ${b.width}b` : ""}</span>` : "<span></span>";
+      const badge = f ? `<span class="badge" title="Fires for ${esc(f.rate)} of inputs">Rare trigger</span>` : b && ln === b.lines[0] ? `<span class="badge" title="${b.cells.length} cells">${esc(KIND_WORD[b.kind] ?? b.kind)}${b.width ? `, ${b.width} bit` : ""}</span>` : "<span></span>";
       return `<li data-ln="${ln}" class="${cls}"><span class="n">${ln}</span><span class="bk" style="${bar}"></span><span class="t">${hiVerilog(t) || " "}</span>${badge}</li>`;
     }).join("");
   }
@@ -191,24 +201,23 @@ export class ChipPage {
     if (this.tab === "proof") {
       const p = r.proof;
       side.innerHTML = `<div class="sect">
-          <h4>${r.verdict === "proven" ? "Proven equivalent" : r.verdict === "tested" ? "Tested, not proven" : "Proof failed"} <span class="pill ${r.verdict}">${r.verdict}</span></h4>
-          <p>${r.verdict === "proven" ? "A formal checker (Yosys) proved the decompiled Verilog is exactly the same circuit as the netlist, for every input and every state." : r.verdict === "tested" ? `No proof yet. The decompile matched the netlist on ${p.tested_cycles ?? "random"} random cycles, which is evidence, not proof.` : "The decompiled Verilog is not the same circuit. Shown in red, as measured."}</p>
+          <h4>${r.verdict === "proven" ? "Proven equivalent" : r.verdict === "tested" ? "Tested, not proven" : "Proof failed"} <span class="pill ${r.verdict}">${r.verdict === "tested" ? "Tested" : r.verdict === "proven" ? "Proven" : "Failed"}</span></h4>
+          <p>${r.verdict === "proven" ? "Yosys proved the decompiled Verilog is exactly the same circuit as the netlist, for every input and every state." : r.verdict === "tested" ? `No proof yet. The code matched the netlist on ${p.tested_cycles ?? "random"} random cycles: evidence, not proof.` : "The decompiled Verilog is not the same circuit. Shown as measured."}</p>
           <dl class="kv"><dt>Method</dt><dd>${esc(p.method)}</dd>
-            ${p.points != null ? `<dt>Points</dt><dd>${p.proven ?? "?"} / ${p.points} proven</dd>` : ""}
+            ${p.points != null ? `<dt>Points proven</dt><dd>${p.proven ?? "?"} of ${p.points}</dd>` : ""}
             ${p.seconds != null ? `<dt>Time</dt><dd>${p.seconds.toFixed(1)} s</dd>` : ""}
-            ${p.control_caught != null ? `<dt>Control</dt><dd>${p.control_caught ? "a deliberately broken copy was rejected ✓" : "<span style='color:var(--del)'>the broken control was NOT caught</span>"}</dd>` : ""}
-            ${p.tested_cycles ? `<dt>Random test</dt><dd>${p.tested_cycles} cycles</dd>` : ""}
-            ${p.detail ? `<dt>Detail</dt><dd>${esc(p.detail)}</dd>` : ""}</dl>
+            ${p.control_caught != null ? `<dt>Control</dt><dd>${p.control_caught ? "Broken copy rejected" : "<span style='color:var(--del)'>Broken copy not caught</span>"}</dd>` : ""}
+            ${p.tested_cycles ? `<dt>Random test</dt><dd>${p.tested_cycles} cycles</dd>` : ""}</dl>
+          ${p.detail ? `<p class="fine">${esc(p.detail)}</p>` : ""}
         </div>
-        <div class="sect"><h4>Readable?</h4>
-          <p><b>${r.coverage.pct.toFixed(1)}%</b> of logic cells are explained by recognised blocks (${r.coverage.explained_cells} of ${r.coverage.logic_cells}); the rest is leftover logic, written out gate by gate.</p>
-          <p class="muted">${r.decompiled.lines} lines decompiled${this.author ? `, against ${this.author.lines} lines in the author's source` : ""}.</p></div>
-        ${this.author ? `<div class="sect"><h4>Answer key <span class="pill ${this.author.check === "proven" ? "ok" : this.author.check === "failed" ? "bad" : "warn"}">${esc(this.author.check)}</span></h4>
-          <p>The shipped netlist checked against the author's source${this.author.repo ? ` at ${this.repoLink(this.author)}` : ""}${this.author.check_detail ? `: ${esc(this.author.check_detail)}` : ""}.</p></div>` : ""}`;
+        <div class="sect"><h4>Readability</h4>
+          <p><b>${r.coverage.pct.toFixed(0)}%</b> of logic cells belong to recognised blocks (${r.coverage.explained_cells} of ${r.coverage.logic_cells}). The rest is written out gate by gate.</p></div>
+        ${this.author ? `<div class="sect"><h4>Answer key <span class="pill ${this.author.check === "proven" ? "ok" : this.author.check === "failed" ? "bad" : "warn"}">${esc(cap(this.author.check))}</span></h4>
+          <p>The shipped netlist checked against the author's source${this.author.repo ? ` at ${this.repoLink(this.author)}` : ""}.</p>${this.author.check_detail ? `<p class="fine">${esc(this.author.check_detail)}</p>` : ""}</div>` : ""}`;
     } else if (this.tab === "blocks") {
-      side.innerHTML = `<div class="sect"><p class="muted">Recognised blocks, in source order. Click one to light its lines and cells.</p><div class="blocklist">${r.blocks.map((b) => `
+      side.innerHTML = `<div class="sect"><p class="fine">Recognised blocks in source order. Select one to light its lines and cells.</p><div class="blocklist">${r.blocks.map((b) => `
         <button type="button" class="blockrow${this.selBlock === b.id ? " on" : ""}" data-block="${esc(b.id)}"><i class="sw" style="background:${KIND_COLOUR[b.kind] ?? "var(--faint)"};opacity:${b.recognised ? 1 : 0.4}"></i>
-          <span class="kind">${esc(KIND_WORD[b.kind] ?? b.kind)}${b.width ? ` · ${b.width}b` : ""}</span><code>${esc(b.text)}</code><span class="muted">${b.cells.length} cells</span></button>`).join("")}</div></div>`;
+          <span class="kind">${esc(cap(KIND_WORD[b.kind] ?? b.kind))}${b.width ? ` <span class="muted">${b.width} bit</span>` : ""}</span><code>${esc(b.text)}</code><span class="muted">${b.cells.length}</span></button>`).join("")}</div></div>`;
     } else if (this.tab === "find") {
       side.innerHTML = this.findHtml();
     } else {
@@ -223,43 +232,44 @@ export class ChipPage {
     const busy = this.busy === "plant";
     let res = "";
     if (p) {
+      const saved = this.plantSource === "preplanted" && p.plant?.n !== this.n;
       const hit = p.flags.find((f) => new RegExp(`(^|[^0-9])${p.plant?.n ?? -1}([^0-9]|$)`).test(f.condition));
-      res = `${this.plantSource === "preplanted" && p.plant?.n !== this.n ? `<div class="callout warn"><b>Live planting is unavailable, so this is the pre-planted copy (N = ${p.plant?.n}), not your number.</b><span class="muted">${esc(this.err ?? "The Decap API did not answer.")}</span></div>` : ""}
+      res = `${saved ? `<div class="callout warn"><b>Live planting is unavailable, so this is a saved copy with ${p.plant?.n}, not your number.</b><span>${esc(this.err ?? "The Decap API did not answer.")}</span></div>` : ""}
         <div class="callout ${hit ? "good" : "bad"}">
-          <b>${hit ? `Found it: ${this.plantSource === "preplanted" && p.plant?.n !== this.n ? "the planted number" : "your number"} ${p.plant?.n} came back as code.` : p.flags.length ? `Flagged ${p.flags.length} line(s), but none mentions ${p.plant?.n}.` : `Missed: nothing was flagged in the planted copy.`}</b>
-          ${p.plant ? `<span class="muted">Planted: an <code>== ${p.plant.n}</code> trigger OR'd into ${esc(p.plant.target)}, ${p.plant.inserted_cells.length} cells, names stripped.${this.plantSource === "fixture" ? " (FIXTURE result, made up.)" : ""}</span>` : ""}</div>
+          <b>${hit ? `Found it. ${saved ? "The planted number" : "Your number"} ${p.plant?.n} came back as a line of code.` : p.flags.length ? `Flagged ${p.flags.length} line${p.flags.length === 1 ? "" : "s"}, but none mentions ${p.plant?.n}.` : "Missed. Nothing was flagged."}</b>
+          ${p.plant ? `<span>A hidden check for ${p.plant.n} was added to ${esc(p.plant.target)} (${p.plant.inserted_cells.length} cells), then every name was stripped.${this.plantSource === "fixture" ? " Sample result." : ""}</span>` : ""}</div>
         ${p.flags.map((f) => `<button type="button" class="flagcard" data-flag="${esc(f.id)}">
-          <code>line ${f.line}: if (${esc(f.condition)})</code>
-          <span class="row"><span>drives <b>${esc(f.signal)}</b></span><span>fires for ${esc(f.rate)} of inputs</span><span>${f.cells.length} cells, cone ${f.cone.length}</span><span>${esc(f.kind)}</span></span></button>`).join("")}`;
+          <code>Line ${f.line}: if (${esc(f.condition)})</code>
+          <span class="row"><span>Drives ${esc(f.signal)}</span><span>Fires for ${esc(f.rate)} of inputs</span><span>${f.cone.length} cells reachable</span></span></button>`).join("")}`;
     }
     return `<div class="sect">
-        <h4>Plant a trigger</h4>
-        <p>Pick a number from 0 to 255. Decap splices a hidden trigger for it into this chip (an <code>== N</code> comparator OR'd into an output), strips every name, then reads the chip back blind and flags rare-firing logic.</p>
-        <div class="acts"><label for="cpN">Judge's number</label><input class="num" id="cpN" type="number" min="0" max="255" value="${this.n}">
-          <button class="btn primary" type="button" id="cpPlant" ${busy ? "disabled" : ""}>${busy ? `<span class="spin"></span> Planting… <span id="cpT">0</span> s` : "Plant and find"}</button>
-          ${p ? `<button class="btn sm" type="button" id="cpCone">Light the cone</button>` : ""}</div>
+        <h4>Hide a trigger, then find it</h4>
+        <p>Pick a number from 0 to 255. Decap hides a check for it inside this chip, strips every name, then reads the chip back blind and flags logic that almost never fires.</p>
+        <div class="acts"><input class="num" id="cpN" type="number" min="0" max="255" value="${this.n}" aria-label="Number to hide">
+          <button class="btn primary" type="button" id="cpPlant" ${busy ? "disabled" : ""}>${busy ? `<span class="spin"></span>Planting <span id="cpT">0</span> s` : "Hide and find"}</button>
+          ${p ? `<button class="btn" type="button" id="cpCone">Light the trigger</button>` : ""}</div>
         ${this.err ? `<div class="callout bad">${esc(this.err)}</div>` : ""}
         ${res}
       </div>
-      <div class="sect"><h4>False alarms, shown honestly</h4>
-        ${cleanFlags.length ? `<p>On the <b>clean</b> copy Decap also flags ${cleanFlags.length} line(s). These are legitimate rare comparators, not trojans; with the author's source they are separated exactly.</p>
-          ${cleanFlags.map((f) => `<div class="flagcard" style="border-color:var(--line-2);background:var(--panel-2)"><code>line ${f.line}: if (${esc(f.condition)})</code><span class="row"><span>${esc(f.signal)}</span><span>fires ${esc(f.rate)}</span></span></div>`).join("")}`
-        : `<p class="muted">The clean copy of this chip has no flags.</p>`}
-        ${t ? `<p class="muted">Benchmark run: trigger for N=${t.n} ${t.caught ? `caught (line ${t.flag_line ?? "?"})` : "missed"}; ${t.clean_flags} flag(s) on the clean copy.</p>` : ""}
+      <div class="sect"><h4>False alarms</h4>
+        ${cleanFlags.length ? `<p>The clean chip also has ${cleanFlags.length} rare line${cleanFlags.length === 1 ? "" : "s"}. They are real comparators the author wrote, not trojans; the author's source tells them apart.</p>
+          ${cleanFlags.map((f) => `<div class="flagcard quiet"><code>Line ${f.line}: if (${esc(f.condition)})</code><span class="row"><span>${esc(f.signal)}</span><span>Fires for ${esc(f.rate)}</span></span></div>`).join("")}`
+        : `<p>None. The clean chip has no rare lines.</p>`}
+        ${t ? `<p class="fine">Benchmark run: trigger ${t.n} ${t.caught ? `caught on line ${t.flag_line ?? "?"}` : "missed"}, ${t.clean_flags} false alarm${t.clean_flags === 1 ? "" : "s"} on the clean chip.</p>` : ""}
       </div>`;
   }
 
   private fixHtml(): string {
     const f = this.fixRes;
-    if (!this.planted) return `<div class="sect"><h4>Remove and prove</h4><p class="muted">Plant a trigger first (the Find tab); Fix removes the flagged cone and proves the result.</p></div>`;
+    if (!this.planted) return `<div class="sect"><h4>Remove and prove</h4><p>Hide a trigger first in Find. Fix then cuts it out and proves the chip is back to normal.</p></div>`;
     const busy = this.busy === "fix";
     return `<div class="sect"><h4>Remove and prove</h4>
-      <p>Delete the flagged cone from the planted netlist, then prove what is left is the same circuit as the clean chip (and the author's source, where possible).</p>
-      <div class="acts"><button class="btn primary" type="button" id="cpFix" ${busy ? "disabled" : ""}>${busy ? `<span class="spin"></span> Removing and proving… <span id="cpT">0</span> s` : "Remove and prove"}</button></div>
-      ${f ? `<div class="callout ${f.data.verdict === "proven" ? "good" : f.data.verdict === "tested" ? "warn" : "bad"}"><b>${f.data.verdict === "proven" ? "Proven: the chip is back to what the author wrote." : f.data.verdict === "tested" ? "Tested, not proven." : "The fix did not prove."}</b>
-        <span>${esc(f.data.detail)}</span><span class="muted">${f.data.removed_cells.length} cells removed in ${f.data.seconds.toFixed(1)} s${f.source === "fixture" ? " · FIXTURE result" : ""}</span></div>
-        <dl class="kv"><dt>Removed</dt><dd>${f.data.removed_cells.map((c) => `<button type="button" class="linkbtn" data-cell="${esc(c)}">${esc(c)}</button>`).join(" ")}</dd></dl>
-        <details><summary class="muted">Fixed Verilog</summary><ol class="code">${f.data.verilog.split("\n").map((t, i) => `<li><span class="n">${i + 1}</span><span class="bk"></span><span class="t">${hiVerilog(t) || " "}</span><span></span></li>`).join("")}</ol></details>` : ""}
+      <p>Cut the flagged logic out of the chip, then prove what is left is the same circuit as the clean chip.</p>
+      <div class="acts"><button class="btn primary" type="button" id="cpFix" ${busy ? "disabled" : ""}>${busy ? `<span class="spin"></span>Proving <span id="cpT">0</span> s` : "Remove and prove"}</button></div>
+      ${f ? `<div class="callout ${f.data.verdict === "proven" ? "good" : f.data.verdict === "tested" ? "warn" : "bad"}"><b>${f.data.verdict === "proven" ? "Proven. The chip is back to what the author wrote." : f.data.verdict === "tested" ? "Tested, not proven." : "The fix did not prove."}</b>
+        <span>${esc(f.data.detail)}</span><span>${f.data.removed_cells.length} cells removed in ${f.data.seconds.toFixed(1)} s${f.source === "fixture" ? ". Sample result." : ""}</span></div>
+        <div class="group"><span class="eyebrow">Removed</span><div class="chips">${f.data.removed_cells.map((c) => `<button type="button" class="linkbtn" data-cell="${esc(c)}">${esc(c)}</button>`).join("")}</div></div>
+        <details><summary>Fixed Verilog</summary><ol class="code">${f.data.verilog.split("\n").map((t, i) => `<li><span class="n">${i + 1}</span><span class="bk"></span><span class="t">${hiVerilog(t) || " "}</span><span></span></li>`).join("")}</ol></details>` : ""}
       ${this.err ? `<div class="callout bad">${esc(this.err)}</div>` : ""}</div>`;
   }
 
@@ -311,7 +321,7 @@ export class ChipPage {
     this.graph?.select(id);
     this.graph?.setHighlight(id ? new Set([id]) : null);
     if (this.selLine) $(`#cpCode li[data-ln="${this.selLine}"]`, this.el)?.scrollIntoView({ block: "center", behavior: "smooth" });
-    else if (id) toast(`${id} is not explained by any decompiled line.`);
+    else if (id) toast(`No decompiled line explains ${id}.`);
   }
   selectBlock(bid: string) {
     const b = this.result!.blocks.find((x) => x.id === bid);
@@ -343,8 +353,8 @@ export class ChipPage {
   }
   private applyMarks() {
     const r = this.result!, m = new Map<string, string>();
-    for (const f of r.flags) for (const c of f.cone) m.set(c, "#ef6b73");
-    if (this.showPlanted) for (const c of this.fixRes?.data.removed_cells ?? []) m.set(c, "#5ec8ff");
+    for (const f of r.flags) for (const c of f.cone) m.set(c, "#ff453a");
+    if (this.showPlanted) for (const c of this.fixRes?.data.removed_cells ?? []) m.set(c, "#64d2ff");
     this.graph?.setMarks(m);
   }
 
@@ -396,9 +406,9 @@ export class ChipPage {
   commands() {
     const r = this.result;
     return [
-      { label: "Chip: plant the judge's number and find it", key: "", run: () => { this.tab = "find"; this.renderSide(); $("#cpN", this.el)?.focus(); } },
-      { label: "Chip: light the flagged cone", key: "", run: () => this.lightFlags() },
-      { label: "Chip: remove and prove (Fix)", key: "", run: () => { this.tab = "fix"; this.renderSide(); } },
+      { label: "Hide a number and find it", key: "", run: () => { this.tab = "find"; this.renderSide(); $("#cpN", this.el)?.focus(); } },
+      { label: "Light the flagged trigger", key: "", run: () => this.lightFlags() },
+      { label: "Remove and prove", key: "", run: () => { this.tab = "fix"; this.renderSide(); } },
       ...(r ? r.decompiled.verilog.split("\n").map((t, i) => ({ label: `Decompiled line ${i + 1}: ${t.trim()}`, key: "", run: () => this.selectLine(i + 1) })).filter((x) => !x.label.endsWith(": ")) : []),
     ];
   }

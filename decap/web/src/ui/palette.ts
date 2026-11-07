@@ -1,6 +1,7 @@
 // Command palette (⌘K / Ctrl+K), ported from the prototype.
 
 import { $, esc } from "./dom";
+import { icon } from "./icons";
 import type { PaletteCommand } from "./state";
 
 export class Palette {
@@ -10,9 +11,9 @@ export class Palette {
   constructor(private source: () => PaletteCommand[]) {
     this.el.className = "palette"; this.el.hidden = true;
     this.el.setAttribute("role", "dialog"); this.el.setAttribute("aria-modal", "true"); this.el.setAttribute("aria-label", "Command palette");
-    this.el.innerHTML = `<div class="box"><input id="palIn" autocomplete="off" placeholder="Type a command, a cell or a line…" aria-label="Command">
+    this.el.innerHTML = `<div class="box"><div class="inrow">${icon.search}<input id="palIn" autocomplete="off" placeholder="Search commands, chips, cells and lines" aria-label="Search"></div>
       <ul id="palList" role="listbox"></ul>
-      <div class="foot"><span><kbd>↑</kbd><kbd>↓</kbd> choose</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span><span><kbd>1</kbd>–<kbd>4</kbd> pages</span><span><kbd>G</kbd> guide</span><span><kbd>D</kbd> demo</span><span><kbd>Space</kbd> run/pause</span><span><kbd>.</kbd> step</span></div></div>`;
+      <div class="foot"><span><kbd>1</kbd> to <kbd>4</kbd> pages</span><span><kbd>G</kbd> ask</span><span><kbd>Space</kbd> run</span><span><kbd>.</kbd> step</span><span><kbd>R</kbd> reset</span><span><kbd>F</kbd> fit</span></div></div>`;
     document.body.append(this.el);
     const inp = $<HTMLInputElement>("#palIn", this.el);
     inp.addEventListener("input", () => { this.at = 0; this.render(); });
@@ -38,9 +39,9 @@ export class Palette {
   private render() {
     const q = $<HTMLInputElement>("#palIn", this.el).value.trim();
     const all = this.source();
-    this.items = all.map((c) => ({ ...c, s: this.score(c.label, q) })).filter((c) => c.s > 0 && (q || !/^(Go to|Decompiled line|Open chip)/.test(c.label))).sort((a, b) => b.s - a.s).slice(0, 40);
+    this.items = all.map((c) => ({ ...c, s: this.score(c.label, q) })).filter((c) => c.s > 0 && (q || !/^(Go to|Decompiled line|Open |Explore .)/.test(c.label) || c.label === "Explore a chip in 3D")).sort((a, b) => b.s - a.s).slice(0, 40);
     this.at = Math.min(this.at, Math.max(0, this.items.length - 1));
-    $("#palList", this.el).innerHTML = this.items.map((c, i) => `<li role="option" aria-selected="${i === this.at}" class="${i === this.at ? "on" : ""}" data-i="${i}">${esc(c.label)}${c.key ? `<small>${esc(c.key)}</small>` : ""}</li>`).join("") || `<li>No match</li>`;
+    $("#palList", this.el).innerHTML = this.items.map((c, i) => `<li role="option" aria-selected="${i === this.at}" class="${i === this.at ? "on" : ""}" data-i="${i}">${esc(c.label)}${c.key ? `<small>${esc(c.key)}</small>` : ""}</li>`).join("") || `<li class="muted">No results</li>`;
     $("#palList .on", this.el)?.scrollIntoView({ block: "nearest" });
   }
   private run(i: number) { const c = this.items[i]; this.close(); c?.run(); }
