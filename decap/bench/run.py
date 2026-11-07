@@ -124,8 +124,12 @@ def main():
         prev[r["chip"]] = r
     allrows = sorted(prev.values(), key=lambda r: ({"test": 0, "dev": 1, "warmup": 2}.get(r["split"], 3), r["chip"]))
     tro = [r for r in allrows if r["split"] == "test" and "trojan" in r]
+    import subprocess
+    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+    dirty = subprocess.run(["git", "status", "--porcelain", "core"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
     bench = {
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "decompiler_commit": sha + ("+dirty" if dirty else ""),
         "split": split,
         "summary": {"test": summarise(allrows, "test"), "dev": summarise(allrows, "dev"),
                     "trojan": {"planted": len(tro), "caught": sum(r["trojan"]["caught"] for r in tro),

@@ -542,6 +542,9 @@ class Decompiler:
             cs = []
         else:
             cs = self.candidates(sup, n, extra_words, force) if sup else []
+        sm = self._self_map(bits, force, extra_words, sup)
+        if sm is not None:
+            return [sm]
         index: dict[int, list] = {}
         for ci, c in enumerate(cs):
             for i, s in enumerate(c.bits):
@@ -593,6 +596,32 @@ class Decompiler:
             pieces = self._tables(bits, pieces, force)
         return _merge_logic(pieces)
 
+    def _self_map(self, bits, force, words, sup):
+        """A register's next value as a function of its own value only: wrap counters (x == K ? L : x ± 1)."""
+        if len(bits) < 2 or any(isinstance(b, str) or b in self.structural_only for b in bits):
+            return None
+        w = next((ww for ww in words if len(ww.bits) == len(bits) and set(ww.bits) == sup and len(sup) <= 12), None)
+        if w is None or len(w.bits) != len(bits):
+            return None
+        n = len(bits)
+        env, m = Sim.exhaustive_env(w.bits)
+        full = {x: 0 for x in self.s.sources}
+        full.update(env)
+        f = {k: (m if v else 0) for k, v in force.items()}
+        vals = self.s.run(full, m, f)
+        nxt = [sum(((vals.get(b, 0) >> j) & 1) << t for t, b in enumerate(bits)) for j in range(1 << n)]
+        M = (1 << n) - 1
+        for step, op in ((1, "+"), (-1, "-")):
+            diff = [x for x in range(1 << n) if nxt[x] != (x + step) & M]
+            if not diff:
+                return None   # plain x ± 1: the template matcher handles it
+            if len(diff) == 1:
+                K, L = diff[0], nxt[diff[0]]
+                t = f"({w.name} == {n}'d{K}) ? {n}'d{L} : {w.name} {op} 1'b1"
+                return Piece(0, n - 1, t, "counter")
+            # wraps early: every x > K jumps somewhere constant (synthesis keeps the out-of-range behaviour exact)
+        return None
+
     def _cand_piece(self, c: Cand, lo, hi, i):
         L = hi - lo + 1
         if c.kind == "copy":
@@ -609,7 +638,8 @@ class Decompiler:
 
     def _logic_piece(self, bits, k, force):
         e = self.logic_expr(bits[k], force)
-        return Piece(k, k, X.render(e), "logic", [e])
+        kind = "comparator" if e[0] == "raw" or (e[0] == "not" and e[1][0] == "raw") else "logic"
+        return Piece(k, k, X.render(e), kind, [e])
 
     def _tables(self, bits, pieces, force):
         out, i = [], 0
@@ -729,14 +759,16 @@ def _decompile(self: Decompiler) -> dict:
     cand_nets -= set(self.structural_only)
     self._ctl_cache = {}
 
-    def ctl_scan(flops, force):
-        """keys (net, v, kind, consts) that apply to every flop in `flops` under `force`."""
+    def ctl_scan(flops, force, allow_q=False):
+        """keys (net, v, kind, consts) that apply to every flop in `flops` under `force`.
+        allow_q: other registers' bits may act as controls (not while grouping, where carries would split counters)."""
         res = {}
         nets = set()
         for f in flops:
             cells, sup = s.cone([dbits[f.id]])
             nets |= {_out_of(s, c) for c in cells} | sup
-        nets = (nets & cand_nets) - set(force)
+        pool = cand_nets | (allq - {f.conns["Q"] for f in flops}) if allow_q else cand_nets
+        nets = (nets & pool) - set(force)
         for c in sorted(nets, key=lambda x: (x not in self.src, x)):
             for v in (0, 1):
                 ff = dict(force); ff[c] = v
@@ -771,8 +803,21 @@ def _decompile(self: Decompiler) -> dict:
         for grp in self._group(flops, ctl_scan):
             regs.append(Reg("", grp, key))
     # ---------- 3. order bits and name registers
+    # order bits; split off low parts that are self-contained wrap counters (minutes | hours sharing one enable)
+    split_regs = []
+    queue = list(regs)
+    while queue:
+        r = queue.pop(0)
+        force = self._peel_force(r.flops, ctl_scan)
+        r.flops = self._order(r.flops, force)
+        k = self._wrap_prefix(r.flops, force) if len(r.flops) > 2 else None
+        if k:
+            split_regs.append(Reg("", r.flops[:k], r.key))
+            queue.insert(0, Reg("", r.flops[k:], r.key))
+        else:
+            split_regs.append(r)
+    regs = split_regs
     for k, r in enumerate(regs):
-        r.flops = self._order(r.flops, self._peel_force(r.flops, ctl_scan))
         r.name = f"rg{k}"
         r.q = [f.conns["Q"] for f in r.flops]
         r.d = [dbits[f.id] for f in r.flops]
@@ -919,12 +964,78 @@ def _peel_force(self: Decompiler, flops, ctl_scan) -> dict:
         return {}
     force: dict = {}
     for _ in range(4):
-        res = ctl_scan(flops, force)
+        res = ctl_scan(flops, force, allow_q=True)
+        if not any(k[2] == "const" for k in res):
+            se = self._source_enable(flops, force)
+            if se:
+                outside, j = se
+                force = dict(force)
+                for t, x in enumerate(outside):
+                    force[x] = (j >> t) & 1
+                break
         if not res:
             break
         (net, v, k, consts), _ = min(res.items(), key=lambda kv: (kv[0][2] != "const", kv[1], kv[0][0] not in self.src))
         force = dict(force); force[net] = 1 - v
     return force
+
+
+def _source_enable(self: Decompiler, flops, force):
+    """If the register changes only for ONE value of the outside bits it reads (e.g. `!alarm && sec == 59`),
+    return (order, j): those bits and the index of that value. The data is then read with them fixed."""
+    key = (tuple(f.id for f in flops), tuple(sorted(force.items())), tuple(self.name.get(f.conns["Q"], "") for f in flops))
+    cache = self.__dict__.setdefault("_se_cache", {})
+    if key not in cache:
+        cache[key] = _source_enable_raw(self, flops, force)
+    return cache[key]
+
+
+def _source_enable_raw(self: Decompiler, flops, force):
+    own = [f.conns["Q"] for f in flops]
+    ds = [f.conns.get("D") for f in flops]
+    sup = self.support(ds, force)
+    outside = sorted(sup - set(own), key=lambda x: self._bitkey(x))
+    if not 1 <= len(outside) <= 14 or len(outside) + len(own) > 18:
+        return None
+    order = outside + own
+    env, m = Sim.exhaustive_env(order)
+    full = {x: 0 for x in self.s.sources}
+    full.update(env)
+    vals = self.s.run(full, m, {b: (m if v else 0) for b, v in force.items()})
+    change = 0
+    for f, d in zip(flops, ds):
+        change |= Sim.val(vals, d, m) ^ vals.get(f.conns["Q"], 0)
+    n_out = len(outside)
+    active = set()
+    for j in range(1 << len(order)):
+        if (change >> j) & 1:
+            active.add(j & ((1 << n_out) - 1))
+            if len(active) > 1:
+                return None
+    if len(active) != 1:
+        return None
+    return outside, active.pop()
+
+
+def _wrap_prefix(self: Decompiler, flops, force):
+    """Smallest k (2..n-1) such that the low k bits only depend on themselves and count with a wrap."""
+    n = len(flops)
+    qs = [f.conns["Q"] for f in flops]
+    ds = [f.conns.get("D") for f in flops]
+    for k in range(2, min(n, 12)):
+        low = set(qs[:k])
+        sup = self.support(ds[:k], force)
+        if not sup or not sup <= low:
+            continue
+        env, m = Sim.exhaustive_env(qs[:k])
+        full = {x: 0 for x in self.s.sources}
+        full.update(env)
+        vals = self.s.run(full, m, {b: (m if v else 0) for b, v in force.items()})
+        nxt = [sum(((vals.get(b, 0) >> j) & 1) << t for t, b in enumerate(ds[:k])) for j in range(1 << k)]
+        M = (1 << k) - 1
+        if sum(1 for x in range(1 << k) if nxt[x] != (x + 1) & M) == 1:
+            return k
+    return None
 
 
 def _order(self: Decompiler, flops, force=None):
@@ -967,6 +1078,17 @@ def _order(self: Decompiler, flops, force=None):
         own = len(sup & qs)
         pidx = min([k for w in self.words for k, b in enumerate(w.bits) if b in sup] or [99])
         return (own, pidx, int(f.id[1:]))
+    # counters: the lowest bit flips on almost every edge, the next on about half, and so on
+    q4 = (1 << (self.N // 4)) - 1
+    rate = {}
+    for f in flops:
+        d = self.sig(f.conns.get("D"), force) & q4
+        qv = vf.get(f.conns["Q"], 0) & q4
+        rate[f.id] = bin(d ^ qv).count("1") / (self.N // 4)
+    rs = sorted(rate.values(), reverse=True)
+    if rs[0] > 0.6 and all(b < 0.8 * a for a, b in zip(rs[:3], rs[1:3])):
+        return sorted(flops, key=lambda f: (-round(rate[f.id], 3), key(f)))
+
     return sorted(flops, key=key)
 
 
@@ -1005,7 +1127,17 @@ def _reg_stmt(self: Decompiler, r: Reg, ctl_scan, regwords):
     guard: list[str] = []
     layers = []
     while not struct_mode and len(layers) < 4:
-        res = ctl_scan(r.flops, force)
+        res = ctl_scan(r.flops, force, allow_q=True)
+        if not any(k[2] == "const" for k in res):
+            se = self._source_enable(r.flops, force)
+            if se:
+                outside, j = se
+                guard.append(" && ".join(self._eq_terms(outside, j)))
+                layers.append(("hold", guard[-1]))
+                force = dict(force)
+                for t, x in enumerate(outside):
+                    force[x] = (j >> t) & 1
+                break
         if not res:
             break
         # prefer const layers (sync reset) over hold (enable), then simpler nets
@@ -1034,7 +1166,7 @@ def _reg_stmt(self: Decompiler, r: Reg, ctl_scan, regwords):
         lines += ["    " + x for x in data]
         lines.append("end")
     kinds = {p.kind for p in pieces}
-    own = any(p.kind in ("adder", "subtractor") and _mentions(p.text, r.name) for p in pieces)
+    own = any(p.kind in ("adder", "subtractor", "counter") and _mentions(p.text, r.name) for p in pieces)
     shift = any(p.kind == "copy" and _mentions(p.text, r.name) for p in pieces)
     if own:
         bk = "counter"
@@ -1243,6 +1375,8 @@ Decompiler.decompile = _decompile
 Decompiler._group = _group
 Decompiler._order = _order
 Decompiler._peel_force = _peel_force
+Decompiler._wrap_prefix = _wrap_prefix
+Decompiler._source_enable = _source_enable
 Decompiler._reg_stmt = _reg_stmt
 Decompiler._port_stmt = _port_stmt
 Decompiler._emit = _emit
