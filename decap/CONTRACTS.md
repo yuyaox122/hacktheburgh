@@ -85,4 +85,11 @@ SPEC.md §6.3 shape: `{ name, pdk, die:{w,h}, rowHeight, site, ports:[{name,dir,
 
 Agent tools (operation_id = MCP tool name via `decap/agent`; docstrings are what agents read): `list_chips`, `strip_names`, `recover_blocks`, `decompile`, `prove_equiv` (`against`: netlist | author_source → counterexample), `simulate`, `find_rare_triggers`, `plant_trigger` (returns id `chip+tN`), `cone_of_influence` (flag, block or cell id), `remove_trigger`, `critical_path` (estimate), `compare_design`, `benchmark`. Paths are under `/api/chips/{chip}/…`; see `api/main.py`. Web-only routes are hidden from the schema so they don't become tools.
 
+Witness (`get_region`, `probe_truth` in `api/scope.py`, Ian's; `propose_claim` in `core/claims.py`): `POST /api/chips/{chip}/claim` with `{ claim, scope, label?, check = true }` returns `{ verdict, truth, formal, english, literals, counterexample?, refute_kind?, credit?: { cleared, complete, reason, literals, cone_literals }, touched, netlist_sha, decompiler, method, seconds, source: "yosys" }`.
+- `verdict`: `proven` · `inductive` (true from reset, proven by k-induction) · `bounded` (holds 30 cycles from reset only) · `refuted` · `partial` · `restated` · `tautology` · `unparseable` · `timeout` · `unchecked` (`check: false`).
+- `truth` says whether the claim holds (`proven`, `inductive`, `bounded`, `refuted`, `tautology`) separately from credit. A true claim (`proven`/`inductive`) shows that verdict only when `credit.cleared`; otherwise `partial` or `restated`.
+- Setup: rst_n = 1, ena = 1, flip-flops cut (registers free), one clock step. `counterexample`: `{ input bus: int, q_<id>: bit, each name the claim used: value }`; `refute_kind`: `semantic` (also fails from reset) or `reset_only`.
+- Credit needs all of: the claim names one of the region's outputs; it is complete (SAT finds no two different values of those output bits that both satisfy it); and it has a labelled shape or at most 1/3 of the region's `cone_literals`.
+- Self-test: `python -m bench.claims_check`.
+
 Errors: FastAPI's `{ "detail": "…" }` with a 4xx/5xx status. Long calls (decompile, plant, fix) take up to ~60 s.
