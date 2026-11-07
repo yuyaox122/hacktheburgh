@@ -30,6 +30,9 @@ def main():
     a = ap.parse_args()
     meta = json.loads((ROOT / "out" / a.chip / "meta.json").read_text())
     nl = nlmod.parse(ROOT / "data" / a.chip / f"{a.chip}.v")
+    if meta.get("plant"):
+        import plant
+        plant.plant(nl, meta["plant"]["n"], meta["plant"]["target"])
     prog = logic.build(nl)
     y, pz = meta["y0"], meta["panel_z"]
     lever = {p["bit"]: p["x"] for p in meta["panel"] if p["kind"] == "in"}
@@ -44,8 +47,11 @@ def main():
     rng = random.Random(1)
     bad = intent_bad = 0
     data_bits = [b for b in prog.inputs if b not in ("clk", "rst_n", "ena")]
-    for t in range(a.n):
+    forced = [meta["plant"]["n"]] if meta.get("plant") else []
+    for t in range(a.n + len(forced)):
         v = {b: rng.randint(0, 1) for b in data_bits} | {"rst_n": 1, "ena": 1}
+        if t < len(forced):
+            v |= {f"ui_in[{k}]": (forced[t] >> k) & 1 for k in range(8)} | {"uio_in[0]": 0}
         for clk in (0, 1):
             vv = v | {"clk": clk}
             rcon(*[set_lever(lever[b], vv[b]) for b in lever if b in vv])

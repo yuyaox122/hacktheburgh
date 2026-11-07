@@ -20,6 +20,7 @@ import cells as lib
 import layout as lay
 import logic
 import netlist as nlmod
+import plant as plantmod
 
 ROOT = Path(__file__).resolve().parent
 OBJ = logic.OBJ
@@ -32,6 +33,7 @@ FAMILY = {                    # off block, on block
     "mux": ("orange_concrete", "shroomlight"),
     "buf": ("light_blue_concrete", "sea_lantern"),
     "const": ("white_concrete", "white_concrete"),
+    "trojan": ("red_concrete", "redstone_block"),
 }
 PHYS = {"decap": "gray_concrete", "tapvpwrvgnd": "light_gray_concrete", "diode": "brown_concrete"}
 # layer -> (y from Y0, thickness, off block, on block). Layers are spread out so you can fly between them.
@@ -120,9 +122,14 @@ def groups(bits: list[str], pins: dict[str, str]) -> dict[str, list[tuple[str, i
     return g
 
 
-def compile_chip(chip: str, scale: float, full: bool, out_dir: Path) -> dict:
+def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: int | None = None,
+                 target: str | None = None) -> dict:
     d = ROOT / "data" / chip
     nl = nlmod.parse(d / f"{chip}.v")
+    trojan = None
+    if plant_n is not None:
+        target, tnames = plantmod.plant(nl, plant_n, target)
+        trojan = {"n": plant_n, "target": target, "cells": tnames}
     missing = lib.fetch({c.type for c in nl.logic})
     if missing:
         raise SystemExit(f"no Liberty data for {missing}")
@@ -146,6 +153,16 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path) -> dict:
         g = Grid(max(0, min(c["box"][0] for c in lc) - m), max(0, min(c["box"][1] for c in lc) - m),
                  min(W, max(c["box"][2] for c in lc) + m), H, scale)
     SX, SZ = g.size
+    cells_l = list(L["cells"])
+    if trojan:                         # planted cells have no layout: a row in the free area south of the logic
+        px = L["pins"].get(trojan["target"], [(g.x0 + g.x1) / 2])[0]
+        w, gap = 2.76, 0.92
+        x = px - (w + gap) * len(trojan["cells"]) / 2
+        ty = g.y0 + 0.6
+        for nm in trojan["cells"]:
+            cells_l.append({"name": nm, "type": by_name[nm].type, "box": [x, ty, x + w, ty + 2.72]})
+            x += w + gap
+        trojan["box"] = [px - (w + gap) * len(trojan["cells"]) / 2, ty, x, ty + 2.72]
 
     # glow groups: netlist net -> [(x1, y1, z1, x2, y2, z2, off, on)]
     glow: dict[str, list[tuple]] = {}
@@ -159,12 +176,12 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path) -> dict:
     blocks += fill(0, Y0 - 1, 0, SX - 1, Y0 - 1, SZ - 1, "black_concrete")
 
     # ---- standard cells
-    for c in L["cells"]:
+    for c in cells_l:
         b = g.box(c["box"])
         if not b:
             continue
         x1, z1, x2, z2 = b
-        cat = lib.category(c["type"])
+        cat = "trojan" if c["name"] and c["name"].startswith(plantmod.PREFIX) else lib.category(c["type"])
         if cat == "phys":
             base = c["type"].rsplit("_", 1)[0]
             blk = next((v for k, v in PHYS.items() if base.startswith(k)), None)
@@ -179,6 +196,8 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path) -> dict:
             outs = [p for p in lib.cell(cell.type).outputs if p in cell.pins]
             if outs:
                 glow.setdefault(cell.pins[outs[0]], []).append((x1, Y0 + 2, z1, tx2, Y0 + 2, z2, off, on))
+                if cat == "trojan":    # redstone blocks don't emit light: add a toggled light above
+                    glow[cell.pins[outs[0]]].append((x1, Y0 + 3, z1, tx2, Y0 + 3, z2, "air", "light[level=15]"))
 
     # ---- metal stack (static), then per-net overlays for the glow
     for lname, boxes in L["layers"].items():
@@ -210,6 +229,21 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path) -> dict:
                 b = g.box(bx)
                 if b:
                     glow.setdefault(net, []).append((b[0], Y0 + dy, b[1], b[2], Y0 + dy, b[3], off, on))
+
+    # ---- the planted trigger: a red bridge over the metal stack from the annex to the output pin
+    if trojan:
+        tb = g.box(trojan["box"])
+        tx = (tb[0] + tb[2]) // 2
+        pin = L["pins"].get(trojan["target"])
+        ox = g.span(pin[0] - g.x0, pin[0] - g.x0)[0] if pin else tx
+        yb = Y0 + TOP + 2
+        segs = [(tx, Y0 + 3, tb[1], tx, yb, tb[1]), (min(tx, ox), yb, 0, max(tx, ox), yb, 0),
+                (tx, yb, 0, tx, yb, tb[1]), (ox, Y0 + 3, 0, ox, yb, 0)]
+        for x1, y1, z1, x2, y2, z2 in segs:
+            blocks += fill(x1, y1, z1, x2, y2, z2, "red_stained_glass")
+            glow.setdefault(f"{plantmod.PREFIX}fire", []).append((x1, y1, z1, x2, y2, z2, "red_stained_glass", "redstone_block"))
+            glow[f"{plantmod.PREFIX}fire"].append((x1 + 1, y1, z1, x2 + 1, y2, z2, "air", "light[level=15]"))
+        trojan["xyz"] = [tx, yb, tb[1]]
 
     # ---- ambient light (invisible light blocks) so the chip reads at night without washing out the glow
     for x in range(0, SX, 7):
@@ -309,6 +343,10 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path) -> dict:
                 f"transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],"
                 f"scale:[{s}f,{s}f,{s}f]}},text:{json.dumps({'text': text, 'color': color, 'bold': bold})}}}")
 
+    if trojan:
+        tx, yb, tz = trojan["xyz"]
+        lab.append(tdisp(tx + 0.5, yb + 5, tz, f"if (ui_in == 8'd{trojan['n']}) {trojan['target']} |= 1;", "red", 3.5, True))
+        lab.append(tdisp(tx + 0.5, yb + 3, tz, "planted trigger: no source line says this", "white", 2))
     for x, text, kind in labels:
         lab.append(tdisp(x + 0.5, Y0 + 2.3, PANEL_Z + 0.5, text, {"in": "aqua", "out": "gold", "auto": "gray"}[kind], 1.6, True))
     lab.append(tdisp(pmid, Y0 + 16, PANEL_Z - 2, title, "gold", 8, True))
@@ -341,7 +379,7 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path) -> dict:
             "panel": [{"kind": k, "bit": b, "x": x, "label": label_for(b, pins)} for k, b, x in panel],
             "auto_x": auto_x, "nets": nets, "inputs": prog.inputs, "outputs": prog.outputs, "sidebar": side,
             "counts": {"build_blocks": len(blocks), "tick": len(tick), "cells": len(nl.logic),
-                       "glow_nets": len(glow), "wired_nets": lit_nets}}
+                       "glow_nets": len(glow), "wired_nets": lit_nets}, "plant": trojan}
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=1))
     return meta
 
@@ -352,11 +390,13 @@ def main():
     ap.add_argument("--scale", type=float, default=4.0, help="blocks per µm")
     ap.add_argument("--full", action="store_true", help="whole tile, not just the logic region")
     ap.add_argument("--install", type=Path, help="world folder to copy the datapack into")
+    ap.add_argument("--plant", type=int, help="plant a trojan that fires when ui_in == N")
+    ap.add_argument("--target", help="output bit the trojan flips (default: one that is 0 at N)")
     a = ap.parse_args()
     out = ROOT / "out" / a.chip
     out.mkdir(parents=True, exist_ok=True)
-    m = compile_chip(a.chip, a.scale, a.full, out)
-    print(json.dumps({k: m[k] for k in ("title", "size", "counts", "sidebar")}))
+    m = compile_chip(a.chip, a.scale, a.full, out, a.plant, a.target)
+    print(json.dumps({k: m[k] for k in ("title", "size", "counts", "sidebar", "plant")}))
     if a.install:
         dst = a.install / "datapacks" / "decap_chip"
         if dst.exists():
