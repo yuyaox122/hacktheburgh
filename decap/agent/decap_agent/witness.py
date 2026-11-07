@@ -1,7 +1,7 @@
 """Decap Witness: the region agent loop (docs/decap/research/witness-plan.md, section 2).
 
     judge drops an agent on a region
-      -> the LLM LOOKS (get_region, probe_truth, simulate): free, never decides anything
+      -> the controller fetches the region + a first probe into the prompt; the LLM may probe twice more (`fix`)
       -> the LLM returns ONE claim (a Verilog expression + an optional shape label)
       -> this code calls propose_claim: only the checker (Yosys in the real core) gives a verdict
       -> refuted / tautology / unparseable / restated: the verdict goes back to the LLM, max 2 refinements
@@ -27,31 +27,39 @@ from typing import Any
 from fastmcp import Client, FastMCP
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.usage import UsageLimits
 
 from .transcript import Transcript, result_payload
 
 DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
-LOOK_TOOLS = {"get_region", "probe_truth", "simulate", "resolve_scope"}
-DONE = {"proven", "inductive", "bounded"}      # verdicts that end the loop
-PROMPT_VERSION = "witness-v1"
+LOOK_TOOLS = {"probe_truth"}          # the region and a first probe are already in the prompt
+LIMITS = UsageLimits(request_limit=6, input_tokens_limit=120_000)   # per attempt: a 23-bit region cost 1.37M tokens uncapped
+DONE = {"proven", "inductive", "bounded", "tested"}   # verdicts that end the loop ('tested' = fallback checker only)
+PROOF = {"proven", "inductive"}
+PROMPT_VERSION = "witness-v3"
 
 INSTRUCTIONS = """You explain one region of a real chip in ONE short claim. A formal checker (Yosys) then tries
 to prove the claim against the chip's gates. It is shown to people only if it is proven, so a wrong claim
 costs you: it comes back refuted with the input that breaks it.
 
 How to work:
-1. Call get_region with the scope you are given. It lists the names you may use and the decompiled code.
-2. Call probe_truth on the same scope to see what the outputs actually do. Samples are evidence, not proof:
-   rare cases (a value of 255, one input pattern in 256) are easy to miss, so think about edge cases.
+1. Read the region (its inputs, outputs, decompiled code) and the probe samples given to you.
+2. If you need more evidence, call probe_truth at most twice, e.g. with `fix` to hold some inputs at values
+   ({"bit0": 0}) and see what the outputs do then. Samples are evidence, not proof: rare cases (a value of 255,
+   one input pattern in 256) are easy to miss, so think about edge cases.
 3. Return one claim about the region's outputs.
 
 The claim is a Verilog expression:
-- Names: exactly the ports and flip-flops get_region lists (with [i] or [hi:lo]), or a register alias it
+- Names: exactly the ports and flip-flops the region lists (with [i] or [hi:lo]), or a register alias it
   gives. next(x) is x one clock later. 'A when B' means: whenever B, A holds.
 - rst_n = 1 and ena = 1 are assumed (the chip is running, not in reset).
 - Verilog widths apply: an unsized number such as 1 is 32 bits wide and does not wrap; write 8'd1 when an
   8-bit value should wrap around.
+- Say what the output IS for every input, in the form `output == expression` (use ?: for cases). A true but
+  partial fact ("once set it stays set", "x == 5 when en") is rejected as partial: it leaves the output open for
+  some inputs. For a register, describe next(reg) completely, including when it holds its value.
 - Make it much shorter than the decompiled code. Name the shape in `label` if it is one of: adder,
   incrementer, counter, comparator, mux, decoder, constant. A claim that only restates the decompiled code
   is proven but earns nothing; a claim true of any chip (a tautology) is rejected.
@@ -82,11 +90,35 @@ def feedback(verdict: dict) -> str:
         return "REJECTED as a tautology: it is true of any chip, so it says nothing about this region. Claim something specific."
     if v == "unparseable":
         return f"UNPARSEABLE: {verdict.get('error')}. Fix the syntax or the names (use get_region's names)."
+    if v == "partial":
+        return ("TRUE but PARTIAL, so no credit: for some inputs your claim allows more than one value of the output. "
+                "Write `output == expression` that gives the output for EVERY input (use ?: for the cases), e.g. "
+                "next(r) == (cond ? new_value : r) for a register that holds.")
     if v == "restated":
         credit = verdict.get("credit") or {}
         return (f"PROVEN but no credit: {credit.get('reason')}. Say the same thing more compactly, or name its shape "
                 f"in `label` if it really is one.")
     return f"The checker returned {v!r}: {json.dumps(verdict)[:300]}. Try a simpler claim."
+
+
+def brief(region: dict, probe: dict) -> str:
+    """The region and a first probe, compact, for the first prompt (saves the agent a dozen look calls)."""
+    ins = ", ".join(f"{i['name']}[{i['width']}]" + (f" bits {i['bits_used']}" if i.get("bits_used") else "")
+                    for i in region.get("inputs", []))
+    outs = ", ".join(f"{o['name']}[{o['width']}]" + (f" bits {o['bits_in_region']}" if o.get("bits_in_region") else "")
+                     for o in region.get("outputs", []))
+    focus = "\n".join(f"  {f['line'] if isinstance(f, dict) else ''}: {f['text'] if isinstance(f, dict) else f}"
+                      for f in region.get("focus", []))
+    rows = probe.get("samples", [])[:24]
+    cols_in = list(rows[0]["in"]) if rows else []
+    cols_out = list(rows[0]["out"]) if rows else []
+    table = "\n".join("  " + " ".join(str(r["in"][c]) for c in cols_in) + " | " + " ".join(str(r["out"][c]) for c in cols_out)
+                      for r in rows)
+    return (f"Region inputs: {ins}\nRegion outputs: {outs}\n"
+            f"Decompiled code for it ({region.get('cone_literals')} literals):\n{focus}\n"
+            f"Probe: {probe.get('vectors')} vectors, {'every input' if probe.get('exhaustive') else 'random'}; "
+            f"assumed {json.dumps(probe.get('assumed'))}.\nOutput stats: {json.dumps(probe.get('stats'))}\n"
+            f"Samples ({' '.join(cols_in)} | {' '.join(cols_out)}):\n{table}")
 
 
 def cache_key(region: dict, chip: str, scope: dict, model_name: str) -> str:
@@ -125,12 +157,23 @@ async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any 
                     transcript.record("claim", **{**a, "cached": True})
             return {**run, "cached": True}
 
-        prompt = (f"Chip {chip!r}. Your region: scope = {json.dumps(scope)}. Pass exactly this scope to the tools. "
-                  f"Explain the region in one claim.")
+        probe = await call("probe_truth", chip=chip, scope=scope, n=1024)
+        prompt = (f"Chip {chip!r}. Your region: scope = {json.dumps(scope)} (pass exactly this scope to probe_truth).\n"
+                  f"{brief(region, probe)}\nExplain the region in one claim.")
         history, attempts = None, []
         for attempt in range(1 + max_refine):
             t0 = time.perf_counter()
-            res = await agent.run(prompt, message_history=history)
+            try:
+                res = await agent.run(prompt, message_history=history, usage_limits=LIMITS)
+            except UsageLimitExceeded as e:
+                row = {"chip": chip, "scope": scope, "attempt": attempt, "first_draft": attempt == 0, "claim": None,
+                       "verdict": "no_claim", "error": f"look budget exceeded: {e}", "model": model_name,
+                       "wall_s": round(time.perf_counter() - t0, 3), "cells": [], "credit": None, "counterexample": None,
+                       "english": None, "label": "", "source": region.get("source", "core")}
+                attempts.append(row)
+                if transcript is not None:
+                    transcript.record("claim", **row)
+                break
             claim: Claim = res.output
             verdict = await call("propose_claim", chip=chip, scope=scope, claim=claim.claim, label=claim.label)
             usage = res.usage
@@ -159,6 +202,7 @@ async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any 
            "cone_literals": region.get("cone_literals"),
            "first_draft": attempts[0]["verdict"], "final": final["verdict"],
            "explained": final["verdict"] in DONE and bool((final.get("credit") or {}).get("cleared")),
+           "proof": final["verdict"] in PROOF,
            "attempts": attempts}
     if hit:
         hit.parent.mkdir(parents=True, exist_ok=True)

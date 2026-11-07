@@ -48,8 +48,11 @@ def test_stub_checker_verdicts():
     server = build_server(create_stub_app())
     wrong = run(_claim(server, "next(count) == count + 1 when en", label="incrementer"))
     assert wrong["verdict"] == "refuted" and wrong["counterexample"] == {"count": 255, "en": 1, "next(count)": 0}
-    right = run(_claim(server, "next(count) == count + 8'd1 when en", label="incrementer"))
-    assert right["verdict"] == "proven" and right["credit"]["cleared"]
+    partial = run(_claim(server, "next(count) == count + 8'd1 when en", label="incrementer"))
+    assert partial["verdict"] == "partial" and not partial["credit"]["cleared"]      # silent when en = 0
+    right = run(_claim(server, "next(count) == (en ? count + 8'd1 : count)", label="counter"))
+    assert right["verdict"] == "proven" and right["credit"]["cleared"] and right["credit"]["complete"]
+    assert run(_claim(server, "next(count) == count when !en"))["verdict"] == "partial"
     assert run(_claim(server, "count == count"))["verdict"] == "tautology"
     assert run(_claim(server, "hit == 1"))["verdict"] == "unparseable"          # internal nets are not nameable
     long = "uo_out[1] == (count[7] & count[6] & !count[5] & !count[4] & count[3] & !count[2] & !count[1] & !count[0])"
@@ -76,15 +79,15 @@ def test_probe_finds_the_rare_row():
 
 
 def scripted(claims: list[dict], seen: dict):
-    """A model that looks once (get_region), then returns the next scripted claim on each run."""
+    """A model that probes once (holding en = 1), then returns the next scripted claim on each run."""
     state = {"i": 0}
 
     def fn(messages, info: AgentInfo) -> ModelResponse:
         seen.setdefault("tools", set()).update(t.name for t in info.function_tools)
         seen.setdefault("prompts", []).append(" ".join(str(p) for m in messages for p in getattr(m, "parts", [])))
         last = messages[-1].parts
-        if not any(isinstance(p, ToolReturnPart) and p.tool_name == "get_region" for p in last):
-            return ModelResponse(parts=[ToolCallPart("get_region", {"chip": CHIP, "scope": NEXT})])
+        if not any(isinstance(p, ToolReturnPart) and p.tool_name == "probe_truth" for p in last):
+            return ModelResponse(parts=[ToolCallPart("probe_truth", {"chip": CHIP, "scope": NEXT, "fix": {"en": 1}})])
         claim = claims[min(state["i"], len(claims) - 1)]
         state["i"] += 1
         return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, claim)])
@@ -92,7 +95,7 @@ def scripted(claims: list[dict], seen: dict):
 
 
 WRONG = {"claim": "next(count) == count + 1 when en", "label": "incrementer", "gist": "counts up"}
-RIGHT = {"claim": "next(count) == count + 8'd1 when en", "label": "incrementer", "gist": "counts up, wrapping"}
+RIGHT = {"claim": "next(count) == (en ? count + 8'd1 : count)", "label": "counter", "gist": "counts up while en, wrapping"}
 
 
 def test_region_agent_refines_after_counterexample(tmp_path):
@@ -126,3 +129,14 @@ def test_refinements_are_capped():
     server = build_server(create_stub_app())
     out = run(explain_region(CHIP, NEXT, server, model=scripted([WRONG], {}), max_refine=2))
     assert len(out["attempts"]) == 3 and out["final"] == "refuted" and not out["explained"]
+
+
+def test_probe_fix_holds_inputs():
+    server = build_server(create_stub_app())
+
+    async def go(fix):
+        async with Client(server) as c:
+            return await c.call_tool("probe_truth", {"chip": CHIP, "scope": NEXT, "fix": fix}, raise_on_error=False)
+    held = result_payload(run(go({"en": 0})))
+    assert held["fixed"] == {"en": 0} and all(r["out"]["next(count)"] == r["in"]["count"] for r in held["samples"])
+    assert run(go({"nope": 1})).is_error

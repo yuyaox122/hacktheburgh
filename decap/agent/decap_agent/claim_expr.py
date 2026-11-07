@@ -324,3 +324,46 @@ def unparse(n: Node) -> str:
 def _wrap(n: Node) -> str:
     s = unparse(n)
     return s if n.op in ("num", "sig", "next", "{}") else f"({s})"
+
+
+def ref_bits(node: Node) -> list[tuple[str, str, int | None, int | None]]:
+    """(kind, name, hi, lo) for every signal reference, keeping its bit select."""
+    out = [(node.op, node.name, node.hi, node.lo)] if node.op in ("sig", "next") else []
+    for a in node.args:
+        out += ref_bits(a)
+    return out
+
+
+def output_bits(node: Node, outputs: set[tuple[str, str]], widths: dict[str, int]) -> list[tuple[str, str, int]]:
+    """The bits of the region's outputs that the claim mentions, as (kind, name, bit)."""
+    bits = set()
+    for kind, name, hi, lo in ref_bits(node):
+        if (kind, name) in outputs:
+            rng = range(widths[name]) if hi is None else range(lo, hi + 1)
+            bits |= {(kind, name, b) for b in rng}
+    return sorted(bits)
+
+
+def is_complete(ev: Evaluator, node: Node, envs: list[dict], out_bits: list[tuple[str, str, int]],
+                max_bits: int = 12) -> bool | None:
+    """Does the claim pin down the output bits it mentions, for every sampled input?
+
+    A complete claim (e.g. `next(count) == (en ? count + 8'd1 : count)`) leaves exactly one value for those bits;
+    a partial one (`next(count) == count + 8'd1 when en`, `bit0 -> next(bit0)`) is true but leaves some open.
+    None: too many output bits to enumerate here (the Yosys checker can ask SAT for two different outputs instead)."""
+    if not out_bits:
+        return False
+    if len(out_bits) > max_bits:
+        return None
+    for env in envs:
+        sat = 0
+        for assign in range(1 << len(out_bits)):
+            e = dict(env)
+            for i, (kind, name, b) in enumerate(out_bits):
+                v = e[(kind, name)]
+                e[(kind, name)] = (v & ~(1 << b)) | (((assign >> i) & 1) << b)
+            if ev.holds(node, e):
+                sat += 1
+                if sat > 1:
+                    return False
+    return True
