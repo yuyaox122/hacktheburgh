@@ -62,6 +62,7 @@ def read(gds: str | Path) -> dict:
                     reg += sub
         if not reg.is_empty():
             layers[lname] = _boxes(reg, dbu)
+    nets = extract_nets(ly, top)
     pins = {}
     for li in ly.layer_indexes():
         for s in top.shapes(li).each():
@@ -69,7 +70,56 @@ def read(gds: str | Path) -> dict:
                 pins[s.text.string] = [round(s.text.x * dbu, 3), round(s.text.y * dbu, 3)]
     bb = top.dbbox()
     return {"name": top.name, "die": [round(bb.width(), 3), round(bb.height(), 3)], "cells": cells, "layers": layers,
-            "pins": pins}
+            "pins": pins, "nets": nets}
+
+
+def extract_nets(ly: db.Layout, top: db.Cell) -> dict[str, dict[str, list]]:
+    """Geometric net extraction (li1 .. met4 + vias). Returns {netlist net name: {layer: [boxes]}} for top-level
+    routing. Nets are named from port labels, or from the cell pins they touch (cell pin labels + the instance's
+    property-61 name, which matches the netlist)."""
+    dbu = ly.dbu
+    l2n = db.LayoutToNetlist(db.RecursiveShapeIterator(ly, top, []))
+    regs, texts = {}, []
+    for name in ["li1", "mcon", "met1", "via", "met2", "via2", "met3", "via3", "met4"]:
+        regs[name] = l2n.make_layer(ly.layer(*LAYERS[name]), name)
+    for name, (l, d) in [("li1", (67, 5)), ("met1", (68, 5)), ("met2", (69, 5)), ("met3", (70, 5)), ("met4", (71, 5))]:
+        texts.append((name, l2n.make_text_layer(ly.layer(l, d), f"t_{name}")))
+    chain = ["li1", "mcon", "met1", "via", "met2", "via2", "met3", "via3", "met4"]
+    for a, b in zip(chain, chain[1:]):
+        l2n.connect(regs[a])
+        l2n.connect(regs[a], regs[b])
+    l2n.connect(regs["met4"])
+    for name, t in texts:
+        l2n.connect(regs[name], t)
+    l2n.extract_netlist()
+    circ = l2n.netlist().circuit_by_name(top.name)
+    inst_name = {}
+    for inst in top.each_inst():
+        d = inst.dcplx_trans.disp
+        inst_name[(inst.cell.name, round(d.x, 3), round(d.y, 3))] = inst.property(61)
+    from netlist import _net   # noqa: F401 (same escaping rules)
+    pin_net: dict[int, set] = {}
+    for sc in circ.each_subcircuit():
+        d = sc.trans.disp
+        nm = inst_name.get((sc.circuit_ref().name, round(d.x, 3), round(d.y, 3)))
+        if nm is None:
+            continue
+        for p in sc.circuit_ref().each_pin():
+            n = sc.net_for_pin(p.id())
+            if n is not None:
+                pin_net.setdefault(n.cluster_id, set()).add((str(nm), p.name()))
+    out = {}
+    for n in circ.each_net():
+        if n.name in ("VPWR", "VGND"):
+            continue
+        shapes = {}
+        for lname in ["li1", "met1", "met2", "met3", "met4"]:
+            r = l2n.shapes_of_net(n, regs[lname], False)
+            if r is not None and not r.is_empty():
+                shapes[lname] = _boxes(r, dbu)
+        if shapes:
+            out[n.name or f"#{n.cluster_id}"] = {"shapes": shapes, "pins": sorted(pin_net.get(n.cluster_id, []))}
+    return out
 
 
 if __name__ == "__main__":
