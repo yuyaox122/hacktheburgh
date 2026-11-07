@@ -162,7 +162,7 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
 .tour .row small { color: var(--muted); flex: 1; font-variant-numeric: tabular-nums; }
 .tip { position: absolute; pointer-events: none; padding: 5px 8px; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; transform: translate(14px, 14px); z-index: 3; }
 .tip small { color: var(--muted); }
-.skip { left: 50%; top: 50%; transform: translate(-50%, 140px); padding: 6px 12px; font-size: 12px; color: var(--muted); }
+.skip { left: 50%; bottom: 22px; transform: translateX(-50%); padding: 6px 14px; font-size: 12px; color: var(--muted); letter-spacing: .04em; white-space: nowrap; }
 .nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; }
 
 /* ---------- right column: tabs ---------- */
@@ -276,6 +276,25 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
 .palette li.on { background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
 .palette .foot { padding: 7px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
 
+/* ---------- cinematic intro, cell names ---------- */
+.viewport > .overlay, #labels { transition: opacity .7s ease; }
+.viewport.intro > .overlay:not(.skip), .viewport.intro #labels { opacity: 0; pointer-events: none; }
+.titlecard { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); display: grid; justify-items: center; gap: 12px; pointer-events: none; text-align: center; transition: opacity 1.1s ease, transform 1.6s ease; z-index: 1; width: max-content; max-width: calc(100% - 32px); }
+.titlecard b { font-family: var(--font-display); font-weight: 700; font-size: clamp(40px, 7vw, 92px); letter-spacing: .22em; padding-left: .22em; text-transform: uppercase; line-height: 1; color: var(--fg); text-shadow: 0 0 42px color-mix(in srgb, var(--accent) 45%, transparent); }
+.titlecard span { font-size: 12px; letter-spacing: .24em; text-transform: uppercase; color: var(--accent); padding: 4px 12px; border-radius: 4px; background: color-mix(in srgb, var(--bg) 70%, transparent); text-shadow: 0 1px 10px var(--bg); }
+.titlecard.out { opacity: 0; transform: translate(-50%, -14px); }
+.cellname { font-family: var(--font-mono); font-size: 9.5px; color: var(--fg); background: color-mix(in srgb, var(--bg) 62%, transparent); padding: 0 4px; border-radius: 3px; white-space: nowrap; pointer-events: none; transform: translateY(-8px); }
+.cellname small { color: var(--muted); margin-left: 4px; font-size: 9px; }
+
+/* ---------- photo mode, loader ---------- */
+.app.photo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "view"; }
+.app.photo > .top, .app.photo > .code-pane, .app.photo > .right, .app.photo > .sim { display: none; }
+.app.photo .viewport > .overlay:not(.photohint):not(.tour), .app.photo #labels { display: none; }
+.photohint { top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 12px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.loader { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 16px; color: var(--muted); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; background: var(--bg); z-index: 2; }
+.loader .die { width: 46px; height: 46px; border: 2px solid var(--accent); border-radius: 5px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent) 0 2px, transparent 2px 5px); box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 40%, transparent); animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .45; transform: scale(.94); } }
+
 @media (max-width: 1100px) {
   .top .meta, .brand small { display: none; }
 }
@@ -289,6 +308,7 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
   .stats { font-size: 11px; }
   .layers { width: 170px; }
   .banner { bottom: 46px; }
+  .app.photo .viewport { height: 100svh; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
 </style>
@@ -304,6 +324,7 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
       <button type="button" data-view="activity" aria-pressed="false">Activity</button>
     </div>
     <button class="btn" id="btnTour" type="button">Guided tour</button>
+    <button class="btn" id="btnPhoto" type="button" title="Hide the panels (P)">Photo</button>
     <label class="switch" for="revMode"><input type="checkbox" id="revMode"> Hide source</label>
     <button class="btn" id="btnPalette" type="button" aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
   </header>
@@ -318,6 +339,8 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
   <main class="viewport" id="viewport" aria-label="3D chip view">
     <canvas id="gl"></canvas>
     <div id="labels"></div>
+    <div class="loader" id="loader"><span class="die" aria-hidden="true"></span>Loading the die</div>
+    <div class="overlay photohint" id="photoHint" hidden>Photo mode · drag to orbit · <kbd>P</kbd> or <kbd>Esc</kbd> to exit</div>
     <dl class="overlay stats" id="stats"></dl>
     <div class="overlay layers" id="layers">
       <button type="button" id="layersToggle" aria-expanded="true">Layers <span aria-hidden="true">▾</span></button>
@@ -329,6 +352,8 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
         <label for="ly-cell"><input type="checkbox" id="ly-cell" data-layer="cell" checked> cells <i class="sw" style="background:var(--adder)"></i></label>
         <label for="ly-pkg"><input type="checkbox" id="ly-pkg" data-layer="pkg" checked> package <i class="sw" style="background:var(--accent)"></i></label>
         <div class="ex"><span><label for="explode" style="cursor:default">Exploded view</label><kbd>X</kbd></span><input type="range" id="explode" min="0" max="100" value="0"></div>
+        <label for="fxLens"><input type="checkbox" id="fxLens" checked> Macro lens</label>
+        <label for="fxHQ"><input type="checkbox" id="fxHQ" checked> High quality</label>
       </div>
     </div>
     <div class="overlay legend" id="legend"></div>
@@ -336,6 +361,7 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
     <div class="overlay tour" id="tour" hidden></div>
     <div class="overlay tip" id="tip" hidden></div>
     <button class="overlay skip" id="skipIntro" type="button" hidden>Skip intro</button>
+    <div class="titlecard" id="titleCard" hidden><b>Decap</b><span>The IDE where the silicon is the source</span></div>
   </main>
 
   <aside class="pane right" aria-label="Inspector, analysis, surgery and guide">
@@ -415,7 +441,7 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); bor
   <div class="box">
     <input id="palInput" autocomplete="off" placeholder="Type a command, a cell name or a line number…" aria-label="Command">
     <ul id="palList" role="listbox"></ul>
-    <div class="foot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span><span><kbd>Space</kbd> run/pause</span><span><kbd>.</kbd> step</span><span><kbd>F12</kbd> go to source</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> views</span></div>
+    <div class="foot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span><span><kbd>Space</kbd> run/pause</span><span><kbd>.</kbd> step</span><span><kbd>F12</kbd> go to source</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> views</span><span><kbd>P</kbd> photo mode</span></div>
   </div>
 </div>
 
@@ -433,6 +459,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -887,14 +914,15 @@ const resolveNet = (name) => {
 
 /* ================= 3D scene ================= */
 const viewport = $("#viewport");
-let renderer, scene, camera, controls, labelRenderer, composer, bloom, chip, lid, lidMat;
+let renderer, scene, camera, controls, labelRenderer, composer, bloom, lensPass, chip, lid, lidMat, ripple, beam, dust, fumes, keyLight, scan;
 const L = {};
-let mLogic, mTop, mPoly, mPhys, mGhost, mMet1, mMet2, mVia, gM1, gM2, gVia, mPulse, selBox, hovBox, faultRing;
-let logicList = [], physList = [], polyOwner = [], segs = [], m1Segs = [], m2Segs = [], routes = {};
+let mLogic, mTop, mPoly, mDiff, mCont, mLi, mPhys, mGhost, mMet1, mMet2, mVia, gM1, gM2, gVia, mPulse, selBox, hovBox, faultRing;
+let logicList = [], physList = [], polyOwner = [], diffOwner = [], contOwner = [], liOwner = [], segs = [], m1Segs = [], m2Segs = [], routes = {};
 const bondWires = [], pinEls = {}, layerLabels = [];
+let cellLabels = [];
 let tagObj = null, pulses = [], events = [], dirty = true, grow = null;
 const fly = { t: 1, fromP: new THREE.Vector3(), toP: new THREE.Vector3(), fromT: new THREE.Vector3(), toT: new THREE.Vector3() };
-const intro = { on: false, t0: 0, dur: 2800, fromP: new THREE.Vector3(0, 62, 70), toP: new THREE.Vector3(), toT: new THREE.Vector3() };
+const intro = { on: false, t0: 0, dur: 4600, fromP: new THREE.Vector3(0, 62, 70), toP: new THREE.Vector3(), toT: new THREE.Vector3() };
 const EXPLODE_IDX = { pkg: 0, sub: 0, cell: 1, poly: 2, m1: 3, via: 4, m2: 5 };
 const Y = { cellTop: 0.42, poly: 0.45, m1: 0.66, via: 0.75, m2: 0.84 };
 
@@ -930,6 +958,58 @@ function drawMarking(g, w, h, big) {
   if (big) { g.beginPath(); g.arc(80, 70, 22, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.55)"; g.fill(); g.strokeStyle = "rgba(150,158,170,.25)"; g.lineWidth = 3; g.stroke(); }
 }
 
+/* GLSL: value-noise fbm, used by the acid-etch dissolve */
+const NOISE_GLSL = `
+float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float vn3(vec3 x) {
+  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h3(i), h3(i + vec3(1.0, 0.0, 0.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 0.0)), h3(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+             mix(mix(h3(i + vec3(0.0, 0.0, 1.0)), h3(i + vec3(1.0, 0.0, 1.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 1.0)), h3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z);
+}
+float fbm3(vec3 p) { float a = 0.5, s = 0.0; for (int k = 0; k < 4; k++) { s += a * vn3(p); p = p * 2.03 + 11.7; a *= 0.5; } return s / 0.9375; }`;
+
+/* Macro lens: tilt-shift blur away from the focus band, slight chromatic fringing, vignette, film grain */
+const LENS_FRAG = `
+uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uTime; uniform float uTilt;
+varying vec2 vUv;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec2 uv = vUv, c = uv - 0.5;
+  float r2 = dot(c, c), ca = 0.006 * r2;
+  vec3 sharp = vec3(texture2D(tDiffuse, uv + c * ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - c * ca).b);
+  float b = uTilt * smoothstep(0.16, 0.5, abs(uv.y - 0.52));
+  vec3 col = sharp;
+  if (b > 0.002) {
+    vec3 acc = vec3(0.0); float ws = 0.0; vec2 px = b * 3.0 / uRes * max(1.0, uRes.y / 900.0);
+    for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) {
+      float w = exp(-float(i * i + j * j) / 4.5);
+      acc += texture2D(tDiffuse, uv + vec2(float(i), float(j)) * px).rgb * w; ws += w;
+    }
+    col = mix(sharp, acc / ws, smoothstep(0.0, 0.25, b));
+  }
+  col *= mix(1.0, 0.52, smoothstep(0.12, 0.62, r2 * 1.6));
+  col += (hash(uv * uRes + fract(uTime) * 91.7) - 0.5) * 0.005 * (0.3 + dot(col, vec3(0.33)));
+  gl_FragColor = vec4(max(col, 0.0), 1.0);
+}`;
+
+const dissolve = { uProg: { value: 2 }, uEdge: { value: new THREE.Color(1.0, 0.4, 0.08).multiplyScalar(4.5) } };
+function withDissolve(m) {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uProg = dissolve.uProg; sh.uniforms.uEdge = dissolve.uEdge;
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vDW;")
+      .replace("#include <project_vertex>", "#include <project_vertex>\nvDW = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vDW;\nuniform float uProg;\nuniform vec3 uEdge;\n" + NOISE_GLSL)
+      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\nfloat dn = fbm3(vDW * 0.17 + vec3(0.0, 0.0, 3.1));\nif (dn < uProg) discard;\ntotalEmissiveRadiance += uEdge * (1.0 - smoothstep(0.0, 0.028, dn - uProg));");
+  };
+  m.customProgramCacheKey = () => "decap-dissolve";
+  return m;
+}
+const softDot = () => canvasTex(64, 64, (g, w, h) => {
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.35, "rgba(255,255,255,.35)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.clearRect(0, 0, w, h); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+});
+
 function initGL() {
   try {
     renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: false, powerPreference: "high-performance" });
@@ -938,37 +1018,52 @@ function initGL() {
     return false;
   }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene = new THREE.Scene();
   const bg = new THREE.Color(css("--bg"));
-  scene.background = bg; scene.fog = new THREE.FogExp2(bg, 0.0098);
+  scene.background = bg; scene.fog = new THREE.FogExp2(bg, 0.0085);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   camera = new THREE.PerspectiveCamera(36, 1, 0.1, 600);
   camera.position.copy(intro.fromP);
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.47; controls.minDistance = 3; controls.maxDistance = 140;
+  controls.autoRotateSpeed = 0.45;
   labelRenderer = new CSS2DRenderer({ element: $("#labels") });
   composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, camera));
-  bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.7, 0.45, 1.0);
+  bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.75, 0.5, 1.0);
   composer.addPass(bloom);
+  lensPass = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uTime: { value: 0 }, uTilt: { value: 1 } },
+    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: LENS_FRAG,
+  });
+  composer.addPass(lensPass);
   composer.addPass(new OutputPass());
 
-  scene.add(new THREE.AmbientLight(0x9fb2d6, 0.32));
-  const key = new THREE.DirectionalLight(0xfff1dc, 1.55); key.position.set(-24, 44, 30); scene.add(key);
-  const rim = new THREE.DirectionalLight(0x6a8cff, 0.6); rim.position.set(30, 14, -36); scene.add(rim);
+  scene.add(new THREE.AmbientLight(0x9fb2d6, 0.28));
+  const key = new THREE.DirectionalLight(0xfff1dc, 1.75); key.position.set(-24, 44, 30);
+  key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { left: -52, right: 52, top: 44, bottom: -44, near: 10, far: 150 }); key.shadow.camera.updateProjectionMatrix();
+  key.shadow.bias = -0.0004; key.shadow.normalBias = 0.03;
+  scene.add(key); keyLight = key;
+  const rim = new THREE.DirectionalLight(0x6a8cff, 0.65); rim.position.set(30, 14, -36); scene.add(rim);
+  const desk = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x0a0e14, roughness: 0.6, metalness: 0.45, envMapIntensity: 0.3 }));
+  desk.rotation.x = -Math.PI / 2; desk.position.y = -2.9; desk.receiveShadow = true; scene.add(desk);
 
   chip = new THREE.Group(); chip.position.set(-DIE_W / 2, 0, -DIE_H / 2); scene.add(chip);
   for (const k of Object.keys(EXPLODE_IDX)) { L[k] = new THREE.Group(); chip.add(L[k]); }
   const box = new THREE.BoxGeometry(1, 1, 1);
   const std = (o = {}) => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.1, envMapIntensity: 0.55, ...o });
+  const irid = (o = {}) => new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.85, roughness: 0.22, iridescence: 0.9, iridescenceIOR: 1.5, iridescenceThicknessRange: [180, 640], envMapIntensity: 0.95, ...o });
   const glow = () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const add = (parent, geo, mat, sx, sy, sz, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); parent.add(m); return m; };
 
   /* --- package: epoxy body, acid-etched cavity, lead frame, gull-wing legs, laser marking --- */
   const epoxy = std({ color: 0x0b0e13, roughness: 0.86, metalness: 0, envMapIntensity: 0.25 });
   const PW = DIE_W + 52, PD = DIE_H + 40;
-  add(L.pkg, box, epoxy, PW, 3, PD, DIE_W / 2, -1.9, DIE_H / 2);
+  add(L.pkg, box, epoxy, PW, 2.4, PD, DIE_W / 2, -1.6, DIE_H / 2);
   const etch = canvasTex(512, 512, (g, w, h) => {
     const gr = g.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w * 0.62);
     gr.addColorStop(0, "#1d232d"); gr.addColorStop(0.7, "#141921"); gr.addColorStop(1, "#0d1016");
@@ -994,13 +1089,12 @@ function initGL() {
   for (const [name, p] of Object.entries(pads)) {
     const isPwr = p.dir === "pwr";
     add(L.pkg, box, goldMat, isPwr ? 1.2 : 1.5, 0.14, isPwr ? 1.5 : 1.1, p.x, 0.07, p.z);
-    let lead, legAt;
+    let lead;
     if (!isPwr) {
       const zl = DIE_H / 2 + (p.z - DIE_H / 2) * 1.7, xin = p.side < 0 ? -8 : DIE_W + 8, xcav = p.side < 0 ? -13 : DIE_W + 13;
       add(L.pkg, box, leadMat, Math.abs(xcav - xin), 0.07, 0.85, (xin + xcav) / 2, -0.35, zl);
       lead = new THREE.Vector3(xin + p.side * 0.4, -0.31, zl);
-      legAt = [p.side < 0 ? -26 : DIE_W + 26, zl, p.side];
-      legs(...legAt);
+      legs(p.side < 0 ? -26 : DIE_W + 26, zl, p.side);
     } else {
       const zin = p.vz < 0 ? -6.5 : DIE_H + 6.5, zcav = p.vz < 0 ? -9 : DIE_H + 9;
       add(L.pkg, box, leadMat, 0.85, 0.07, Math.abs(zcav - zin), p.x, -0.35, (zin + zcav) / 2);
@@ -1010,8 +1104,7 @@ function initGL() {
     const out = lead.clone().sub(a).setY(0).normalize();
     const curve = new THREE.CubicBezierCurve3(a, a.clone().add(out.clone().multiplyScalar(0.6)).setY(3.4), lead.clone().sub(out.clone().multiplyScalar(1.4)).setY(1.8), lead);
     const wm = std({ color: 0xe6b95c, metalness: 0.95, roughness: 0.2, envMapIntensity: 1, emissive: new THREE.Color(css("--high")), emissiveIntensity: 0 });
-    const wire = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.05, 6, false), wm);
-    L.pkg.add(wire);
+    L.pkg.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.05, 8, false), wm));
     if (!isPwr) bondWires.push({ net: portNet(name), mat: wm });
     const el = document.createElement("div"); el.className = "pinlabel" + (isPwr ? " pwr" : ""); el.textContent = name;
     if (!isPwr) { el.title = p.dir === "out" ? `Output ${name}: click for its fan-in cone` : `Input ${name}: click for its fan-out cone`; el.addEventListener("click", () => selectPort(name)); pinEls[name] = el; }
@@ -1019,39 +1112,44 @@ function initGL() {
     o.position.set(isPwr ? p.x : p.x + p.side * 2.4, 0.7, isPwr ? p.z + p.vz * 1.6 : p.z);
     L.pkg.add(o);
   }
-  /* lid used by the decap intro */
-  lidMat = new THREE.MeshStandardMaterial({ color: 0x0b0e13, roughness: 0.8, transparent: true, opacity: 1, envMapIntensity: 0.3 });
-  const lidTop = new THREE.MeshStandardMaterial({ map: canvasTex(1024, 512, (g, w, h) => drawMarking(g, w, h, true)), roughness: 0.8, transparent: true, opacity: 1, envMapIntensity: 0.3 });
+  /* lid: the epoxy over the cavity, eaten away by the acid during the intro */
+  lidMat = withDissolve(new THREE.MeshStandardMaterial({ color: 0x0b0e13, roughness: 0.8, envMapIntensity: 0.3 }));
+  const lidTop = withDissolve(new THREE.MeshStandardMaterial({ map: canvasTex(1024, 512, (g, w, h) => drawMarking(g, w, h, true)), roughness: 0.8, envMapIntensity: 0.3 }));
   lid = new THREE.Mesh(box, [lidMat, lidMat, lidTop, lidMat, lidMat, lidMat]);
   lid.scale.set(DIE_W + 26, 3.2, DIE_H + 18); lid.position.set(DIE_W / 2, 1.2, DIE_H / 2); lid.visible = false; chip.add(lid);
   document.fonts?.ready.then(() => { mark.userData.redraw(); lidTop.map.userData.redraw(); });
 
-  /* --- die: substrate, seal ring, core, wells, rails, power ring --- */
-  add(L.sub, box, std({ color: 0x1a2330, roughness: 0.45, metalness: 0.45 }), DIE_W + 9, 0.3, DIE_H + 8, DIE_W / 2, -0.15, DIE_H / 2);
-  const seal = std({ color: 0x8590a2, metalness: 0.85, roughness: 0.3 });
+  /* --- die: oxide-coated silicon with thin-film colour, seal ring, core, wells, rails, power ring --- */
+  add(L.sub, box, new THREE.MeshPhysicalMaterial({ color: 0x151d29, metalness: 0.5, roughness: 0.3, iridescence: 1, iridescenceIOR: 1.9, iridescenceThicknessRange: [280, 1150], envMapIntensity: 1 }),
+    DIE_W + 9, 0.3, DIE_H + 8, DIE_W / 2, -0.15, DIE_H / 2);
+  const seal = irid({ color: 0x9aa4b4 });
   add(L.sub, box, seal, DIE_W + 8, 0.08, 0.25, DIE_W / 2, 0.04, -3.6); add(L.sub, box, seal, DIE_W + 8, 0.08, 0.25, DIE_W / 2, 0.04, DIE_H + 3.6);
   add(L.sub, box, seal, 0.25, 0.08, DIE_H + 7.2, -4.1, 0.04, DIE_H / 2); add(L.sub, box, seal, 0.25, 0.08, DIE_H + 7.2, DIE_W + 4.1, 0.04, DIE_H / 2);
-  add(L.sub, box, std({ color: 0x1d2837, roughness: 0.75 }), DIE_W, 0.04, DIE_H, DIE_W / 2, 0.02, DIE_H / 2);
+  add(L.sub, box, new THREE.MeshPhysicalMaterial({ color: 0x1b2534, roughness: 0.55, metalness: 0.2, iridescence: 0.5, iridescenceIOR: 1.7, iridescenceThicknessRange: [300, 900], envMapIntensity: 0.7 }),
+    DIE_W, 0.04, DIE_H, DIE_W / 2, 0.02, DIE_H / 2);
   const well = std({ color: 0x22314a, roughness: 0.8 });
   for (let r = 0; r < ROWS; r++) add(L.sub, box, well, DIE_W, 0.02, ROW_H / 2 - 0.1, DIE_W / 2, 0.045, r * ROW_H + (r % 2 ? ROW_H * 0.75 : ROW_H * 0.25));
-  for (let r = 0; r <= ROWS; r++) add(L.m1, box, std({ color: r % 2 ? 0x3d5f9c : 0x324c80, metalness: 0.7, roughness: 0.3 }), DIE_W, 0.05, 0.26, DIE_W / 2, 0.42, r * ROW_H);
-  const ring = std({ color: 0x6d5a92, metalness: 0.75, roughness: 0.3 });
+  for (let r = 0; r <= ROWS; r++) add(L.m1, box, irid({ color: r % 2 ? 0x3d5f9c : 0x324c80 }), DIE_W, 0.05, 0.26, DIE_W / 2, 0.42, r * ROW_H);
+  const ring = irid({ color: 0x7a63a8 });
   add(L.m2, box, ring, DIE_W + 3.4, 0.05, 0.6, DIE_W / 2, Y.m2, -1.4); add(L.m2, box, ring, DIE_W + 3.4, 0.05, 0.6, DIE_W / 2, Y.m2, DIE_H + 1.4);
   add(L.m2, box, ring, 0.6, 0.05, DIE_H + 3.4, -1.4, Y.m2, DIE_H / 2); add(L.m2, box, ring, 0.6, 0.05, DIE_H + 3.4, DIE_W + 1.4, Y.m2, DIE_H / 2);
 
-  /* --- instanced layers --- */
+  /* --- instanced layers: cell bodies with diffusion, poly gates, contacts and li1, then metal --- */
   const inst = (geo, mat, n, parent) => { const m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; m.setColorAt(0, new THREE.Color(1, 1, 1)); m.count = 0; parent.add(m); return m; };
-  mLogic = inst(box, std({ roughness: 0.36, metalness: 0.18 }), 96, L.cell);
+  mLogic = inst(box, new THREE.MeshPhysicalMaterial({ roughness: 0.45, metalness: 0.1, clearcoat: 0.7, clearcoatRoughness: 0.25, envMapIntensity: 0.6 }), 96, L.cell);
+  mDiff = inst(box, std({ roughness: 0.5, metalness: 0.05 }), 200, L.cell);
   mTop = inst(box, glow(), 96, L.cell);
   mPhys = inst(box, std({ roughness: 0.8 }), 400, L.cell);
   mGhost = inst(box, new THREE.MeshStandardMaterial({ color: 0xef6b73, transparent: true, opacity: 0.3, depthWrite: false, emissive: 0x5a1218 }), 48, L.cell);
   mPoly = inst(box, std({ roughness: 0.35, metalness: 0.2 }), 1200, L.poly);
-  mMet1 = inst(box, std({ metalness: 0.8, roughness: 0.26 }), 1000, L.m1);
-  gM1 = inst(box, glow(), 1000, L.m1);
-  mVia = inst(box, std({ color: 0xc9d3e3, metalness: 0.9, roughness: 0.2 }), 1000, L.via);
-  gVia = inst(box, glow(), 1000, L.via);
-  mMet2 = inst(box, std({ metalness: 0.8, roughness: 0.26 }), 1000, L.m2);
-  gM2 = inst(box, glow(), 1000, L.m2);
+  mCont = inst(box, std({ metalness: 0.95, roughness: 0.2, envMapIntensity: 0.9 }), 1800, L.poly);
+  mLi = inst(box, std({ metalness: 0.5, roughness: 0.35 }), 120, L.poly);
+  mMet1 = inst(box, irid(), 1600, L.m1);
+  gM1 = inst(box, glow(), 1600, L.m1);
+  mVia = inst(box, std({ color: 0xc9d3e3, metalness: 0.9, roughness: 0.2 }), 1600, L.via);
+  gVia = inst(box, glow(), 1600, L.via);
+  mMet2 = inst(box, irid(), 1600, L.m2);
+  gM2 = inst(box, glow(), 1600, L.m2);
   mPulse = inst(new THREE.SphereGeometry(1, 12, 8), glow(), 2000, chip);
   const edges = new THREE.EdgesGeometry(box);
   selBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: new THREE.Color(css("--accent")).multiplyScalar(2.4), toneMapped: false })); selBox.visible = false; L.cell.add(selBox);
@@ -1059,12 +1157,58 @@ function initGL() {
   faultRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 8, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(css("--del")).multiplyScalar(2.6), toneMapped: false }));
   faultRing.rotation.x = -Math.PI / 2; faultRing.visible = false; chip.add(faultRing);
 
+  /* --- light effects: clock ripple across the die, selection beam, dust motes, decap fumes --- */
+  ripple = new THREE.Mesh(new THREE.PlaneGeometry(DIE_W + 8, DIE_H + 7), new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uT: { value: 99 }, uO: { value: new THREE.Vector2() }, uC: { value: new THREE.Color(css("--clock")) } },
+    vertexShader: "varying vec2 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }",
+    fragmentShader: "uniform float uT; uniform vec2 uO; uniform vec3 uC; varying vec2 vW; void main() { float d = distance(vW, uO); float ring = exp(-pow((d - uT * 34.0) * 0.8, 2.0)) * exp(-uT * 2.4); float core = exp(-d * 0.3) * exp(-uT * 7.0) * 0.5; gl_FragColor = vec4(uC * (ring * 0.55 + core), 1.0); }",
+  }));
+  ripple.rotation.x = -Math.PI / 2; ripple.position.set(DIE_W / 2, 0.058, DIE_H / 2); L.sub.add(ripple);
+  beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 40, 1, true), new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { uC: { value: new THREE.Color(css("--accent")) }, uTime: { value: 0 } },
+    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: "uniform vec3 uC; uniform float uTime; varying vec2 vUv; void main() { float a = pow(1.0 - vUv.y, 2.4) * 0.34 * (0.85 + 0.15 * sin(uTime * 3.0 - vUv.y * 14.0)); gl_FragColor = vec4(uC * a, 1.0); }",
+  }));
+  beam.visible = false; L.cell.add(beam);
+  scan = new THREE.Mesh(new THREE.PlaneGeometry(DIE_H + 5, 4), new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { uC: { value: new THREE.Color(css("--accent")) } },
+    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: "uniform vec3 uC; varying vec2 vUv; void main() { float edge = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x); float a = (pow(1.0 - vUv.y, 3.0) * 0.5 + exp(-vUv.y * 40.0) * 2.2) * edge; gl_FragColor = vec4(uC * a, 1.0); }",
+  }));
+  scan.rotation.y = Math.PI / 2; scan.position.set(-3, 2, DIE_H / 2); scan.visible = false; chip.add(scan);
+  const dot = softDot();
+  const DUST_N = 240, dpos = new Float32Array(DUST_N * 3), dbase = new Float32Array(DUST_N * 4);
+  for (let i = 0; i < DUST_N; i++) {
+    dbase[i * 4] = (Math.random() - 0.5) * (DIE_W + 34); dbase[i * 4 + 1] = 0.8 + Math.random() * 16;
+    dbase[i * 4 + 2] = (Math.random() - 0.5) * (DIE_H + 30); dbase[i * 4 + 3] = Math.random() * 6.28;
+    dpos.set([dbase[i * 4], dbase[i * 4 + 1], dbase[i * 4 + 2]], i * 3);
+  }
+  const dgeo = new THREE.BufferGeometry(); dgeo.setAttribute("position", new THREE.BufferAttribute(dpos, 3));
+  dust = new THREE.Points(dgeo, new THREE.PointsMaterial({ size: 0.2, map: dot, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(1, 0.9, 0.75).multiplyScalar(0.5) }));
+  dust.frustumCulled = false; dust.userData.base = dbase; scene.add(dust);
+  const FN = 420, fgeo = new THREE.BufferGeometry();
+  fgeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(FN * 3), 3));
+  fgeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(FN * 3), 3));
+  fumes = new THREE.Points(fgeo, new THREE.PointsMaterial({ size: 2.6, map: dot, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  fumes.frustumCulled = false; fumes.visible = false;
+  fumes.userData = { n: FN, next: 0, alive: false, pos: fgeo.attributes.position.array, col: fgeo.attributes.color.array, vel: new Float32Array(FN * 3), life: new Float32Array(FN), max: new Float32Array(FN) };
+  chip.add(fumes);
+
   const tagEl = document.createElement("div"); tagEl.className = "celltag"; tagEl.hidden = true;
   tagObj = new CSS2DObject(tagEl); L.cell.add(tagObj);
-  for (const [k, text] of [["cell", "cells · transistors in diffusion"], ["poly", "poly · transistor gates"], ["m1", "met1 · horizontal wires"], ["via", "via1 · vertical links"], ["m2", "met2 · vertical wires"]]) {
+  for (const [k, text] of [["cell", "cells · transistors in diffusion"], ["poly", "poly · li1 · contacts"], ["m1", "met1 · horizontal wires"], ["via", "via1 · vertical links"], ["m2", "met2 · vertical wires"]]) {
     const el = document.createElement("div"); el.className = "layerlabel"; el.textContent = text; el.style.opacity = 0;
     const o = new CSS2DObject(el); o.position.set(-5.2, Y[k === "cell" ? "cellTop" : k], -1.6); L[k].add(o); layerLabels.push(el);
   }
+
+  /* soft shadows: every lit, opaque surface casts and receives */
+  chip.traverse((o) => {
+    if (!o.isMesh || Array.isArray(o.material) || !o.material.isMeshStandardMaterial || o.material.transparent) return;
+    o.castShadow = true; o.receiveShadow = true;
+  });
 
   new ResizeObserver(resize).observe(viewport); resize();
   bindPointer();
@@ -1077,6 +1221,7 @@ function resize() {
   const w = viewport.clientWidth, h = viewport.clientHeight;
   renderer.setSize(w, h, false); composer.setSize(w, h); labelRenderer.setSize(w, h);
   bloom.resolution.set(w, h);
+  lensPass.uniforms.uRes.value.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
   camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix();
 }
 
@@ -1094,6 +1239,13 @@ function pinPos(id, pin) {
 
 function buildRoutes() {
   segs = []; routes = {};
+  const tracks = new Map(), rowUse = new Map();
+  const trackZ = (net, z) => {
+    const row = Math.max(0, Math.min(ROWS - 1, Math.floor(z / ROW_H))), key = row + "|" + net;
+    if (!tracks.has(key)) { const n = rowUse.get(row) ?? 0; rowUse.set(row, n + 1); tracks.set(key, n); }
+    const i = tracks.get(key), slot = (i % 2 ? 1 : -1) * Math.ceil(i / 2);
+    return (row + 0.5) * ROW_H + Math.max(-8, Math.min(8, slot)) * 0.14;
+  };
   for (const net of state.d.nets) {
     let D;
     if (PORT_NETS.includes(net)) D = { x: IO[net].x + 0.75, z: IO[net].z };
@@ -1104,10 +1256,14 @@ function buildRoutes() {
     if (net === "tc") targets.push({ x: IO.tc.x - 0.75, z: IO.tc.z, sink: "pad" });
     routes[net] = [];
     for (const T of targets) {
-      routes[net].push({ D, T, sink: T.sink, len: Math.abs(T.z - D.z) + Math.abs(T.x - D.x) });
-      if (Math.abs(T.z - D.z) > 0.01) segs.push({ net, layer: 2, x1: D.x, z1: D.z, x2: D.x, z2: T.z });
-      if (Math.abs(T.x - D.x) > 0.01) segs.push({ net, layer: 1, x1: D.x, z1: T.z, x2: T.x, z2: T.z });
-      segs.push({ net, layer: 0, x1: D.x, z1: T.z, x2: D.x, z2: T.z });
+      const tz = trackZ(net, T.z);
+      const pts = [D, { x: D.x, z: tz }, { x: T.x, z: tz }, T], legs = [2, 1, 2];
+      let len = 0; for (let k = 0; k < 3; k++) len += Math.abs(pts[k + 1].x - pts[k].x) + Math.abs(pts[k + 1].z - pts[k].z);
+      routes[net].push({ pts, legs, len, sink: T.sink });
+      if (Math.abs(tz - D.z) > 0.01) segs.push({ net, layer: 2, x1: D.x, z1: D.z, x2: D.x, z2: tz });
+      if (Math.abs(T.x - D.x) > 0.01) segs.push({ net, layer: 1, x1: D.x, z1: tz, x2: T.x, z2: tz });
+      if (Math.abs(T.z - tz) > 0.01) segs.push({ net, layer: 2, x1: T.x, z1: tz, x2: T.x, z2: T.z });
+      segs.push({ net, layer: 0, x1: D.x, z1: tz }, { net, layer: 0, x1: T.x, z1: tz });
     }
   }
 }
@@ -1119,19 +1275,22 @@ function growFactor(id, now) {
   return t >= 1 ? 1 : 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 function layoutLogic(now = performance.now()) {
-  const P = state.placed.P; let pi = 0;
+  const P = state.placed.P; let pi = 0, di = 0, ci = 0, li = 0;
   logicList.forEach((id, i) => {
     const p = P[id], g = Math.max(0.001, growFactor(id, now));
-    const cx = (p.x + p.w / 2) * SITE, cz = (p.row + 0.5) * ROW_H, w = p.w * SITE - 0.1, dz = ROW_H - 0.62, h = 0.36 * g;
+    const x0 = p.x * SITE, wAll = p.w * SITE, cx = x0 + wAll / 2, cz = (p.row + 0.5) * ROW_H, w = wAll - 0.1, dz = ROW_H - 0.62, h = 0.3 * g, yT = 0.06 + h;
     setBox(mLogic, i, cx, 0.06 + h / 2, cz, w, h, dz);
-    const on = shown[state.d.byId[id].out] === 1 && g > 0.98;
-    if (on) setBox(mTop, i, cx, 0.06 + h + 0.015, cz - dz / 2 + 0.24, w - 0.2, 0.03, 0.26);
+    for (const s of [-1, 1]) { setBox(mDiff, di, cx, yT + 0.008, cz + s * dz * 0.22, w - 0.34, 0.016 * g, dz * 0.3); diffOwner[di++] = [id, s]; }
+    const on = stripOn(id) && g > 0.98;
+    if (on) setBox(mTop, i, cx, yT + 0.02, cz - dz / 2 + 0.17, w - 0.2, 0.03, 0.2);
     else setBox(mTop, i, cx, -9, cz, 0.0001, 0.0001, 0.0001);
-    const n = Math.max(2, Math.round(p.w / 2.2));
-    for (let k = 0; k < n; k++) { setBox(mPoly, pi, (p.x + (k + 0.5) * (p.w / n)) * SITE, 0.06 + h + 0.03, cz, 0.09, 0.04 * g, ROW_H - 1.0); polyOwner[pi++] = id; }
+    const n = Math.max(2, Math.round(p.w / 2.2)), fw = wAll / n, cw = (wAll - 0.5) / n;
+    for (let k = 0; k < n; k++) { setBox(mPoly, pi, x0 + (k + 0.5) * fw, yT + 0.03, cz, 0.09, 0.04 * g, ROW_H - 1.0); polyOwner[pi++] = id; }
+    for (let k = 0; k <= n; k++) for (const s of [-1, 1]) { setBox(mCont, ci, x0 + 0.25 + k * cw, yT + 0.04, cz + s * dz * 0.22, 0.11, 0.05 * g, 0.11); contOwner[ci++] = id; }
+    setBox(mLi, li, x0 + 0.25 + n * cw, yT + 0.075, cz, 0.15, 0.02 * g, dz * 0.62); liOwner[li++] = id;
   });
-  mLogic.count = logicList.length; mTop.count = logicList.length; mPoly.count = pi;
-  mLogic.instanceMatrix.needsUpdate = mTop.instanceMatrix.needsUpdate = mPoly.instanceMatrix.needsUpdate = true;
+  mLogic.count = mTop.count = logicList.length; mPoly.count = pi; mDiff.count = di; mCont.count = ci; mLi.count = li;
+  for (const m of [mLogic, mTop, mPoly, mDiff, mCont, mLi]) m.instanceMatrix.needsUpdate = true;
 }
 
 function rebuildScene() {
@@ -1139,6 +1298,7 @@ function rebuildScene() {
   const { phys } = state.placed;
   logicList = state.d.cells.map((c) => c.id);
   polyOwner = [];
+  buildCellLabels();
   layoutLogic();
   physList = phys;
   phys.forEach((p, i) => setBox(mPhys, i, (p.x + p.w / 2) * SITE, 0.1, (p.row + 0.5) * ROW_H, p.w * SITE - 0.06, p.type.startsWith("tap") ? 0.2 : 0.12, ROW_H - 0.62));
@@ -1159,11 +1319,12 @@ function rebuildScene() {
   dirty = true;
 }
 
-const C = {};
+const C = {}, cellCol = new Map();
 function palette() {
   for (const k of ["reg", "adder", "detect", "clock", "met1", "met2", "high", "fall", "add", "del", "poly", "accent"]) C[k] = new THREE.Color(css("--" + k));
   C.white = new THREE.Color(0xffffff); C.decap = new THREE.Color(0x253141); C.fill = new THREE.Color(0x1c2532); C.tap = new THREE.Color(0x3a4c66);
   C.ramp = RAMP.map((h) => new THREE.Color(h));
+  C.contact = new THREE.Color(0xc9d0dc); C.li = new THREE.Color(0x8f86c9);
 }
 const RAMP = ["#123257", "#16707e", "#2fb3a6", "#e2b04e", "#f0703a", "#ffe1bd"];
 const RAMP_CSS = `linear-gradient(90deg, ${RAMP.join(", ")})`;
@@ -1209,11 +1370,18 @@ function refreshColors() {
     if (hl && !hl.has(id)) col.multiplyScalar(0.22);
     if (id === state.selected) col.lerp(C.white, 0.3);
     else if (id === state.hover) col.lerp(C.white, 0.16);
-    mLogic.setColorAt(i, col);
-    gcol.copy(c.type.startsWith("clkbuf") ? C.clock : C.high).multiplyScalar(hl && !hl.has(id) ? 0.35 : 1.6);
+    cellCol.set(id, col.clone());
+    mLogic.setColorAt(i, col.multiplyScalar(0.72));
+    if (view === "timing") ramp((t.arr[c.out] ?? 0) / maxArr, gcol).multiplyScalar(2.4);
+    else if (view === "activity") ramp(c.type.startsWith("clkbuf") ? 1 : rate(c.out) / maxRate, gcol).multiplyScalar(2.4);
+    else gcol.copy(c.type.startsWith("clkbuf") ? C.clock : C.high).multiplyScalar(1.6);
+    if (hl && !hl.has(id)) gcol.multiplyScalar(0.22);
     mTop.setColorAt(i, gcol);
   });
   for (let i = 0; i < mPoly.count; i++) { col.copy(C.poly); if (hl && !hl.has(polyOwner[i])) col.multiplyScalar(0.3); mPoly.setColorAt(i, col); }
+  for (let i = 0; i < mDiff.count; i++) { const [id, s] = diffOwner[i]; col.copy(cellCol.get(id)).multiplyScalar(s < 0 ? 1.25 : 0.95); mDiff.setColorAt(i, col); }
+  for (let i = 0; i < mCont.count; i++) { col.copy(C.contact); if (hl && !hl.has(contOwner[i])) col.multiplyScalar(0.3); mCont.setColorAt(i, col); }
+  for (let i = 0; i < mLi.count; i++) { col.copy(C.li); if (hl && !hl.has(liOwner[i])) col.multiplyScalar(0.3); mLi.setColorAt(i, col); }
   physList.forEach((p, i) => { col.copy(p.type.startsWith("tap") ? C.tap : p.type.startsWith("decap") ? C.decap : C.fill); if (hl) col.multiplyScalar(0.6); mPhys.setColorAt(i, col); });
   let a = 0, b = 0, v = 0, ga = 0, gb = 0, gv = 0;
   for (const s of segs) {
@@ -1233,7 +1401,7 @@ function refreshColors() {
   }
   gM1.count = ga; gM2.count = gb; gVia.count = gv;
   [gM1, gM2, gVia].forEach((m) => { m.instanceMatrix.needsUpdate = true; });
-  [mLogic, mTop, mPoly, mPhys, mMet1, mMet2, mVia, gM1, gM2, gVia].forEach((m) => m.instanceColor && (m.instanceColor.needsUpdate = true));
+  [mLogic, mTop, mPoly, mDiff, mCont, mLi, mPhys, mMet1, mMet2, mVia, gM1, gM2, gVia].forEach((m) => m.instanceColor && (m.instanceColor.needsUpdate = true));
   for (const w of bondWires) w.mat.emissiveIntensity = shown[w.net] === 1 && view === "logic" && w.net !== "rst_n" ? 1.5 : 0;
   for (const [name, el] of Object.entries(pinEls)) el.classList.toggle("on", shown[portNet(name)] === 1);
   placeOutline(selBox, state.selected, 0.14);
@@ -1244,7 +1412,15 @@ function refreshColors() {
     tagObj.position.set((p.x + p.w / 2) * SITE, 1.0, (p.row + 0.5) * ROW_H);
     tag.textContent = cellName(state.selected); tag.hidden = false;
   } else tag.hidden = true;
-  placeFaultRing();
+  placeFaultRing(); placeBeam();
+}
+function placeBeam() {
+  if (!beam) return;
+  const p = state.selected && state.placed.P[state.selected];
+  if (!p) { beam.visible = false; return; }
+  beam.visible = true;
+  beam.scale.set(p.w * SITE * 0.5, 7, (ROW_H - 0.62) * 0.5);
+  beam.position.set((p.x + p.w / 2) * SITE, 0.42 + 3.5, (p.row + 0.5) * ROW_H);
 }
 function placeOutline(obj, id, pad) {
   const p = id && state.placed.P[id];
@@ -1282,6 +1458,7 @@ function scheduleTransitions(newVals, t0 = performance.now()) {
 }
 function clockPulse(t0) {
   const sc = motionScale(), hold = Math.max(120, 0.5 * sc);
+  triggerRipple(t0 + LIB.clkbuf_4.delay * sc);
   events.push({ t: t0, net: "clk", v: 1, pulse: true }, { t: t0 + LIB.clkbuf_4.delay * sc, net: "clk_buf", v: 1, pulse: true },
     { t: t0 + hold, net: "clk", v: 0 }, { t: t0 + hold + LIB.clkbuf_4.delay * sc, net: "clk_buf", v: 0 });
 }
@@ -1298,9 +1475,17 @@ function spawnNetPulses(net, v, onlySink = null, delay = 0) {
 }
 const PV = new THREE.Vector3();
 function routePoint(r, u) {
-  const dz = r.T.z - r.D.z, dx = r.T.x - r.D.x, adz = Math.abs(dz), dist = u * r.len;
-  if (dist <= adz) return PV.set(r.D.x, Y.m2 + 0.08 + L.m2.position.y, r.D.z + Math.sign(dz) * dist);
-  return PV.set(r.D.x + Math.sign(dx) * (dist - adz), Y.m1 + 0.08 + L.m1.position.y, r.T.z);
+  let dist = u * r.len;
+  for (let k = 0; k < r.legs.length; k++) {
+    const a = r.pts[k], b = r.pts[k + 1], l = Math.abs(b.x - a.x) + Math.abs(b.z - a.z);
+    if (dist <= l || k === r.legs.length - 1) {
+      const t = l > 0 ? Math.min(1, dist / l) : 1;
+      const y = (r.legs[k] === 2 ? Y.m2 + L.m2.position.y : Y.m1 + L.m1.position.y) + 0.08;
+      return PV.set(a.x + (b.x - a.x) * t, y, a.z + (b.z - a.z) * t);
+    }
+    dist -= l;
+  }
+  return PV;
 }
 const TRAIL = [[0, 0.2, 1], [0.07, 0.15, 0.7], [0.14, 0.1, 0.45], [0.21, 0.07, 0.25]];
 function updatePulses(now) {
@@ -1335,7 +1520,7 @@ function flyTo(ids, opts = {}) {
   if (!renderer) return;
   const box = new THREE.Box3();
   const list = ids && ids.length ? ids : null;
-  if (!list) box.set(new THREE.Vector3(-8, 0, -3), new THREE.Vector3(DIE_W + 8, 1, DIE_H + 3));
+  if (!list) box.set(new THREE.Vector3(-11, 0, -4), new THREE.Vector3(DIE_W + 12, 1, DIE_H + 4));
   else for (const id of list) {
     const p = state.placed.P[id]; if (!p) continue;
     box.expandByPoint(new THREE.Vector3(p.x * SITE, 0, p.row * ROW_H));
@@ -1363,27 +1548,30 @@ function startIntro() {
   intro.fromP.copy(intro.toT).add(new THREE.Vector3(0.12, 1, 0.42).normalize().multiplyScalar(intro.toP.distanceTo(intro.toT) * 1.18));
   if (reduceMotion) { camera.position.copy(intro.toP); controls.target.copy(intro.toT); return; }
   camera.position.copy(intro.fromP); controls.target.set(0, 0, 0);
-  lid.visible = true; lid.position.y = 1.2; lid.rotation.set(0, 0, 0); lidMat.opacity = 1; lid.material[2].opacity = 1;
-  intro.on = true; intro.t0 = performance.now() + 500;
-  $("#skipIntro").hidden = false;
+  lid.visible = true; dissolve.uProg.value = -0.1;
+  intro.on = true; intro.t0 = performance.now() + 700;
+  $("#skipIntro").textContent = "Decapping in fuming nitric acid · skip"; $("#skipIntro").hidden = false;
+  viewport.classList.add("intro"); $("#titleCard").hidden = false; $("#titleCard").classList.remove("out");
 }
 function endIntro() {
-  intro.on = false; lid.visible = false; $("#skipIntro").hidden = true;
+  intro.on = false; lid.visible = false; dissolve.uProg.value = 2; $("#skipIntro").hidden = true;
+  viewport.classList.remove("intro"); $("#titleCard").hidden = true;
   camera.position.copy(intro.toP); controls.target.copy(intro.toT);
 }
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-let lastCrit = 0;
-function tick(now) {
-  now = performance.now();
+let lastCrit = 0, lastFrame = performance.now(), lastInput = performance.now(), rippleT0 = -1e9, photo = false;
+const ORIGIN = new THREE.Vector3();
+function tick() {
+  const now = performance.now(), dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
   if (intro.on) {
     const u = Math.min(1, Math.max(0, (now - intro.t0) / intro.dur));
-    const lu = ease(Math.min(1, u * 1.35));
-    lid.position.y = 1.2 + lu * 18; lid.rotation.x = -lu * 0.22; lid.rotation.z = lu * 0.08;
-    const op = 1 - Math.max(0, (lu - 0.35) / 0.65);
-    lidMat.opacity = op; lid.material[2].opacity = op;
+    dissolve.uProg.value = -0.06 + 1.06 * Math.min(1, u / 0.84);
+    lid.visible = u < 0.88;
+    if (u > 0.03 && u < 0.78) spawnFumes(5);
+    if (u > 0.5) titleOut();
     camera.position.lerpVectors(intro.fromP, intro.toP, ease(u));
-    controls.target.lerpVectors(new THREE.Vector3(0, 0, 0), intro.toT, ease(u));
+    controls.target.lerpVectors(ORIGIN, intro.toT, ease(u));
     if (u >= 1) endIntro();
   } else if (fly.t < 1) {
     fly.t = Math.min(1, fly.t + 0.03);
@@ -1410,9 +1598,127 @@ function tick(now) {
   updatePulses(now);
   if (faultRing.visible) { const s = 1.1 + Math.sin(now / 180) * 0.18; faultRing.scale.set(s, s, s); }
   if (selBox.visible) selBox.material.color.copy(C.accent).multiplyScalar(1.8 + Math.sin(now / 260) * 0.6);
+  updateFumes(dt);
+  if (!reduceMotion) updateDust(now);
+  const rt = (now - rippleT0) / 1000;
+  ripple.material.uniforms.uT.value = rt < 0 ? 99 : rt;
+  beam.material.uniforms.uTime.value = now / 1000;
+  lensPass.uniforms.uTime.value = (now / 1000) % 100;
+  updateCellLabels(); trackPerf(dt);
+  controls.autoRotate = !reduceMotion && !intro.on && fly.t >= 1 && now - lastInput > (photo ? 3500 : 45000);
   controls.update();
   composer.render(); labelRenderer.render(scene, camera);
 }
+
+/* --- atmosphere: clock ripple, decap fumes, dust in the microscope light, photo mode --- */
+function triggerRipple(t) {
+  if (!ripple || reduceMotion) return;
+  const p = state.placed.P.clkbuf; if (!p) return;
+  rippleT0 = t; ripple.material.uniforms.uC.value.copy(C.clock);
+  ripple.material.uniforms.uO.value.set(chip.position.x + (p.x + p.w / 2) * SITE, chip.position.z + (p.row + 0.5) * ROW_H);
+}
+function spawnFumes(k) {
+  if (!fumes || reduceMotion) return;
+  const F = fumes.userData;
+  for (let j = 0; j < k; j++) {
+    const i = F.next; F.next = (F.next + 1) % F.n;
+    F.pos[i * 3] = -13 + Math.random() * (DIE_W + 26); F.pos[i * 3 + 1] = 2.9; F.pos[i * 3 + 2] = -9 + Math.random() * (DIE_H + 18);
+    F.vel[i * 3] = (Math.random() - 0.5) * 0.9; F.vel[i * 3 + 1] = 1.2 + Math.random() * 2.2; F.vel[i * 3 + 2] = (Math.random() - 0.5) * 0.9;
+    F.life[i] = 0; F.max[i] = 1.4 + Math.random() * 2.2;
+  }
+  fumes.visible = true; F.alive = true;
+}
+function updateFumes(dt) {
+  if (!fumes || !fumes.userData.alive) return;
+  const F = fumes.userData; let any = false;
+  for (let i = 0; i < F.n; i++) {
+    const c = i * 3;
+    if (F.life[i] >= F.max[i]) { F.col[c] = F.col[c + 1] = F.col[c + 2] = 0; continue; }
+    any = true; F.life[i] += dt;
+    F.pos[c] += F.vel[c] * dt; F.pos[c + 1] += F.vel[c + 1] * dt; F.pos[c + 2] += F.vel[c + 2] * dt;
+    F.vel[c] *= 0.99; F.vel[c + 2] *= 0.99;
+    const f = Math.sin(Math.PI * Math.min(1, F.life[i] / F.max[i])) * 0.24;
+    F.col[c] = 0.85 * f; F.col[c + 1] = 0.36 * f; F.col[c + 2] = 0.12 * f;
+  }
+  fumes.geometry.attributes.position.needsUpdate = true; fumes.geometry.attributes.color.needsUpdate = true;
+  if (!any) { F.alive = false; fumes.visible = false; }
+}
+function updateDust(now) {
+  const t = now / 1000, B = dust.userData.base, pa = dust.geometry.attributes.position.array;
+  for (let i = 0; i < B.length / 4; i++) {
+    const b = i * 4, ph = B[b + 3];
+    pa[i * 3] = B[b] + Math.sin(t * 0.13 + ph) * 1.4;
+    pa[i * 3 + 1] = B[b + 1] + Math.sin(t * 0.21 + ph * 1.7) * 0.6;
+    pa[i * 3 + 2] = B[b + 2] + Math.cos(t * 0.11 + ph * 0.7) * 1.4;
+  }
+  dust.geometry.attributes.position.needsUpdate = true;
+}
+function titleOut() { const t = $("#titleCard"); if (!t.classList.contains("out")) t.classList.add("out"); }
+function stripOn(id) {
+  const c = state.d.byId[id];
+  if (state.view === "timing") return state.d.t.path.includes(id) || state.d.drv[state.d.t.startNet] === id;
+  if (state.view === "activity") return state.cycles > 0 && (c.type.startsWith("clkbuf") || (state.toggles[c.out] ?? 0) / state.cycles > 0.02);
+  return shown[c.out] === 1;
+}
+function buildCellLabels() {
+  for (const o of cellLabels) L.cell.remove(o);
+  cellLabels = logicList.map((id) => {
+    const p = state.placed.P[id], el = document.createElement("div"); el.className = "cellname";
+    const o = new CSS2DObject(el); o.position.set((p.x + p.w / 2) * SITE, 0.66, (p.row + 0.5) * ROW_H); o.userData.id = id; o.visible = false;
+    L.cell.add(o); return o;
+  });
+  updateCellLabelText();
+}
+function updateCellLabelText() { for (const o of cellLabels) { const c = state.d.byId[o.userData.id]; if (c) o.element.innerHTML = `${esc(cellName(c.id))}<small>${c.type.replace(/_\d+$/, "")}</small>`; } }
+const LW = new THREE.Vector3();
+function updateCellLabels() {
+  const on = state.layers.cell && !intro.on;
+  for (const o of cellLabels) {
+    if (!on || o.userData.id === state.selected) { o.visible = false; continue; }
+    o.getWorldPosition(LW); o.visible = LW.distanceTo(camera.position) < 17;
+  }
+}
+function scanSweep(ms, reach, onProgress) {
+  return new Promise((resolve) => {
+    if (!scan || reduceMotion) { onProgress(1); resolve(); return; }
+    const t0 = performance.now(); scan.visible = true;
+    const f = () => {
+      const u = Math.min(1, (performance.now() - t0) / ms);
+      scan.position.x = -3 + u * reach * (DIE_W + 6); scan.position.y = 2 + L.cell.position.y;
+      onProgress(u);
+      if (u < 1) requestAnimationFrame(f); else { setTimeout(() => (scan.visible = false), 250); resolve(); }
+    };
+    f();
+  });
+}
+function flashDie(kind) {
+  if (!ripple || reduceMotion) return;
+  ripple.material.uniforms.uC.value.copy(C[kind]).multiplyScalar(1.6); ripple.material.uniforms.uO.value.set(0, 0); rippleT0 = performance.now();
+}
+let hq = true;
+const perf = { n: 0, sum: 0, done: false };
+function setQuality(on) {
+  hq = on; $("#fxHQ").checked = on;
+  if (!renderer) return;
+  const pr = on ? Math.min(devicePixelRatio, 2) : 1;
+  renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
+  keyLight.castShadow = on; lensPass.enabled = on && $("#fxLens").checked;
+  resize();
+}
+function trackPerf(dt) {
+  if (perf.done || intro.on || document.hidden) return;
+  perf.n++; perf.sum += dt;
+  if (perf.n >= 150) { perf.done = true; if (hq && perf.sum / perf.n > 0.04) setQuality(false); }
+}
+$("#fxHQ").addEventListener("change", (e) => { perf.done = true; setQuality(e.target.checked); });
+function setPhoto(on) {
+  photo = on; $(".app").classList.toggle("photo", on); $("#photoHint").hidden = !on; lastInput = performance.now();
+  if (on) showTour(-1);
+  setTimeout(() => flyTo(state.highlight ? [...state.highlight] : null), 80);
+}
+$("#btnPhoto").addEventListener("click", () => setPhoto(true));
+$("#fxLens").addEventListener("change", (e) => { if (lensPass) lensPass.uniforms.uTilt.value = e.target.checked ? 1 : 0; });
+for (const ev of ["pointerdown", "wheel", "keydown", "touchstart"]) addEventListener(ev, () => { lastInput = performance.now(); }, { passive: true });
 
 function bindPointer() {
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -1869,10 +2175,13 @@ async function applyChange(name) {
     await stepRun("Synthesise to SKY130 standard cells (pre-computed netlist in this prototype)");
     const added = setVariant(key);
     await stepRun(`Place ${added.size} new cells next to the cells they connect to`);
-    log.push({ t: ch.mode === "down" ? "Check the new spec on all 512 register and input patterns" : "Prove equivalence on all 512 register and input patterns", k: "run" }); draw();
-    await wait(520);
+    const label = ch.mode === "down" ? "Check the new spec on all 512 register and input patterns" : "Prove equivalence on all 512 register and input patterns";
+    log.push({ t: label, k: "run" }); draw();
     v = verify(state.d, ch.mode, BASE);
-    if (v.pass === v.total) { log[log.length - 1].k = "done"; draw(); break; }
+    const stopAt = v.cex ? (v.cex.s * 2 + v.cex.en + 1) / 512 : 1;
+    await scanSweep(Math.max(500, 1700 * stopAt), stopAt, (u) => { log[log.length - 1].t = `${label} · ${Math.round(u * stopAt * 512)}/512 checked`; draw(); });
+    if (v.pass === v.total) { log[log.length - 1].k = "done"; draw(); flashDie("add"); break; }
+    flashDie("del");
     log[log.length - 1].k = "fail";
     const cx = v.cex; firstFail = cx;
     const wrongBit = cx.bits[cx.bits.length - 1] ?? 0;
@@ -2066,7 +2375,7 @@ $("#btnTour").addEventListener("click", () => showTour(0));
 
 /* ================= Reverse mode ================= */
 function setReverse(on) {
-  state.reverse = on; $("#revMode").checked = on; buildAnon(); clearSel(); renderAll(); dirty = true;
+  state.reverse = on; $("#revMode").checked = on; buildAnon(); clearSel(); renderAll(); updateCellLabelText(); dirty = true;
 }
 $("#revMode").addEventListener("change", (e) => setReverse(e.target.checked));
 
@@ -2215,6 +2524,7 @@ function commands() {
     ["Reset the chip (rst_n)", "", () => { stopRun(); step({ action: 2 }); }],
     ["View: logic", "1", () => setView("logic")], ["View: timing", "2", () => setView("timing")], ["View: switching activity", "3", () => setView("activity")],
     ["Toggle exploded layer view", "X", () => setExplode(state.explode > 0.5 ? 0 : 0.85)],
+    ["Photo mode (hide the panels)", "P", () => setPhoto(!photo)],
     ["Show the critical path", "", showCriticalPath],
     ["Fan-in cone of tc", "", () => selectPort("tc")],
     ["Run 64 cycles and estimate power", "", () => { showTab("analyse"); runCycles(64); }],
@@ -2266,12 +2576,14 @@ addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("#palette").hidden ? openPalette() : closePalette(); return; }
   if (!$("#palette").hidden) return;
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && document.activeElement.type !== "checkbox" && document.activeElement.type !== "range";
+  if (e.key === "Escape" && photo) { setPhoto(false); return; }
   if (e.key === "Escape") { if (intro.on) endIntro(); if (tourAt >= 0) showTour(-1); else { selectCell(null); setBanner(null); } return; }
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === " " && !/^(BUTTON|LI)$/.test(document.activeElement?.tagName)) { e.preventDefault(); state.running ? stopRun() : startRun(); }
   else if (e.key === ".") { stopRun(); step(); }
   else if (e.key === "1") setView("logic"); else if (e.key === "2") setView("timing"); else if (e.key === "3") setView("activity");
   else if (e.key.toLowerCase() === "x") setExplode(state.explode > 0.5 ? 0 : 0.85);
+  else if (e.key.toLowerCase() === "p") setPhoto(!photo);
   else if (e.key === "F12") { e.preventDefault(); if (state.selected && !state.reverse) selectLine(state.d.byId[state.selected].src); }
 });
 
@@ -2281,6 +2593,7 @@ buildAnon(); palette();
 bubble("ai", "Hi, I'm your guide to this chip. Click any cell, take the guided tour, or ask me something like “why is it slow?”");
 $("#tab-guide .dot")?.remove();
 if (initGL()) { rebuildScene(); startIntro(); }
+$("#loader").hidden = true;
 renderAll();
 addEventListener("resize", drawWave);
 (async () => {
