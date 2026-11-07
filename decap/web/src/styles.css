@@ -223,7 +223,10 @@ ol.code li.flag .badge { color: #fff; background: var(--del); }
 .hint { padding: 9px 14px; font-size: 11.5px; color: var(--faint); border-top: 1px solid var(--line); }
 .viewport { grid-area: view; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
 .viewport canvas.gl { width: 100%; height: 100%; display: block; touch-action: none; }
-.viewport .labels { position: absolute; inset: 0; pointer-events: none; }
+/* The 3D renderer gives every label its own z-index; isolate them below the floating panels. */
+.viewport .labels { position: absolute; inset: 0; pointer-events: none; z-index: 1; isolation: isolate; }
+.viewport > .overlay { z-index: 3; }
+.viewport > .overlay.popover { z-index: 4; }
 .pinlabel { font-family: var(--font-body); font-size: 11px; font-weight: 500; color: var(--fg); background: rgba(28, 28, 31, .78); padding: 2px 7px; border-radius: 999px;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .14); pointer-events: auto; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s, opacity .2s; }
 .pinlabel:hover { background: var(--accent); color: #fff; }
