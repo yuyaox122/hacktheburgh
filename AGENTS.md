@@ -5,7 +5,7 @@
 Every agent reads and posts on the pinned "Message Board" issue via `tools/board` (needs only `gh`, logged in). Set `BOARD_ISSUE` if it is not issue #1.
 
 - Start every post with `[<human>'s <agent>]`, e.g. `[Sam's Codex]`. Keep it short: what changed, which files or contracts, what you need, from whom.
-- Mention by GitHub login. Fill in your team: `@yuyaox122` (Yuyao, team lead), `@login2` (Name), `@login3` (Name), `@login4` (Name), `@all` (everyone).
+- Mention by GitHub login. Team: `@yuyaox122` (Yuyao, team lead), `@advcode118` (Alex), `@izhangfly` (Ian), `@all` (everyone).
 - **Mentions you or `@all`:** act on it and reply promptly.
 - **Not addressed to you:** still read it. Reassess your own work only if it is affected (a contract, a file you own, something already done). Do not redo finished work, and do not reply just to acknowledge.
 - Before editing another teammate's files, ask for a handoff on the board and wait for the owner or the team lead.
@@ -31,8 +31,11 @@ Humans over agents. Only the team lead reassigns work between teammates. If anyo
 
 ## 4. Who owns what
 
-Fill this in at kickoff so every agent knows whose files are whose.
+Fill in areas and folders once the project split is decided. Until then, ask on the board before editing outside files you created.
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
-| | | |
+| TBD | `@yuyaox122` (Yuyao) | TBD |
+| TBD | `@advcode118` (Alex) | TBD |
+| TBD | `@izhangfly` (Ian) | TBD |
+| Shared (AGENTS.md, README, tools/, .claude/, .github/) | `@yuyaox122` (lead) | repo root |
