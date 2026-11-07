@@ -16,7 +16,7 @@ import anthropic
 
 MODEL = os.environ.get("DECAP_GUIDE_MODEL", "claude-sonnet-5-5")   # SPEC §6.5
 
-RULES = """You are the guide inside Decap, a tool that turns a chip's gate-level netlist (all internal names stripped)
+RULES = """You are the guide inside bASIC, a tool that turns a chip's gate-level netlist (all internal names stripped)
 back into readable Verilog and proves it equal with Yosys.
 
 Rules:
@@ -81,12 +81,26 @@ def ask(result: dict, messages: list[dict], selection: dict | None = None) -> di
     return _parse(result, text, model)
 
 
+def ask_page(page: dict, messages: list[dict]) -> dict:
+    """A question asked where no single chip is open (Results, Compare): answer from what is on screen."""
+    msgs = [{"role": m["role"], "content": str(m["content"])} for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
+    if not msgs or msgs[-1]["role"] != "user":
+        raise ValueError("the last message must be from the user")
+    ctx = "What is on screen (no single chip is open, so there are no lines or cells to cite):\n" + json.dumps(page, default=str)[:30000]
+    text, model = _call([RULES, ctx], msgs) if _has_key() else _ask_cli(RULES + "\n\n" + ctx, msgs)
+    return _parse({"netlist": {"cells": []}, "decompiled": {"verilog": ""}}, text, model)
+
+
 def _ask_api(result: dict, msgs: list[dict], selection: dict | None) -> tuple[str, str]:
+    return _call([RULES, context_text(result, selection)], msgs)
+
+
+def _call(system: list[str], msgs: list[dict]) -> tuple[str, str]:
     client = anthropic.Anthropic()
     resp = client.beta.messages.create(
         model=MODEL,
         max_tokens=2000,
-        system=[{"type": "text", "text": RULES}, {"type": "text", "text": context_text(result, selection)}],
+        system=[{"type": "text", "text": t} for t in system],
         messages=msgs,
         output_config={"effort": "low"},
         betas=["server-side-fallback-2026-07-01"],

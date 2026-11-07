@@ -17,6 +17,7 @@ const SUGGEST: Record<string, string[]> = {
 export class Guide {
   readonly el = document.createElement("aside");
   private msgs: Msg[] = [];
+  private topic = "";
   private ctrl: AbortController | null = null;
   constructor() {
     this.el.className = "drawer";
@@ -53,12 +54,17 @@ export class Guide {
 
   async ask(q: string) {
     if (!this.isOpen) this.el.classList.add("open");
+    // A new page or chip starts a new conversation: earlier answers were about something else.
+    const ctx = (app.guideContext?.() ?? { page: app.route }) as Record<string, unknown>;
+    const topic = `${ctx.page ?? app.route}:${ctx.chip ?? ""}`;
+    if (this.msgs.length && topic !== this.topic) { this.msgs = []; this.note("New topic: earlier answers were about another page."); }
+    this.topic = topic;
     this.msgs.push({ role: "user", content: q });
     this.bubble("me", esc(q));
     const wait = this.bubble("ai", `<span class="spin"></span>`);
     this.ctrl?.abort(); this.ctrl = new AbortController();
     try {
-      const r = await chat(this.msgs.slice(-12), app.guideContext?.() ?? { page: app.route }, this.ctrl.signal);
+      const r = await chat(this.msgs.slice(-12), ctx, this.ctrl.signal);
       this.msgs.push({ role: "assistant", content: r.reply });
       const h = r.highlights ?? {};
       const hl = [...(h.cells?.length ? [`${h.cells.length} cell${h.cells.length === 1 ? "" : "s"}`] : []), ...(h.lines?.length ? [`line${h.lines.length === 1 ? "" : "s"} ${h.lines.join(", ")}`] : [])];

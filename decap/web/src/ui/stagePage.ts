@@ -654,7 +654,7 @@ export class StagePage {
   context() {
     const c = this.selected ? this.byId.get(this.selected) : null;
     return {
-      page: "stage", design: this.design.name, credit: this.design.credit,
+      page: "stage", chip: this.design.name, design: this.design.name, credit: this.design.credit,
       selected: c ? { id: c.id, type: c.type, function: this.lib[c.type]?.function, pins: Object.fromEntries(Object.entries(c.pins).map(([p, n]) => [p, { net: n, value: this.sim.get(n) }])), module: c.module, src: c.src } : null,
       modules: this.design.source.modules, outputs: Object.fromEntries(this.outputs.map((o) => [o, this.sim.get(o)])), cycle: this.sim.cycles,
     };
