@@ -309,7 +309,10 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
 
     # ---- tick
     nets = prog.nets
-    tick = [f"execute unless score #built {OBJ} matches 1 run return 0"]
+    # always night, but everyone sees: permanent night vision, re-given if it is ever cleared
+    tick = ['execute as @a unless data entity @s active_effects[{id:"minecraft:night_vision"}] '
+            'run effect give @s minecraft:night_vision infinite 0 true',
+            f"execute unless score #built {OBJ} matches 1 run return 0"]
     has_clk = "clk" in prog.inputs
     for kind, b, x in panel:
         if kind == "in":
@@ -357,7 +360,7 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
     lab = ["kill @e[type=text_display,tag=decap]"]
 
     def tdisp(x, y, z, text, color, s, bold=False):
-        return (f"summon text_display {x} {y} {z} {{Tags:[\"decap\"],billboard:\"center\",background:0,"
+        return (f"summon text_display {x} {y} {z} {{Tags:[\"decap\"],billboard:\"center\",background:0,view_range:2.5f,"
                 f"transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],"
                 f"scale:[{s}f,{s}f,{s}f]}},text:{json.dumps({'text': text, 'color': color, 'bold': bold})}}}")
 
@@ -368,7 +371,7 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
     for x, text, kind in labels:
         lab.append(tdisp(x + 0.5, Y0 + 2.3, PANEL_Z + 0.5, text, {"in": "aqua", "out": "gold", "auto": "gray"}[kind], 1.6, True))
     lab.append(tdisp(pmid, Y0 + 16, PANEL_Z - 2, title, "gold", 8, True))
-    lab.append(tdisp(pmid, Y0 + 13, PANEL_Z - 2, f"{author}  ·  Tiny Tapeout 08  ·  {len(nl.logic)} gates", "white", 3))
+    lab.append(tdisp(pmid, Y0 + 13, PANEL_Z - 2, f"{author}  ·  Tiny Tapeout 08  ·  {len(nl.logic) - len(trojan['cells'] if trojan else [])} gates", "white", 3))
     lab.append(tdisp(pmid, Y0 + 11.2, PANEL_Z - 2, "compiled from the real netlist + GDS by Decap", "gray", 2))
     env = ["time set midnight", "weather clear", "gamerule advance_time false", "gamerule advance_weather false",
            "gamerule spawn_mobs false", f"setworldspawn {pmid} {Y0 + 1} {PANEL_Z - 16}"]   # 1.21.11 rule names

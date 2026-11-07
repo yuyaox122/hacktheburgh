@@ -24,12 +24,14 @@ PORT = 25575
 
 PROPS = {
     "level-type": "minecraft\\:flat",
+    # a grass field (plains sky and grass colour); the chip sits on its own black "wafer" pad
     "generator-settings": '{"layers":[{"block":"minecraft:bedrock","height":1},{"block":"minecraft:stone","height":2},'
-                          '{"block":"minecraft:black_concrete","height":1}],"biome":"minecraft:the_void"}',
+                          '{"block":"minecraft:grass_block","height":1}],"biome":"minecraft:plains"}',
     "gamemode": "creative", "difficulty": "peaceful", "spawn-monsters": "false", "online-mode": "false",
     "enable-rcon": "true", "rcon.port": str(PORT), "rcon.password": PASSWORD, "spawn-protection": "0",
     "generate-structures": "false", "max-tick-time": "-1", "view-distance": "16", "level-name": "world",
     "motd": "Decap chip in Minecraft", "enable-command-block": "true", "pause-when-empty-seconds": "0",
+    "function-permission-level": "4",   # functions may use /tick sprint (redstone settle/clock_fast)
 }
 
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import subprocess
 from pathlib import Path
 
@@ -42,7 +43,8 @@ def main():
             "--username", "Decap", "--version", VER, "--gameDir", str(MC), "--assetsDir", str(MC / "assets"),
             "--assetIndex", v["assetIndex"]["id"], "--uuid", "00000000000000000000000000000dec", "--accessToken", "0",
             "--userType", "legacy", "--versionType", "release", "--width", "1600", "--height", "900",
-            "--quickPlayMultiplayer", "127.0.0.1:25565"]
+            *(["--quickPlaySingleplayer", sys.argv[1]] if len(sys.argv) > 1   # a world in saves/
+              else ["--quickPlayMultiplayer", "127.0.0.1:25565"])]
     subprocess.Popen(args, cwd=MC, stdout=open(Path(__file__).parent / "out" / "client.log", "w"), stderr=subprocess.STDOUT)
     print("client starting")
 
