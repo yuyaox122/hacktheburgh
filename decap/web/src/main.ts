@@ -1,7 +1,7 @@
 // Decap web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare), shared chrome, keyboard shortcuts.
 
 import "./styles.css";
-import { fixtureUsed, health, loadBench, loadDesign, onFixtureChange } from "./data/load";
+import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./data/load";
 import { StagePage } from "./ui/stagePage";
 import { WallPage } from "./ui/wallPage";
 import { ChipPage } from "./ui/chipPage";
@@ -41,7 +41,19 @@ let chip: ChipPage | null = null;
 let comparePg: ComparePage | null = null;
 let current: { el: HTMLElement; unmount?: () => void } | null = null;
 
-const stageReady = loadDesign().then(({ design, lib }) => { stage = new StagePage(design, lib); }).catch((e) => { stageErr = (e as Error).message; });
+/** Load the Stage for a chip (null = the current one, else the default); switching chips frees the old 3D view. */
+function loadStage(want: string | null): Promise<void> {
+  return loadStageIndex().then(async (idx) => {
+    const target = want ?? stage?.chipName ?? idx?.default ?? null;
+    if (stage && (!target || stage.chipName === target)) return;
+    const { design, lib } = await loadDesign(target);
+    if (stage && stage.chipName === design.name) return;
+    stage?.destroy();
+    stage = new StagePage(design, lib, idx?.chips ?? []);
+    stageErr = null;
+  }).catch((e) => { stageErr = (e as Error).message; });
+}
+let stageReady = loadStage(location.hash.match(/^#\/stage\/(.+)/)?.[1] ? decodeURIComponent(location.hash.match(/^#\/stage\/(.+)/)![1]) : null);
 
 function show(el: HTMLElement, scroll: boolean, unmount?: () => void) {
   current?.unmount?.();
@@ -56,6 +68,7 @@ async function route() {
   app.route = r;
   $$("nav.main a").forEach((a) => (a.dataset.r === r ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
   if (r === "stage") {
+    stageReady = loadStage(arg ? decodeURIComponent(arg) : null);
     await stageReady;
     if (!stage) {
       const d = document.createElement("div");

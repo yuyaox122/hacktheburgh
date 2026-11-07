@@ -415,19 +415,68 @@ def build(chip: str) -> dict:
     return out
 
 
+DEFAULT = "tt_um_Electom_cla_4bits"
+DATA_OUT = ROOT / "web" / "public" / "data"
+
+
+def summary(d: dict) -> str:
+    c = d["counts"]
+    return (f"{d['name']}: die {d['die']['w']}x{d['die']['h']} um, {c['logic_cells']} logic cells, "
+            f"{c['route_segments']} wire segments, {c['vias']} vias, {c['nets_on_wires']}/{c['signal_nets']} nets on wires, "
+            f"{c['conflicts']} conflicts, {c['unmatched_cells']} unmatched cells, {c['pins_unwired']}/{c['pins']} pins unwired, "
+            f"split nets: {c['split_nets']}")
+
+
+def ok(d: dict) -> tuple[bool, str]:
+    """A chip goes on the Stage only if extraction is clean: every cell matched, no net shorted or split."""
+    c = d["counts"]
+    if c["unmatched_cells"]:
+        return False, f"{c['unmatched_cells']} cells not matched to the netlist"
+    if c["conflicts"]:
+        return False, f"{c['conflicts']} wires reach two different nets"
+    if c["split_nets"]:
+        return False, f"nets in pieces: {', '.join(c['split_nets'][:4])}"
+    return True, ""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--chip", default="tt_um_Electom_cla_4bits")
-    ap.add_argument("--out", default=str(ROOT / "web" / "public" / "data" / "design.json"))
+    ap.add_argument("--chip", default=DEFAULT)
+    ap.add_argument("--out", default=str(DATA_OUT / "design.json"))
+    ap.add_argument("--all", action="store_true", help="every chip with a GDS and a Decap result -> data/designs/<chip>.json "
+                                                       "+ designs/index.json; the default chip also -> design.json")
     a = ap.parse_args()
-    d = build(a.chip)
-    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.out).write_text(json.dumps(d, separators=(",", ":")))
-    c = d["counts"]
-    print(f"design.json: {d['name']}, die {d['die']['w']}x{d['die']['h']} um, {c['logic_cells']} logic cells, "
-          f"{len(d['phys'])} physical, {c['route_segments']} wire segments ({c['named_routes']} named), {c['vias']} vias, "
-          f"{c['nets_on_wires']}/{c['signal_nets']} signal nets found on wires, {c['conflicts']} conflicts, "
-          f"{c['unmatched_cells']} unmatched cells; {c['pins']} pins, {c['pins_unwired']} with no wire, split nets: {c['split_nets']}")
+    if not a.all:
+        d = build(a.chip)
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(json.dumps(d, separators=(",", ":")))
+        print("design.json:", summary(d))
+        return
+    out = DATA_OUT / "designs"
+    out.mkdir(parents=True, exist_ok=True)
+    index = []
+    for g in sorted((ROOT / "data" / "gds").glob("*.gds")):
+        chip = g.stem
+        if not (ROOT / "out" / "chips" / f"{chip}.json").exists():
+            print(f"skip {chip}: no Decap result")
+            continue
+        try:
+            d = build(chip)
+        except Exception as e:  # noqa: BLE001  (one bad chip must not stop the rest)
+            print(f"skip {chip}: {type(e).__name__}: {e}")
+            continue
+        good, why = ok(d)
+        print(("ok   " if good else "skip ") + summary(d) + ("" if good else f"  <- {why}"))
+        if not good:
+            continue
+        (out / f"{chip}.json").write_text(json.dumps(d, separators=(",", ":")))
+        index.append({"chip": chip, "title": d["title"], "logic_cells": d["counts"]["logic_cells"],
+                      "flops": sum(1 for c in d["cells"] if c["type"].startswith(("df", "edf", "sdf"))),
+                      "die": d["die"], "io": bool(d["io"]["in"] or d["io"]["out"])})
+        if chip == DEFAULT:
+            (DATA_OUT / "design.json").write_text(json.dumps(d, separators=(",", ":")))
+    (out / "index.json").write_text(json.dumps({"default": DEFAULT, "chips": index}, indent=1))
+    print(f"{len(index)} chips on the Stage -> {out}")
 
 
 if __name__ == "__main__":

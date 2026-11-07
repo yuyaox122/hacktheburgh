@@ -7,7 +7,8 @@ The front end of Decap: Vite + TypeScript + three.js 0.160. It reads static JSON
 ```sh
 cd decap/web
 npm install
-npm run stage-data   # warm-up DEF + netlist -> public/data/design.json; SKY130 Liberty JSON -> public/data/lib.json
+npm run stage-data   # every TT08 chip with a GDS -> public/data/designs/<chip>.json (Stage chip picker); SKY130 Liberty -> lib.json
+                     # (npm run stage-data:warmup = the old warm-up DEF, local only: no licence to publish)
 npm run sync-data    # copy ../out/bench.json and ../out/chips/*.json into public/data/ (when the backend has made them)
 npm run dev          # http://localhost:5173
 ```

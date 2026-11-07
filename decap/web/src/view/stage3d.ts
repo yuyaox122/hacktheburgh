@@ -599,5 +599,22 @@ export class Stage3D {
 
   start() { if (this.ok && !this.running) { this.running = true; this.resize(); this.renderer.setAnimationLoop(this.tick); } }
   stop() { if (this.ok && this.running) { this.running = false; this.renderer.setAnimationLoop(null); } }
+  /** Free the WebGL context (browsers allow only a few at once): called when the Stage switches chips. */
+  dispose() {
+    this.stop();
+    this.ro?.disconnect();
+    if (this.ok) {
+      this.controls?.dispose();
+      this.chip?.traverse((o) => {
+        const m = o as THREE.Mesh;
+        m.geometry?.dispose?.();
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        (Array.isArray(mat) ? mat : mat ? [mat] : []).forEach((x) => x.dispose());
+      });
+      this.renderer.dispose();
+      this.renderer.forceContextLoss();
+    }
+    this.host.replaceChildren();
+  }
   noteInput() { this.lastInput = performance.now(); }
 }

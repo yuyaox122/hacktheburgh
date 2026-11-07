@@ -1,6 +1,7 @@
 // Stage page: a real chip in 3D (a Tiny Tapeout chip from its GDS, or the warm-up), its source, an inspector, and the live simulator.
 
 import type { Design, DesignCell, IoField, Lib } from "../data/types";
+import type { StageChip } from "../data/load";
 import { Sim } from "../sim/sim";
 import { Stage3D, LAYERS, type LayerKey } from "../view/stage3d";
 import { category, CATEGORY_LABEL, CATEGORY_VAR, describe, fullName, toWordsSafe } from "../view/describe";
@@ -36,7 +37,7 @@ export class StagePage {
   private waveSigs: string[];
   private waveLabel = new Map<string, string>();
 
-  constructor(private design: Design, private lib: Lib) {
+  constructor(private design: Design, private lib: Lib, private chips: StageChip[] = []) {
     for (const c of design.cells) {
       this.byId.set(c.id, c);
       const L = lib[c.type];
@@ -72,7 +73,9 @@ export class StagePage {
     this.el.className = "stage";
     this.el.innerHTML = `
       <aside class="pane code-pane" aria-label="Source code">
-        <div class="pane-h">Source <b>${esc(this.srcFile || "none")}</b><span class="grow"></span></div>
+        ${this.chips.length > 1 ? `<div class="pane-h chippick"><label for="stChip">Chip</label><select class="sel" id="stChip" aria-label="Chip shown on the Stage">${this.chips.map((c) =>
+          `<option value="${esc(c.chip)}" ${c.chip === design.name ? "selected" : ""}>${esc(c.title || c.chip)} · ${c.logic_cells} cells</option>`).join("")}</select></div>` : ""}
+        <div class="pane-h">Source <b>${esc(this.srcFile || "none")}</b><span class="grow"></span>${this.chips.length > 1 ? `<a class="btn sm" href="#/chip/${encodeURIComponent(design.name)}" title="Decompile, proof and Find for this chip">Chip page</a>` : ""}</div>
         <div class="pane-b"><ol class="code click" id="stSrc"></ol></div>
         <div class="sect"><p class="fine">${esc(design.source.mapping ?? "")}. Click a line to light its cells.</p></div>
       </aside>
@@ -134,6 +137,10 @@ export class StagePage {
     this.view.start();
   }
   unmount() { this.view?.stop(); this.pause(); }
+  /** The chip on show (design.json name). */
+  get chipName() { return this.design.name; }
+  /** Drop this Stage for good (switching chips): frees the 3D view's WebGL context. */
+  destroy() { this.pause(); this.view?.dispose(); this.view = null; }
 
   private bind() {
     const el = this.el;
@@ -152,6 +159,7 @@ export class StagePage {
     $("#stRun", el).addEventListener("click", () => (this.running ? this.pause() : this.run()));
     $<HTMLSelectElement>("#stSpeed", el).addEventListener("change", (e) => { this.speed = +(e.target as HTMLSelectElement).value; });
     $("#stShift", el).addEventListener("click", () => this.shiftIn());
+    el.querySelector<HTMLSelectElement>("#stChip")?.addEventListener("change", (e) => { location.hash = `#/stage/${encodeURIComponent((e.target as HTMLSelectElement).value)}`; });
     $("#stSrc", el).addEventListener("click", (e) => {
       const li = (e.target as HTMLElement).closest<HTMLElement>("[data-ln]");
       if (li) this.selectLine(+li.dataset.ln!);
