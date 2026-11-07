@@ -57,6 +57,15 @@ def showroom(mc: MC) -> None:
     mc.cmd(f'tellraw @a {{"text":"Redstone primitives built: flip the levers","color":"gold"}}')
 
 
+def goto_function(lay: dict) -> None:
+    """/function redstone:goto/<chip> teleports you to the chip's input levers, looking north at the build."""
+    xs = [p[0] for p in lay["inputs"].values()]
+    x, z = (min(xs) + max(xs)) // 2, max(p[2] for p in lay["inputs"].values()) + 8
+    fn = mcmod.SRV / "world" / "datapacks" / "redstone_chip" / "data" / "redstone" / "function" / "goto"
+    fn.mkdir(parents=True, exist_ok=True)
+    (fn / f"{lay['chip'].lower()}.mcfunction").write_text(f"tp @s {x} {Y + 6} {z} facing {x} {Y} {z - 30}\n")
+
+
 def clock_button(mc: MC, lay: dict) -> None:
     """A datapack function that plays one rising clock edge (HOLD_M up, HOLD_S down, HOLD_S up, HOLD_M down,
     each after the settle time), and a button on a command block next to the input levers that runs it.
@@ -107,8 +116,11 @@ def main() -> None:
             drv.set({b: 0 for b in lay["inputs"]}, settle=False)
             if "HOLD_M" in lay["inputs"]:
                 drv.set({"HOLD_M": 0, "HOLD_S": 1}, settle=False)
+            goto_function(lay)
             if "HOLD_M" in lay["inputs"]:
                 clock_button(mc, lay)
+            else:
+                mc.cmd("reload")
             mc.cmd("tick unfreeze")
             xs = [p[0] for p in lay["inputs"].values()]
             sx, sy, sz = (min(xs) + max(xs)) // 2, Y, max(p[2] for p in lay["inputs"].values()) + 8
