@@ -112,6 +112,7 @@ export class ChipPage {
     const a = this.author;
     const verdictWord = r.verdict === "proven" ? "Proven equivalent" : r.verdict === "tested" ? "Tested, not proven" : "Proof failed";
     const variantNote = this.plantSource === "fixture" ? " (sample)" : this.plantSource === "preplanted" ? " (saved)" : "";
+    this.el.classList.remove("show-author");
     this.el.innerHTML = `
       <header class="chiphead">
         <div class="ttlblock">
@@ -137,22 +138,22 @@ export class ChipPage {
         </div>
       </header>
       <div class="codes">
-        <section class="pane" aria-label="Decompiled Verilog">
-          <div class="pane-h">Decompiled by Decap<span class="sub">${r.variant === "planted" ? "with trigger, names stripped" : "from the stripped netlist"}</span><span class="grow"></span><span class="sub">${r.decompiled.lines} lines</span><button class="btn plain sm" type="button" data-wrap aria-pressed="${wrapOn()}" title="Wrap long lines (W)">${icon.wrap}Wrap</button></div>
+        <section class="pane p-dec" aria-label="Decompiled Verilog">
+          <div class="pane-h">Decompiled by Decap<span class="sub">${r.variant === "planted" ? "with trigger, names stripped" : "from the stripped netlist"}</span><span class="grow"></span><span class="sub">${r.decompiled.lines} lines</span><button class="btn plain sm" type="button" data-wrap aria-pressed="${wrapOn()}" title="Wrap long lines (W)">${icon.wrap}Wrap</button>${a ? `<button class="btn sm" type="button" data-auth="1" title="Show what the author wrote">Author's source</button>` : ""}</div>
           <div class="pane-b"><ol class="code click" id="cpCode"></ol></div>
         </section>
-        <section class="pane" aria-label="Author source">
+        <section class="pane p-auth" aria-label="Author source">
           <div class="pane-h">Written by the author ${a ? `<span class="filetabs">${Object.keys(a.files).map((f) => `<button type="button" data-file="${esc(f)}" aria-pressed="${f === this.file}">${esc(f)}</button>`).join("")}</span>` : ""}<span class="grow"></span>
-            ${a ? `<span class="pill ${a.check === "proven" ? "ok" : a.check === "bounded" ? "warn" : a.check === "failed" ? "bad" : ""}" title="${esc(a.check_detail ?? "")}">Matches netlist: ${esc(a.check)}</span>${a.repo ? `<span class="sub">${this.repoLink(a)}</span>` : ""}` : ""}</div>
+            ${a ? `<span class="pill ${a.check === "proven" ? "ok" : a.check === "bounded" ? "warn" : a.check === "failed" ? "bad" : ""}" title="${esc(a.check_detail ?? "")}">Matches netlist: ${esc(a.check)}</span>${a.repo ? `<span class="sub">${this.repoLink(a)}</span>` : ""}<button class="btn plain sm" type="button" data-auth="0" title="Back to the decompiled Verilog">Decompiled</button>` : ""}</div>
           <div class="pane-b">${a && this.file ? `<ol class="code" id="cpAuthor"></ol>` : `<div class="empty">No author source for this chip.</div>`}</div>
         </section>
       </div>
       <div class="lower">
-        <section class="pane" aria-label="Netlist graph">
+        <section class="pane p-graph" aria-label="Netlist graph">
           <div class="pane-h">Netlist<span class="sub">${r.netlist.cells.length} cells, no names</span><span class="grow"></span><button class="btn plain sm" type="button" id="cpFit" title="Fit (0)">${icon.fit}Fit</button></div>
           <div class="graphwrap" id="cpGraph"><div class="overlay glegend" id="cpGLegend"></div></div>
         </section>
-        <section class="pane" aria-label="Details">
+        <section class="pane p-side" aria-label="Details">
           <div class="tabsbar"><div class="seg" role="tablist">
             ${(["proof", "find", "fix", "blocks"] as Tab[]).map((t) => `<button type="button" role="tab" data-tab="${t}" aria-selected="${this.tab === t}">${{ proof: "Proof", find: "Find", fix: "Fix", blocks: `Blocks ${r.blocks.length}` }[t]}</button>`).join("")}
           </div></div>
@@ -288,6 +289,8 @@ export class ChipPage {
     $("#cpFit", this.el).addEventListener("click", () => { this.graph?.fit(); this.graph?.draw(); });
     $("#cpGuide", this.el).addEventListener("click", () => app.askGuide?.(""));
     $("#cpMinecraft", this.el).addEventListener("click", () => this.toMinecraft());
+    // Focus layout: the author's source swaps in over the decompiled code.
+    $$<HTMLElement>("[data-auth]", this.el).forEach((b) => b.addEventListener("click", () => this.el.classList.toggle("show-author", b.dataset.auth === "1")));
   }
   /** Hand the Verilog on screen (clean, or with the planted trigger) to the Minecraft page, which builds it. */
   private toMinecraft(fixed = false) {

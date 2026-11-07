@@ -36,6 +36,12 @@ export class WallPage {
     </a>`;
   }
 
+  /** Scoreboard bar: proven, tested only and failed as one stacked bar. */
+  private score(s: BenchSummary) {
+    const n = s.n || 1, seg = (v: number | undefined, c: string, w: string) => (v ? `<i style="width:${(v / n) * 100}%;background:var(${c})" title="${v} ${w}"></i>` : "");
+    return `<span class="scorebar">${seg(s.proven, "--add", "proven")}${seg(s.tested, "--amber", "tested only")}${seg(s.failed, "--del", "failed")}</span>`;
+  }
+
   private render() {
     const b = this.bench!;
     const T = b.summary.test ?? { n: 0 }, D = b.summary.dev ?? { n: 0 }, tj = b.summary.trojan;
@@ -50,7 +56,7 @@ export class WallPage {
         <p>Real Tiny Tapeout chips, every name stripped, read back as Verilog. Proven means Yosys showed the code is exactly the same circuit.${T.n ? "" : ` So far ${D.proven ?? 0} of ${D.n ?? 0} dev chips are proven; those were used for tuning, so they do not count.`}</p>
       </section>
       <div class="metrics">
-        <div class="metric"><small>Held-out chips proven</small><b>${frac(T)}</b><span>${T.n ? `${T.tested ?? 0} tested only, ${T.failed ?? 0} failed` : "Not scored yet"}</span></div>
+        <div class="metric"><small>Held-out chips proven</small><b>${frac(T)}</b>${T.n ? this.score(T as BenchSummary) : ""}<span>${T.n ? `${T.tested ?? 0} tested only, ${T.failed ?? 0} failed` : "Not scored yet"}</span></div>
         <div class="metric"><small>Readable</small><b>${((T.n ? T : D).coverage_pct ?? 0).toFixed(0)}%</b><span>Logic cells in recognised blocks${T.n ? "" : ", dev set"}</span></div>
         ${tj && tj.planted ? `<div class="metric"><small>Hidden triggers caught</small><b>${tj.caught}<small style="font-size:.55em;color:var(--muted);font-weight:500"> of ${tj.planted}</small></b><span>Blind, one random number per chip</span></div>
         <div class="metric"><small>False alarms</small><b>${tj.clean_flagged}<small style="font-size:.55em;color:var(--muted);font-weight:500"> of ${tj.clean}</small></b><span>Clean chips with any flag</span></div>` : ""}
