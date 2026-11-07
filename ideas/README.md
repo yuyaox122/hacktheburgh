@@ -21,6 +21,8 @@ Scored by a 3-model council (Claude Sonnet 5.5, Claude Opus 5.5, Grok 4.7) on on
 
 "Quick" means two judges (Sonnet + Opus) scored the idea as written, with no office-hours pass. **To run the council yourself, see [COUNCIL.md](COUNCIL.md).**
 
+**Unscored draft:** [Decap IDE](09-decap-ide.md) (code left, chip centre, agent right; local web app; Instalily out). Clickable screen: [09-decap-ide-mockup.html](09-decap-ide-mockup.html). Not a council result, and it does not replace GlassDie.
+
 ## Recommendation
 - **Single-track maximum:** GlassDie for G-Research (+ MetaView). First task: pull the pinned OpenLane image + SKY130 PDK on two laptops.
 - **G-R × HRT:** Fault Lines. Run its hour-6 log-likelihood gate before anything else.
