@@ -57,6 +57,7 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> F
     cache = runs / "cache"
 
     @app.get("/healthz")
+    @app.get("/witness/healthz")
     def healthz() -> dict:
         return {"ok": True, "model": str(model) if model else "default", "cache": str(cache)}
 

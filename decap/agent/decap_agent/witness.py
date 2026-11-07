@@ -134,9 +134,9 @@ def brief(region: dict, probe: dict) -> str:
             f"Samples ({' '.join(cols_in)} | {' '.join(cols_out)}):\n{table}")
 
 
-def cache_key(region: dict, chip: str, scope: dict, model_name: str) -> str:
+def cache_key(region: dict, chip: str, scope: dict, model_name: str, max_refine: int = 2) -> str:
     raw = json.dumps({"netlist_sha": region.get("netlist_sha"), "decompiler": region.get("decompiler"), "chip": chip,
-                      "scope": scope, "model": model_name, "prompt": PROMPT_VERSION,
+                      "scope": scope, "model": model_name, "prompt": PROMPT_VERSION, "max_refine": max_refine,
                       "instructions": hashlib.sha256(INSTRUCTIONS.encode()).hexdigest()[:12]}, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
@@ -161,7 +161,7 @@ async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any 
             return payload
 
         region = await call("get_region", chip=chip, scope=scope)
-        key = cache_key(region, chip, scope, model_name)
+        key = cache_key(region, chip, scope, model_name, max_refine)
         hit = cache_dir / f"{key}.json" if cache_dir else None
         if hit and hit.exists():
             run = json.loads(hit.read_text())

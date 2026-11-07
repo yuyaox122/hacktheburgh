@@ -1,6 +1,7 @@
 // Cross-page app state and hooks (kept tiny on purpose).
 
 import type { ChipResult } from "../data/types";
+import type { CodeHost } from "../agent/codeAgent";
 
 export interface PaletteCommand { label: string; key?: string; run: () => void }
 
@@ -10,6 +11,7 @@ export const app: {
   guideContext?: () => unknown;
   guideHighlight?: (h: { cells?: string[]; lines?: number[] }) => void;
   pageCommands?: () => PaletteCommand[];
+  onCodeRendered?: (page: CodeHost) => void;
   planted: Map<string, Promise<ChipResult>>;   // key `${chip}:${n}` -> plant result (started early by the demo prep)
   judge: { chip: string | null; n: number | null };
   llm: boolean | null;

@@ -167,6 +167,24 @@ export class StagePage {
   unmount() { this.view?.stop(); this.pause(); }
   /** The chip on show (design.json name). */
   get chipName() { return this.design.name; }
+
+  /** Witness agent results: tint their cells and list them in a legend over the 3D view. */
+  setAgentMarks(marks: Map<string, string>, legend: { label: string; colour: string; cells: string[]; claim?: string | null }[]) {
+    this.view?.setMarks(marks);
+    const host = $("#stView", this.el);
+    host.querySelector(".ag-legend")?.remove();
+    if (!legend.length) return;
+    const d = document.createElement("div");
+    d.className = "ag-legend";
+    d.innerHTML = `<b>Witness agent</b>${legend.map((l, i) => `<button type="button" data-ag-leg="${i}"><i style="background:${l.colour}"></i><span>${esc(l.label)}${l.claim ? `<br><code>${esc(l.claim)}</code>` : ""}</span></button>`).join("")}`;
+    d.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-ag-leg]");
+      if (!b) return;
+      const ids = new Set(legend[+b.dataset.agLeg!].cells.filter((id) => this.byId.has(id)));
+      if (ids.size) { this.view?.setHighlight(ids); this.view?.flyTo([...ids]); }
+    });
+    host.append(d);
+  }
   /** Drop this Stage for good (switching chips): frees the 3D view's WebGL context. */
   destroy() { this.pause(); this.view?.dispose(); this.view = null; }
   /** Frame the logic (Tiny Tapeout chips) or the whole die (the warm-up). */
@@ -493,6 +511,7 @@ export class StagePage {
       ${this.truthTable(c)}
       <div class="acts">
         ${out ? `<button type="button" class="btn sm" data-cone="in" data-net="${esc(out[1])}" title="Every cell that can change this one">${icon.arrowIn}Fan-in</button><button type="button" class="btn sm" data-cone="out" data-net="${esc(out[1])}" title="Every cell this one can reach">Fan-out${icon.arrowOut}</button>` : ""}
+        <button type="button" class="btn sm" data-agent-cell="${esc(c.id)}" title="The Witness agent explains the block this cell belongs to; Yosys checks it">${icon.cube}Explain block</button>
         <button type="button" class="btn sm" data-ask="Explain cell ${esc(c.id)} (${esc(c.type)}) in simple terms: what it does and why this chip needs it.">${icon.sparkle}Ask</button>
       </div>`;
     this.bindLinks();

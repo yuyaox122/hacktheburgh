@@ -189,6 +189,7 @@ export class ChipPage {
       const badge = f ? `<span class="badge" title="Fires for ${esc(f.rate)} of inputs">Rare trigger</span>` : b && ln === b.lines[0] ? `<span class="badge" title="${b.cells.length} cells">${esc(KIND_WORD[b.kind] ?? b.kind)}${b.width ? `, ${b.width} bit` : ""}</span>` : "<span></span>";
       return `<li data-ln="${ln}" class="${cls}"><span class="n">${ln}</span><span class="bk" style="${bar}"></span>${codeText(t)}${badge}</li>`;
     }).join("");
+    app.onCodeRendered?.(this);   // Witness agent: hover toolbar, comments, suggested and accepted edits
   }
 
   private renderAuthor() {
@@ -376,8 +377,11 @@ export class ChipPage {
     this.selLine = first.line; this.renderCode();
     $(`#cpCode li[data-ln="${first.line}"]`, this.el)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }
+  private agentMarks = new Map<string, string>();
+  /** Witness agent verdicts on cells (green proven, red refuted, amber open, blue accepted edit). */
+  setAgentMarks(m: Map<string, string>) { this.agentMarks = m; if (this.result) this.applyMarks(); }
   private applyMarks() {
-    const r = this.result!, m = new Map<string, string>();
+    const r = this.result!, m = new Map<string, string>(this.agentMarks);
     for (const f of r.flags) for (const c of f.cone) m.set(c, "#ff453a");
     if (this.showPlanted) for (const c of this.fixRes?.data.removed_cells ?? []) m.set(c, "#64d2ff");
     this.graph?.setMarks(m);
