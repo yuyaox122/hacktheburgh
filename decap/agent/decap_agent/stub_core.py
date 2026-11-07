@@ -1,4 +1,4 @@
-"""A stub of the Decap core API, shaped like docs/decap/SPEC.md section 6.1, with region scope.
+"""A stub of the Decap core API, shaped like the core API in decap/CONTRACTS.md section 4, with region scope.
 
 Until Yuyao's real FastAPI app lands (decap/CONTRACTS.md), this app lets the agent layer, the CLI,
 the MCP server and the UI timeline run end to end. FastMCP turns every route into an MCP tool: the

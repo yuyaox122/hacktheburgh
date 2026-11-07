@@ -88,7 +88,7 @@ Every tool that works on a chip takes an optional `scope` and returns what it `t
 
 The stub uses the names spec §6.1 implies: `list_chips`, `strip_names`, `recover_blocks`, `decompile`, `prove_equiv`, `simulate`, `find_rare_triggers`, `plant_trigger`, `cone_of_influence`, `critical_path`. Yuyao's real names win; the guide's rules and the demo script follow whatever `decap/CONTRACTS.md` says.
 
-## Witness: the region agent loop (v0.3, plan: docs/decap/research/witness-plan.md)
+## Witness: the region agent loop (v0.3, plan: docs/decap/witness-plan.md)
 
 An agent dropped on a region explains it in **one claim**; only the checker decides whether it is shown.
 
