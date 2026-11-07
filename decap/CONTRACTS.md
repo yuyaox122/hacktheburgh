@@ -36,9 +36,12 @@ Folders: `ingest/` (Python, data in), `core/` (Python: netlist, simulator, decom
     { "id": "f0", "kind": "rare-trigger", "line": 9, "signal": "uo_out[0]", "condition": "ui_in == 8'd137",
       "rate": "1/256", "cells": ["c90", "c91"], "cone": ["c90", "c91", "c4"] }
   ],
-  "plant": { "n": 137, "target": "uo_out[0]", "inserted_cells": ["c90", "c91"] }   // planted variant only
+  "plant": { "n": 137, "operand": "ui_in", "target": "uo_out[0]", "inserted_cells": ["c90", "c91"] },   // planted variant only
+  "variant_id": "tt_um_mac+t137"                                                                          // planted variant only
 }
 ```
+
+Also present: `description`; `stats.physical_cells`; `proof.attempts` (1 = proven first time); flags carry `fires_on` ("1"/"0") and `reaches` (outputs/flops). `cell_lines` uses 0 for "no line". Planted chip files are `out/chips/<chip>__planted.json` (the benchmark's seeded N).
 
 Cell ids `c<k>` and net names `n<k>` are stable for a given netlist file. Port bits are written `ui_in[3]`.
 
@@ -47,6 +50,8 @@ Cell ids `c<k>` and net names `n<k>` are stable for a given netlist file. Port b
 ```jsonc
 {
   "generated": "2026-11-07T23:00:00Z",
+  "decompiler_commit": "5dc6bfd",          // the code that produced these numbers ("+dirty" if uncommitted)
+  "first_run": { "decompiler_commit": "911f15a", "summary": { … }, "note": "…" },   // the first scored test run, kept as measured
   "split": { "frozen": "…", "dev": ["…"], "test": ["…"] },
   "summary": {
     "test": { "n": 18, "proven": 15, "tested": 2, "failed": 1, "coverage_pct": 61.0 },
@@ -78,4 +83,6 @@ SPEC.md §6.3 shape: `{ name, pdk, die:{w,h}, rowHeight, site, ports:[{name,dir,
 | POST | `/api/compare` | `{ verilog }`, `{ netlist }` or `{ chip }` | `{ fingerprint, neighbours: [{ chip, title, score, why, logic_cells, area_um2, blocks, excerpt }] }` |
 | POST | `/api/chat` | `{ messages: [{role, content}], context }` | `{ reply, highlights: { cells: [], lines: [] } }`; 503 with `{ error }` when no LLM key is set |
 
-Errors: `{ "error": "…" }` with a 4xx/5xx status. Long calls (decompile, plant, fix) take up to ~60 s.
+Agent tools (operation_id = MCP tool name via `decap/agent`; docstrings are what agents read): `list_chips`, `strip_names`, `recover_blocks`, `decompile`, `prove_equiv` (`against`: netlist | author_source → counterexample), `simulate`, `find_rare_triggers`, `plant_trigger` (returns id `chip+tN`), `cone_of_influence` (flag, block or cell id), `remove_trigger`, `critical_path` (estimate), `compare_design`, `benchmark`. Paths are under `/api/chips/{chip}/…`; see `api/main.py`. Web-only routes are hidden from the schema so they don't become tools.
+
+Errors: FastAPI's `{ "detail": "…" }` with a 4xx/5xx status. Long calls (decompile, plant, fix) take up to ~60 s.
