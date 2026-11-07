@@ -17,6 +17,21 @@
 
 > Hundreds of real chips, built by students and hobbyists, look like coloured rectangles. GlassDie discovers what they are from their structure alone, proves it on chips it has never seen, and lets you watch the defining structure run inside the silicon.
 
+## What's the point?
+**1. The hackathon point (the main one).** G-Research's brief is "make the invisible visible: find hidden patterns in data, make them look cool". A chip is about as invisible as data gets: millions of rectangles with no visible meaning. GlassDie:
+- finds a hidden pattern (what each chip is, from its wiring alone);
+- proves it with a number (held-out accuracy against a baseline);
+- makes it beautiful (galaxy → zoom → glowing live chip).
+
+**2. The real-world point (the story in the pitch).** *"How do you know what's inside a chip you didn't design?"* is a live problem:
+- **Hardware security and supply chains.** Companies and governments buy chips designed by others. Checking that a chip does only what it claims, with no hidden extra circuit ("hardware trojan"), means reverse-engineering its wiring. GlassDie's blind recovery does exactly that in miniature: find the blocks without being told the names.
+- **Verification.** "Prove the circuit you have matches the design you think you have" is a big part of chip engineering; the simulation check against iverilog is a small version of it.
+- **Education.** Students learn chip design from code and diagrams, never by watching a real manufactured chip work. Tiny Tapeout exists to make chips accessible; this makes them understandable.
+
+**The honest limit:** at hackathon scale it's a convincing demonstration of the method on real chips with real scores, not a tool someone would deploy tomorrow.
+
+**The trade-off vs Fault Lines:** GlassDie is the stronger bet on one prize (G-Research, 90.7). Fault Lines (89.3) has a clearer one-sentence purpose ("send inspection teams to the right towns after an earthquake") and goes for the combined G-Research × HRT prize.
+
 ## Why it wins (in the judges' words)
 - Opus (92): "The highest score I've given this session. I'd bet on it placing 1st in G-Research, and it's a strong MetaView contender."
 - Grok (91): "A bet on 1st if that DEF exists by Saturday evening."
