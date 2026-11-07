@@ -49,6 +49,8 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; margin: 0; 
 
 /* ---------- app shell ---------- */
 .app { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+/* Fixed rows: a hidden banner must not shift the page into the auto row (that pushed the demo strip off-screen). */
+.app > .top { grid-row: 1; } .app > .fixture-banner { grid-row: 2; } .app > .page { grid-row: 3; } .app > .demo { grid-row: 4; }
 .top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, var(--panel-2), var(--panel)); }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; }
 .brand b { font-family: var(--font-display); font-weight: 700; font-size: 21px; letter-spacing: .04em; text-transform: uppercase; }
