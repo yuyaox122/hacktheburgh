@@ -9,7 +9,7 @@ This layer lets any AI agent use Decap's tools, and lets the judges watch it hap
 - **`decap` CLI.** Includes a scripted, no-LLM version of the demo's judge moment.
 - **Transcript.** One JSONL event per tool call or agent answer, from any client. It feeds the UI's live timeline (SSE), replay, and the data for any calibration work.
 
-**Status: v0.2, verified against Yuyao's real core** (branch `4-decap-build`; 13 tools generated from its API). On the real Tiny Tapeout chip `tt_um_Electom_cla_4bits`, `decap demo --n 137` does the following in about 3 s:
+**Status: v0.3 adds the Witness region agent loop (below), stub-checked. v0.2 was verified against Yuyao's real core** (branch `4-decap-build`; 13 tools generated from its API). On the real Tiny Tapeout chip `tt_um_Electom_cla_4bits`, `decap demo --n 137` does the following in about 3 s:
 1. plants 137 (9 cells, proven);
 2. finds `ui_in == 8'd137` at `assign uo_out[0] = state0[2] | (ui_in == 8'd137);`;
 3. proves the netlist against the author's source: **failed**, with counterexample `ui_in = 137`;
@@ -87,6 +87,42 @@ Every tool that works on a chip takes an optional `scope` and returns what it `t
 **Use `body: Model = Body(default_factory=Model)`.** `tests/test_agent_layer.py::test_arguments_reach_the_core` guards this.
 
 The stub uses the names spec §6.1 implies: `list_chips`, `strip_names`, `recover_blocks`, `decompile`, `prove_equiv`, `simulate`, `find_rare_triggers`, `plant_trigger`, `cone_of_influence`, `critical_path`. Yuyao's real names win; the guide's rules and the demo script follow whatever `decap/CONTRACTS.md` says.
+
+## Witness: the region agent loop (v0.3, plan: docs/decap/research/witness-plan.md)
+
+An agent dropped on a region explains it in **one claim**; only the checker decides whether it is shown.
+
+```
+decap explain CHIP --cone-of 'uo_out[0]'      # LLM: look, claim, check, refine (max 2)
+decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the checker; --dry = parse + English only
+```
+
+```
+ explain_region (decap_agent/witness.py)
+   LLM (pydantic-ai, output_type=Claim) ── sees ONLY get_region, probe_truth, simulate, resolve_scope
+        │ returns {claim, label, gist}
+   controller ── propose_claim ──► checker (stub: exhaustive sim; real: core/claims.py + Yosys, Yuyao's)
+        │ refuted / tautology / unparseable / restated → verdict + counterexample back to the LLM (≤ 2 refinements)
+        └ every attempt → transcript event kind="claim" {attempt, first_draft, claim, verdict, counterexample,
+          english, credit, cells, model, tokens, wall_s}; whole run cached in runs/cache/
+```
+
+- **The first draft is counted honestly.** The LLM cannot call `propose_claim`, so attempt 0 is always its
+  claim with a simulator and no proof. That is the plan's headline number (section 4).
+- **`probe_truth` is the Monte Carlo look:** random vectors through the simulator (every vector if the region has
+  ≤ 12 input bits), plus the rows where a rare 1-bit output fired. Evidence, never a verdict.
+- **Claim syntax** (`decap_agent/claim_expr.py`): a Verilog expression over ports and flip-flops, `next(x)` = one
+  clock later, `A when B` = B → A; rst_n = ena = 1 assumed; Verilog's unsigned width rules, so
+  `next(count) == count + 1` is refuted at count = 255 and `count + 8'd1` is proven.
+- **Cache key:** netlist_sha, decompiler commit, chip, scope, model, prompt version + instructions hash.
+- **Contract proposed to the core** (board, 7 Nov 20:32): `get_region` and `probe_truth` (region description and
+  samples) and `propose_claim` → `{verdict: proven|inductive|bounded|refuted|restated|tautology|unparseable|timeout,
+  formal, english, counterexample, refute_kind, credit {cleared, reason, literals, cone_literals}, touched}`.
+  The stub implements all three on `stub_counter8` so the loop runs offline.
+
+Live check (stub chip, `claude-sonnet-5-5`, about 10 s): the agent claimed
+`next(count) == (en ? count + 8'd1 : count)` labelled counter, which was proven on its first draft and credited
+(4 literals vs 40 in the decompiled cone).
 
 ## Transcript format (for the UI timeline)
 

@@ -4,6 +4,8 @@
   decap call TOOL -a key=value ...     call one tool, print JSON
   decap demo [--n 137]                 the judge moment, no LLM: plant N, find it, prove it
   decap ask "question"                 ask the guide agent (needs a model key; DECAP_GUIDE_MODEL)
+  decap explain CHIP --cone-of X       Witness: a region agent looks, claims, gets checked, refines (LLM)
+  decap claim CHIP "expr" --cone-of X  Witness: send one claim straight to the checker (no LLM)
   decap mcp [--http PORT]              serve the tools over MCP (stdio by default)
   decap replay FILE [--check]          step through a recorded run; --check re-runs and compares
   decap stream FILE [--port 8790]      serve a transcript to the UI (SSE /events)
@@ -21,12 +23,34 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import os
+
+os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
+
 from fastmcp import Client
 
 from .server import build_server, load_core_app
 from .transcript import Transcript, load, result_payload
 
 RUNS = Path(__file__).resolve().parent.parent / "runs"
+CACHE = RUNS / "cache"
+
+
+def _scope(args) -> dict[str, Any]:
+    scope: dict[str, Any] = {}
+    if args.cone_of:
+        scope["cone_of"] = args.cone_of
+    if args.cells:
+        scope["cells"] = args.cells.split(",")
+    if args.nets:
+        scope["nets"] = args.nets.split(",")
+    return scope
+
+
+def _scope_args(sp) -> None:
+    sp.add_argument("--cone-of", help="the region: everything driving this port bit, net, flag or block (e.g. uo_out[0])")
+    sp.add_argument("--cells", help="the region: comma-separated cell ids")
+    sp.add_argument("--nets", help="the region: comma-separated nets / port bits")
 
 
 def _kv(pairs: list[str]) -> dict[str, Any]:
@@ -131,6 +155,18 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("ask", help="ask the guide agent")
     a.add_argument("question")
     a.add_argument("--model", help="e.g. anthropic:claude-haiku-5-5 (default: $DECAP_GUIDE_MODEL)")
+    w = sub.add_parser("explain", help="Witness region agent: look, claim, check, refine")
+    w.add_argument("chip")
+    _scope_args(w)
+    w.add_argument("--model", help="e.g. anthropic:claude-sonnet-5-5 (default: $DECAP_WITNESS_MODEL)")
+    w.add_argument("--max-refine", type=int, default=2)
+    w.add_argument("--no-cache", action="store_true", help="don't read or write runs/cache")
+    k = sub.add_parser("claim", help="send one claim to the checker (no LLM)")
+    k.add_argument("chip")
+    k.add_argument("claim")
+    _scope_args(k)
+    k.add_argument("--label", default="")
+    k.add_argument("--dry", action="store_true", help="parse and render the English only (the confirm step)")
     m = sub.add_parser("mcp", help="serve tools over MCP")
     m.add_argument("--http", type=int, metavar="PORT", help="streamable HTTP on this port instead of stdio")
     r = sub.add_parser("replay", help="step through a recorded run")
@@ -178,6 +214,21 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "ask":
         from .guide import ask
         print(asyncio.run(ask(args.question, server, transcript, model=args.model)))
+    elif args.cmd == "explain":
+        from .witness import explain_region
+        run = asyncio.run(explain_region(args.chip, _scope(args), server, model=args.model, transcript=transcript,
+                                         max_refine=args.max_refine, cache_dir=None if args.no_cache else CACHE))
+        for a in run["attempts"]:
+            tag = "FIRST DRAFT" if a["first_draft"] else f"refine {a['attempt']}"
+            print(f"[{tag:11s}] {a['verdict']:11s} {a['claim']}" + (f"   cex={json.dumps(a['counterexample'])}" if a["counterexample"] else ""),
+                  file=sys.stderr)
+        _print({k: run[k] for k in ("chip", "scope", "model", "first_draft", "final", "explained", "cached")}
+               | {"claim": run["attempts"][-1]["claim"], "english": run["attempts"][-1]["english"],
+                  "credit": run["attempts"][-1]["credit"]})
+    elif args.cmd == "claim":
+        out = asyncio.run(_call(server, "propose_claim", {"chip": args.chip, "scope": _scope(args), "claim": args.claim,
+                                                          "label": args.label, "check": not args.dry}))
+        _print(out)
     if transcript and transcript.path:
         print(f"[decap] transcript: {transcript.path}", file=sys.stderr)
     return 0
