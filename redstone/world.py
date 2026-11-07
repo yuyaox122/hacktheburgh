@@ -46,7 +46,7 @@ def build(mc: MC, lay: dict, verbose: bool = True) -> None:
 class Driver:
     def __init__(self, mc: MC, lay: dict, live: bool = False):
         self.mc, self.lay, self.live = mc, lay, live
-        self.state = {b: 0 for b in lay["inputs"]}
+        self.state = {b: None for b in lay["inputs"]}        # unknown until first set: always write it
         self.settle = 2 * lay["settle_rt"] + 20           # game ticks
 
     def _lever(self, b, on):
@@ -63,7 +63,7 @@ class Driver:
 
     def set(self, v: dict, settle=True):
         for b, on in v.items():
-            if b in self.state and self.state[b] != int(on):
+            if b in self.state and self.state[b] != int(on):  # None != 0/1, so the first set always writes
                 self._lever(b, on)
         if settle:
             self.wait()

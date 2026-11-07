@@ -68,22 +68,23 @@ def clock_button(mc: MC, lay: dict) -> None:
                          f"lever[face=floor,facing=north,powered={'true' if on else 'false'}]")
     steps = [lev("HOLD_M", 1), lev("HOLD_S", 0), lev("HOLD_S", 1), lev("HOLD_M", 0)]
     pack = mcmod.SRV / "world" / "datapacks" / "redstone_chip"
-    fn = pack / "data" / "redstone" / "function"
+    slug = lay["chip"].lower()
+    fn = pack / "data" / "redstone" / "function" / slug
     fn.mkdir(parents=True, exist_ok=True)
     (pack / "pack.mcmeta").write_text(json.dumps({"pack": {"description": "redstone chip clock",
                                                            "min_format": [94, 0], "max_format": [94, 1]}}))
     # first let the current inputs settle through the logic, then play the edge
     (fn / "clock.mcfunction").write_text(
         'tellraw @a {"text":"clock: settling inputs, then one rising edge ...","color":"yellow"}\n'
-        + f"schedule function redstone:clock_1 {wait}t\n")
-    (fn / "clock_1.mcfunction").write_text(steps[0] + f"\nschedule function redstone:clock_2 {wait}t\n")
-    (fn / "clock_2.mcfunction").write_text(steps[1] + f"\nschedule function redstone:clock_3 {wait}t\n")
-    (fn / "clock_3.mcfunction").write_text(steps[2] + f"\nschedule function redstone:clock_4 {wait}t\n")
+        + f"schedule function redstone:{slug}/clock_1 {wait}t\n")
+    (fn / "clock_1.mcfunction").write_text(steps[0] + f"\nschedule function redstone:{slug}/clock_2 {wait}t\n")
+    (fn / "clock_2.mcfunction").write_text(steps[1] + f"\nschedule function redstone:{slug}/clock_3 {wait}t\n")
+    (fn / "clock_3.mcfunction").write_text(steps[2] + f"\nschedule function redstone:{slug}/clock_4 {wait}t\n")
     (fn / "clock_4.mcfunction").write_text(steps[3] + '\ntellraw @a {"text":"clock: done (outputs settle in a few s)","color":"yellow"}\n')
     print(mc.cmd("reload"))
     x, y, z = lay["inputs"]["HOLD_S"]
     cx, cz = x + 6, z + 6
-    mc.cmd(f'setblock {cx} {world.YB} {cz} command_block{{Command:"function redstone:clock"}}')
+    mc.cmd(f'setblock {cx} {world.YB} {cz} command_block{{Command:"function redstone:{slug}/clock"}}')
     mc.cmd(f"setblock {cx} {world.YB + 1} {cz} stone_button[face=floor,facing=north]")
     mc.cmd(f'setblock {cx} {world.YB} {cz + 1} oak_sign[rotation=0]{{front_text:{{messages:["CLOCK","press the button","= one rising","edge of clk"]}}}}')
 
