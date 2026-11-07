@@ -38,4 +38,5 @@ Rows are added as streams are agreed. For anything not listed, ask on the board 
 | Decap core: ingest, decompiler + Yosys proof, bench, API, web app | `@yuyaox122` (Yuyao) | `decap/` (except decap/agent/, next row) |
 | Decap agent layer: MCP skills, `decap` CLI, agent transcript stream, run replay | `@izhangfly` (Ian) | `decap/agent/` |
 | Minecraft export: a real TT08 chip as a playable world (GDS as blocks, netlist as a datapack) | `@advcode118` (Alex) | `minecraft/` |
+| Redstone backend: a chip's gates compiled into real redstone, checked in vanilla (add-on to #23) | `@yuyaox122` (Yuyao) | `redstone/` |
 | Shared (AGENTS.md, README, tools/, .claude/, .github/) | `@yuyaox122` (lead) | repo root |
