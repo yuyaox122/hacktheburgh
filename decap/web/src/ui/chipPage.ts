@@ -331,7 +331,9 @@ export class ChipPage {
     const cone = r.flags.flatMap((f) => f.cone);
     this.applyMarks();
     this.graph?.setHighlight(new Set(cone)); this.graph?.focus(cone);
-    const first = r.flags[0];
+    // Jump to the planted trigger (the flag naming the planted number), not whichever flag happens to come first.
+    const n = r.plant?.n;
+    const first = (n != null && r.flags.find((f) => new RegExp(`(^|[^0-9])${n}([^0-9]|$)`).test(f.condition))) || r.flags[0];
     this.selLine = first.line; this.renderCode();
     $(`#cpCode li[data-ln="${first.line}"]`, this.el)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }

@@ -22,6 +22,14 @@ export class WallPage {
 
   private tile(c: BenchChip) {
     const t = c.trojan;
+    if (c.coverage_pct == null) {   // failed before decompiling (e.g. a hard macro): no stats, only the reason
+      const err = (c as { error?: string }).error ?? "no result";
+      return `<a class="tile ${c.verdict}" href="#/chip/${encodeURIComponent(c.chip)}" title="${esc(c.chip)}: ${c.verdict}">
+      <b>${esc(c.chip)}</b><span class="ttl">${esc(c.title ?? "")}</span>
+      <span class="row"><span class="pill ${c.verdict}">${c.verdict}</span></span>
+      <span class="row"><span>${esc(err.replace(/^\w+Error: /, ""))}</span></span>
+    </a>`;
+    }
     return `<a class="tile ${c.verdict}" href="#/chip/${encodeURIComponent(c.chip)}" title="${esc(c.chip)}: ${c.verdict}">
       <b>${esc(c.chip)}</b><span class="ttl">${esc(c.title ?? "")}</span>
       <span class="row"><span class="pill ${c.verdict}">${c.verdict === "tested" ? "tested only" : c.verdict}</span><span>${c.logic_cells} cells</span>${c.flops ? `<span>${c.flops} flops</span>` : ""}<span>${c.seconds.toFixed(1)} s</span></span>
