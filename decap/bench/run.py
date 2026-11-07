@@ -137,6 +137,13 @@ def main():
                                "clean_flags_total": sum(r["trojan"]["clean_flags"] for r in tro), "k": find.FLAG_K}},
         "chips": allrows,
     }
+    fr = OUT / "bench_first_run.json"
+    if fr.exists():
+        f = json.loads(fr.read_text())
+        bench["first_run"] = {"decompiler_commit": f.get("decompiler_commit"), "generated": f.get("generated"),
+                              "summary": f["summary"],
+                              "note": "The first scored run of the frozen test set. Later runs include fixes made after "
+                                      "seeing its failures (derived-clock wires, hierarchical netlists); both are reported."}
     (OUT / "bench.json").write_text(json.dumps(bench, indent=1))
     print(json.dumps(bench["summary"], indent=1))
 

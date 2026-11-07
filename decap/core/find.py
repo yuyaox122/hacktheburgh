@@ -178,11 +178,15 @@ def flags(dec, res: dict, k: int = FLAG_K, max_exact: int = 18) -> list[dict]:
     vlines = (res.get("verilog") or res["decompiled"]["verilog"]).splitlines()
     out = []
     for fi, (b, inst, sup, cnt, space, rare0) in enumerate(accepted):
-        cond = dec.condition(b, {})
+        plain, dec.plain = dec.plain, False      # the flag states its condition even when the decompile is plain gates
+        try:
+            cond = dec.condition(b, {})
+        finally:
+            dec.plain = plain
         if cond:
             cond = ("raw", dec.rn(cond[1]), cond[2])
         text = cond[1] if cond else f"a rare condition over {len(sup)} bits"
-        line = next((j + 1 for j, l in enumerate(vlines) if cond and cond[1] in l), res["cell_lines"].get(inst.id, 0))
+        line = next((j + 1 for j, l in enumerate(vlines) if cond and cond[1] in l), 0) or res["cell_lines"].get(inst.id, 0)
         trig_cells = sorted(s.cone([b])[0], key=lambda c: int(c[1:]))
         reach, sinks = _fanout_cone(nl, b, fanout, s)
         sig = sinks[0] if sinks else nl.bitname.get(b, "")
