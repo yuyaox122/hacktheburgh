@@ -364,6 +364,8 @@ export class Stage3D {
     const dim = new THREE.Color(0x1a2230), tmp = new THREE.Color();
     this.cells.forEach((c, i) => {
       tmp.copy(this.cellColour[i]);
+      const mk = this.marks?.get(c.id);
+      if (mk) tmp.copy(mk).multiplyScalar(1.3);
       if (this.highlight && !this.highlight.has(c.id)) tmp.lerp(dim, 0.82);
       else if (this.highlight) tmp.multiplyScalar(1.25);
       this.mLogic.setColorAt(i, tmp);
@@ -428,6 +430,13 @@ export class Stage3D {
       this.prev.set(n, v);
     }
     this.updateTop(); this.updateGlow(now);
+  }
+
+  /** Per-cell colour marks drawn over the normal colours (the Witness agent's verdicts). */
+  private marks: Map<string, THREE.Color> | null = null;
+  setMarks(m: Map<string, string> | null) {
+    this.marks = m && m.size ? new Map([...m].map(([k, v]) => [k, new THREE.Color(v)])) : null;
+    this.dirtyColours = true;
   }
 
   setHighlight(ids: Set<string> | null, nets: Set<string> | null = null) {

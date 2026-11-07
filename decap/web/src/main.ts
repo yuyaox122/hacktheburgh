@@ -1,6 +1,7 @@
 // Decap web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare, #/minecraft), shared chrome, keyboard shortcuts.
 
 import "./styles.css";
+import "./agent/agent.css";
 import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./data/load";
 import { StagePage } from "./ui/stagePage";
 import { WallPage } from "./ui/wallPage";
@@ -13,6 +14,11 @@ import { Demo } from "./ui/demo";
 import { $, $$, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
 import { icon } from "./ui/icons";
 import { app, type PaletteCommand } from "./ui/state";
+import { loadChip } from "./data/load";
+import { AgentPanel } from "./agent/panel";
+import { act, decorateCode } from "./agent/codeAgent";
+import { regionForCell, runAgent } from "./agent/agent";
+import { store } from "./agent/store";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 const root = $("#app");
@@ -29,6 +35,7 @@ root.innerHTML = `
     <div class="actions">
       <span class="status" id="apiStatus"><i></i><span>Connecting</span></span>
       <button class="search" type="button" id="btnPal" aria-label="Search and commands">${icon.search}<span class="lbl">Search</span><span class="k">${isMac ? "⌘K" : "Ctrl K"}</span></button>
+      <button class="btn plain" type="button" id="btnAgent" title="Witness agent: explains a region in one line; Yosys decides (A)">${icon.cube}<span>Agent</span></button>
       <button class="btn plain" type="button" id="btnGuide" title="Ask about what's on screen (G)">${icon.sparkle}<span>Ask</span></button>
       <div class="menuwrap">
         <button class="btn plain icon" type="button" id="btnMore" aria-haspopup="menu" aria-expanded="false" aria-label="More">${icon.more}</button>
@@ -44,6 +51,19 @@ root.innerHTML = `
 const pageEl = $("#page");
 
 const guide = new Guide();
+const agentPanel = new AgentPanel();
+app.onCodeRendered = (p) => decorateCode(p);
+/** Repaint every agent result on whatever page shows this chip: code pane, netlist graph, 3D cells. */
+function paintAgent(chipId: string) {
+  if (app.route === "chip" && chip?.chip === chipId) { decorateCode(chip); chip.setAgentMarks(store.marks(chipId)); }
+  if (app.route === "stage" && stage?.chipName === chipId) {
+    const legend = store.runs(chipId).filter((r) => r.status === "done" && r.cells.length).slice(0, 5).map((r) => ({
+      label: `${r.label}: ${r.explained ? "proven" : r.final ?? ""}`, colour: r.explained ? "#4cc38a" : r.final === "refuted" ? "#ef6b73" : "#e9a23b",
+      cells: r.cells, claim: r.attempts[r.attempts.length - 1]?.claim }));
+    stage.setAgentMarks(store.marks(chipId), legend);
+  }
+}
+store.on(paintAgent);
 let stage: StagePage | null = null;
 let stageErr: string | null = null;
 let wall: WallPage | null = null;
@@ -92,6 +112,7 @@ async function route() {
     s.mount();
     app.guideContext = () => s.context();
     app.guideHighlight = (x) => s.highlightFromGuide(x.cells ?? []);
+    agentPanel.setChip(s.chipName); paintAgent(s.chipName);
     app.pageCommands = () => s.commands();
   } else if (r === "wall") {
     wall ??= new WallPage();
@@ -107,7 +128,9 @@ async function route() {
     if (!chip || chip.chip !== id) { chip?.destroy(); chip = new ChipPage(id); show(chip.el, false); await chip.load(); }
     else show(chip.el, false);
     const c = chip;
-    app.guideContext = () => c.context(); app.guideHighlight = (x) => c.highlightFromGuide(x); app.pageCommands = () => c.commands();
+    app.guideContext = () => c.context(); app.guideHighlight = (x) => c.highlightFromGuide(x);
+    app.pageCommands = () => [...c.commands(), ...agentCommands(c)];
+    agentPanel.setChip(c.chip, c.result?.decompiled.verilog); paintAgent(c.chip);
   } else if (r === "compare") {
     if (!comparePg) { comparePg = new ComparePage(); await comparePg.load(); }
     show(comparePg.el, true);
@@ -153,7 +176,8 @@ const palette = new Palette((): PaletteCommand[] => [
   { label: "Decompile", key: "3", run: () => (location.hash = "#/chip") },
   { label: "Compare", key: "4", run: () => (location.hash = "#/compare") },
   { label: "Minecraft: build Verilog in redstone", key: "5", run: () => (location.hash = "#/minecraft") },
-  { label: "Ask the guide", key: "G", run: () => guide.open() },
+  { label: "Ask the guide", key: "G", run: () => { agentPanel.close(); guide.open(); } },
+  { label: "Witness agent panel", key: "A", run: () => { guide.close(); agentPanel.open(); } },
   { label: "Presenter mode", key: "D", run: () => demo.toggle() },
   { label: "Larger text", key: "", run: () => document.body.classList.toggle("projector") },
   { label: "Wrap long code lines", key: "W", run: () => setWrap(!wrapOn()) },
@@ -164,15 +188,37 @@ const menu = $("#moreMenu"), moreBtn = $("#btnMore");
 const setMenu = (open: boolean) => { menu.hidden = !open; moreBtn.setAttribute("aria-expanded", String(open)); };
 moreBtn.addEventListener("click", (e) => { e.stopPropagation(); setMenu(menu.hidden); });
 addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target as Node)) setMenu(false); });
-$("#btnGuide").addEventListener("click", () => guide.toggle());
+$("#btnGuide").addEventListener("click", () => { agentPanel.close(); guide.toggle(); });
+$("#btnAgent").addEventListener("click", () => { guide.close(); agentPanel.toggle(); });
+document.addEventListener("agent:open", () => guide.close());
 $("#btnDemo").addEventListener("click", () => { setMenu(false); demo.toggle(); });
+/** Palette: run the agent on each block of the chip page, leftover logic first. */
+function agentCommands(c: ChipPage): PaletteCommand[] {
+  const r = c.result;
+  if (!r) return [];
+  return [...r.blocks].sort((a, b) => Number(a.recognised) - Number(b.recognised) || b.cells.length - a.cells.length)
+    .map((b) => ({ label: `Agent: explain block ${b.id} (${b.kind}, ${b.cells.length} cells, line ${b.lines[0]})`, key: "",
+      run: () => act(c, b.lines[0], "explain") }));
+}
+// 3D Stage inspector: "Explain its block with the agent"
+document.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-agent-cell]");
+  if (!b || !stage) return;
+  const chipId = stage.chipName, cell = b.dataset.agentCell!;
+  guide.close(); agentPanel.open();
+  void loadChip(chipId).then(({ data }) => {
+    const reg = regionForCell(data, cell);
+    if (!reg) return;
+    void runAgent({ chip: chipId, scope: reg.scope, label: `3D cell ${cell} · ${reg.label}`, origin: "stage", line: reg.lines[0] || undefined, lines: reg.lines[0] ? reg.lines : undefined });
+  });
+});
 $("#btnPal").addEventListener("click", () => palette.open());
 $("#btnBig").addEventListener("click", () => { setMenu(false); document.body.classList.toggle("projector"); });
 
 addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); palette.isOpen ? palette.close() : palette.open(); return; }
   if (palette.isOpen) return;
-  if (e.key === "Escape") { if (!menu.hidden) setMenu(false); else if (guide.isOpen) guide.close(); else if (app.route === "stage") stage?.selectCell(null); return; }
+  if (e.key === "Escape") { if (!menu.hidden) setMenu(false); else if (agentPanel.isOpen) agentPanel.close(); else if (guide.isOpen) guide.close(); else if (app.route === "stage") stage?.selectCell(null); return; }
   if (isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
   if (demo.isOpen && (e.key === "PageDown" || e.key === "ArrowRight")) { e.preventDefault(); demo.next(); return; }
   if (demo.isOpen && (e.key === "PageUp" || e.key === "ArrowLeft")) { e.preventDefault(); demo.prev(); return; }
@@ -182,7 +228,8 @@ addEventListener("keydown", (e) => {
   else if (k === "3") location.hash = "#/chip";
   else if (k === "4") location.hash = "#/compare";
   else if (k === "5") location.hash = "#/minecraft";
-  else if (k === "g" || k === "G") { e.preventDefault(); guide.toggle(); }
+  else if (k === "g" || k === "G") { e.preventDefault(); agentPanel.close(); guide.toggle(); }
+  else if (k === "a" || k === "A") { e.preventDefault(); guide.close(); agentPanel.toggle(); }
   else if (k === "w" || k === "W") setWrap(!wrapOn());
   else if (k === "d" || k === "D") demo.toggle();
   else if (app.route === "stage" && stage) {
@@ -214,7 +261,7 @@ health().then((h) => {
 });
 
 // Test hook (used by the headless browser check; harmless in production).
-(window as unknown as { __decap: unknown }).__decap = { get stage() { return stage; }, get chip() { return chip; }, app };
+(window as unknown as { __decap: unknown }).__decap = { get stage() { return stage; }, get chip() { return chip; }, app, agent: { store, panel: agentPanel } };
 
 setWrap(wrapOn());
 // Wrap toggles live in page templates; one delegated listener serves them all.

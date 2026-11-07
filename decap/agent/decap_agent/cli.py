@@ -32,6 +32,22 @@ import os
 
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 
+
+def load_secrets(path: str | None = None) -> list[str]:
+    """Load KEY=VALUE lines (e.g. DEEPSEEK_API_KEY) from a file OUTSIDE the repo, default ~/.config/decap/secrets.env.
+    Never printed, never written anywhere; values already in the environment win. Returns the key names loaded."""
+    p = Path(os.path.expanduser(path or os.environ.get("DECAP_SECRETS", "~/.config/decap/secrets.env")))
+    loaded = []
+    try:
+        for line in p.read_text().splitlines():
+            k, sep, v = line.strip().partition("=")
+            if sep and k and not k.startswith("#") and k not in os.environ:
+                os.environ[k] = v.strip().strip('"').strip("'")
+                loaded.append(k)
+    except OSError:
+        pass
+    return loaded
+
 from fastmcp import Client
 
 from .server import build_server, load_core_app
@@ -208,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("file")
     s.add_argument("--port", type=int, default=8790)
     args = p.parse_args(argv)
+    load_secrets()
 
     if args.cmd == "stream":
         import uvicorn

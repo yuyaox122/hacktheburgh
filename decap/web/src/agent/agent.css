@@ -1,0 +1,83 @@
+/* Witness agent inside the Decap app. Uses the app's own tokens (styles.css): semantic colours only for verdicts,
+   accent for the agent's live/working state, blue (--fall) for accepted agent edits. */
+
+/* ---------- hover toolbar on a decompiled line ---------- */
+.ag-hover { position: fixed; z-index: 25; display: flex; gap: 1px; background: var(--line-2); border: 1px solid var(--line-2);
+  border-radius: 7px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.45); opacity: 0; pointer-events: none;
+  transform: translateY(2px); transition: opacity .12s, transform .12s; }
+.ag-hover.on { opacity: 1; pointer-events: auto; transform: none; }
+.ag-hover button { background: var(--panel-2); border: 0; padding: 4px 11px; font-size: 12px; font-weight: 500; color: var(--fg); }
+.ag-hover button:hover:not(:disabled) { background: var(--panel-3); color: var(--accent); }
+.ag-hover button:disabled { color: var(--faint); cursor: default; }
+.ag-hover button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---------- gutter marks from finished runs ---------- */
+ol.code li.ag-v-ok .n { color: var(--add); }
+ol.code li.ag-v-bad .n { color: var(--del); }
+ol.code li.ag-v-warn .n { color: var(--amber); }
+ol.code li.ag-v-ok .n::after, ol.code li.ag-v-bad .n::after, ol.code li.ag-v-warn .n::after {
+  content: ""; position: absolute; left: 34px; top: 50%; width: 5px; height: 5px; margin-top: -2px; border-radius: 50%; background: currentColor; }
+ol.code li.ag-replaced { display: none; }
+ol.code li.ag-orig-shown .t { text-decoration: line-through; color: var(--muted); }
+.ag-cbub { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); min-width: 18px; height: 16px; padding: 0 5px;
+  border-radius: 8px; background: var(--accent); color: var(--accent-ink); font: 600 10.5px/16px var(--font-body); text-align: center; }
+
+/* ---------- rows inserted under lines (threads, edits) ---------- */
+ol.code li.ag-row { display: block; white-space: normal; cursor: default; padding: 8px 12px 10px 54px; font-family: var(--font-body);
+  font-size: 13px; line-height: 1.5; background: var(--panel); border-block: 1px solid var(--line); }
+ol.code li.ag-row:hover { background: var(--panel); }
+.ag-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.ag-actions label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.ag-actions .grow { flex: 1; }
+.ag-tag { font: 600 10.5px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ag-edit-h, .ag-att-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ag-diff, .ag-code { margin-top: 6px; font: 12.5px/1.65 var(--font-mono); white-space: pre; overflow-x: auto; border-radius: 6px; border: 1px solid var(--line); }
+.ag-diff > div { padding: 0 10px; }
+.ag-diff .del { background: color-mix(in srgb, var(--del) 10%, transparent); color: var(--muted); }
+.ag-diff .del > span:first-child, .ag-diff .add > span:first-child { display: inline-block; width: 16px; color: var(--faint); user-select: none; }
+.ag-diff .add { background: color-mix(in srgb, var(--add) 12%, transparent); }
+ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 51px; background: color-mix(in srgb, var(--fall) 6%, var(--panel)); }
+.ag-edit.accepted .ag-code { border: 0; margin: 0 0 2px; padding: 0; overflow-x: auto; }
+.ag-edit.accepted .ag-tag { color: var(--fall); }
+
+/* comment threads (claude.ai-style cards) */
+.ag-cm { display: grid; gap: 4px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); margin-bottom: 6px; max-width: 760px; }
+.ag-cm.agent { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.ag-cm-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.ag-cm-h time { color: var(--faint); font-size: 11px; }
+.ag-cm p { margin: 0; }
+.ag-claim { display: block; font: 12.5px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.ag-compose { display: grid; gap: 6px; max-width: 760px; }
+.ag-compose textarea { width: 100%; resize: vertical; font: 13px/1.5 var(--font-body); }
+.ag-cex { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ag-cex code { font: 12px/1.4 var(--font-mono); padding: 2px 6px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--del) 40%, transparent);
+  background: color-mix(in srgb, var(--del) 8%, transparent); font-variant-numeric: tabular-nums; }
+.ag-lbl { font: 600 10.5px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--del); }
+
+/* ---------- agent drawer ---------- */
+.ag-drawer { width: min(480px, 100%); }
+.ag-drawer .pane-h b { font-weight: 500; }
+.ag-intro { padding: 10px 14px 0; font-size: 13px; }
+.ag-intro p { margin: 0; }
+.ag-runs { flex: 1; overflow-y: auto; padding: 12px 14px 20px; display: grid; gap: 12px; align-content: start; }
+.ag-run { display: grid; gap: 8px; padding: 12px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line); }
+.ag-run.running { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.ag-run.explained { border-color: color-mix(in srgb, var(--add) 45%, var(--line)); }
+.ag-run > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.ag-run > header b { flex: 1 1 100%; font-weight: 600; }
+.ag-steps { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); display: grid; gap: 2px; }
+.ag-att { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); }
+.ag-att p { margin: 0; font-size: 12.5px; }
+.ag-ok { color: var(--add); }
+
+/* ---------- 3D legend on the Stage ---------- */
+.ag-legend { position: absolute; left: 12px; bottom: 64px; z-index: 5; display: grid; gap: 4px; max-width: min(420px, calc(100% - 24px));
+  padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line-2); font-size: 12px; }
+.ag-legend b { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ag-legend button { display: flex; gap: 8px; align-items: baseline; text-align: left; font-size: 12px; color: var(--fg); padding: 2px 0; background: none; border: 0; min-width: 0; }
+.ag-legend button > span { min-width: 0; }
+.ag-legend i { flex: 0 0 9px; width: 9px; height: 9px; border-radius: 2px; transform: translateY(1px); }
+.ag-legend code { font: 11.5px/1.4 var(--font-mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-stagebtn { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .ag-hover { transition: none; } }
