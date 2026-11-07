@@ -10,6 +10,7 @@
   decap bench --split dev              Witness bench: a region agent per unrecognised block, first drafts scored
   decap bench --freeze-hash            the hash to post before scoring the test split (--split test needs --frozen)
   decap timeline FILE... -o page.html  the Witness timeline page from transcripts (--bench, --ablation)
+  decap serve [--port 8791]            HTTP API for the web app: /witness/explain (SSE), /witness/formalise
   decap mcp [--http PORT]              serve the tools over MCP (stdio by default)
   decap replay FILE [--check]          step through a recorded run; --check re-runs and compares
   decap stream FILE [--port 8790]      serve a transcript to the UI (SSE /events)
@@ -195,6 +196,9 @@ def main(argv: list[str] | None = None) -> int:
     tl.add_argument("--bench", help="bench JSON (for region sizes)")
     tl.add_argument("--ablation", help="ablation JSON from 'decap bench --ablate FILE --out X'")
     tl.add_argument("--include-fallback", action="store_true", help="also show simulation-checked runs")
+    sv = sub.add_parser("serve", help="HTTP API for the web app (Witness explain/formalise)")
+    sv.add_argument("--port", type=int, default=8791)
+    sv.add_argument("--model", help="e.g. cli:sonnet (default: $DECAP_WITNESS_MODEL)")
     m = sub.add_parser("mcp", help="serve tools over MCP")
     m.add_argument("--http", type=int, metavar="PORT", help="streamable HTTP on this port instead of stdio")
     r = sub.add_parser("replay", help="step through a recorded run")
@@ -216,6 +220,13 @@ def main(argv: list[str] | None = None) -> int:
         out = write([Path(f) for f in args.files], Path(args.out), Path(args.bench) if args.bench else None,
                     Path(args.ablation) if args.ablation else None, args.include_fallback)
         print(f"[decap] timeline: {out}", file=sys.stderr)
+        return 0
+
+    if args.cmd == "serve":
+        import uvicorn
+        from .witness_api import create_witness_app
+        core, _ = load_core_app()
+        uvicorn.run(create_witness_app(core, model=args.model), host="127.0.0.1", port=args.port, log_level="warning")
         return 0
 
     if args.cmd == "replay":
