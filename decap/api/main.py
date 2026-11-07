@@ -21,6 +21,25 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+
+def _load_env_file(path: Path) -> None:
+    """Read KEY=VALUE lines from decap/.env (gitignored) into the environment, without overriding real env vars.
+    This is where the AI key lives (ANTHROPIC_API_KEY) for the guide and the agent layer. Never commit it."""
+    if not path.is_file():
+        return
+    import os
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k, v = k.strip().removeprefix("export ").strip(), v.strip().strip('"').strip("'")
+        if k and v:
+            os.environ.setdefault(k, v)
+
+
+_load_env_file(ROOT / ".env")
+
 from fastapi import Body, FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
