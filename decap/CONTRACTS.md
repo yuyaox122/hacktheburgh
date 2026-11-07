@@ -66,11 +66,11 @@ Cell ids `c<k>` and net names `n<k>` are stable for a given netlist file. Port b
 }
 ```
 
-## 3. Stage design (`web/public/data/design.json`, from `ingest/ingest_def.py`)
+## 3. Explore design (`web/public/data/designs/<chip>.json` from `ingest/ingest_gds.py --all`; the local warm-up `design.json` from `ingest/ingest_def.py`)
 
-SPEC.md §6.3 shape: `{ name, pdk, die:{w,h}, rowHeight, site, ports:[{name,dir,x,y}], cells:[{id,type,x,y,w,orient,pins,module,src}], phys:[{type,x,y,w}], routes:[{net,layer,pts}], source:{files,modules} }`, plus `lib.json` from Liberty: `{ "<type>": { "pins": {"A":"in","Y":"out"}, "function": {"Y": "!(A&B)"}, "area": 6.256, "ff": null | {"clocked_on","next_state","clear"?,"preset"?} } }`.
+Shape (the GDS version adds `title`, `intro`, `hint` and `io`): `{ name, pdk, die:{w,h}, rowHeight, site, ports:[{name,dir,x,y}], cells:[{id,type,x,y,w,orient,pins,module,src}], phys:[{type,x,y,w}], routes:[{net,layer,pts}], source:{files,modules} }`, plus `lib.json` from Liberty: `{ "<type>": { "pins": {"A":"in","Y":"out"}, "function": {"Y": "!(A&B)"}, "area": 6.256, "ff": null | {"clocked_on","next_state","clear"?,"preset"?} } }`.
 
-## 4. API (`api/server.py`, FastAPI on :8000; Vite proxies `/api`)
+## 4. API (`api/main.py`, FastAPI on :8000; Vite proxies `/api`)
 
 | Method | Path | Body | Returns |
 |---|---|---|---|

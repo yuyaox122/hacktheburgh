@@ -1,4 +1,4 @@
-"""Decap Witness: the region agent loop (docs/decap/research/witness-plan.md, section 2).
+"""Decap Witness: the region agent loop (docs/decap/witness-plan.md, section 2).
 
     judge drops an agent on a region
       -> the controller fetches the region + a first probe into the prompt; the LLM may probe twice more (`fix`)
