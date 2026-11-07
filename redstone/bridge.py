@@ -56,7 +56,7 @@ MAX_PRIMS = 600
 MAX_BLOCKS = 450_000
 CHECK_VECTORS = 200
 
-# Builds already standing in the demo world (see HANDOVER.md §1). Driven from the page as they are.
+# Builds already standing in the demo world (see README.md, "Demo world"). Driven from the page as they are.
 PREBUILT = {
     "tt_um_sign_addsub": ("Signed adder/subtractor (real TT08 layout, 2-D)", "chip"),
     "tt_um_Electom_cla_4bits": ("4-bit carry-lookahead adder (real TT08 layout, 2-D)", "chip"),

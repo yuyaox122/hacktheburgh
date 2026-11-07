@@ -1,6 +1,6 @@
 # Decap: View Source for silicon
 
-Decap turns a chip's gate-level netlist, with every internal name stripped, back into short Verilog a person can read. It then proves with Yosys that the Verilog is exactly the same circuit. Plan and pitch: [`docs/decap/SPEC.md`](../docs/decap/SPEC.md). Data shapes and API: [`CONTRACTS.md`](CONTRACTS.md).
+Decap turns a chip's gate-level netlist, with every internal name stripped, back into short Verilog a person can read. It then proves with Yosys that the Verilog is exactly the same circuit. Pitch, claims and demo script: [`docs/decap/PITCH.md`](../docs/decap/PITCH.md). Data shapes and API: [`CONTRACTS.md`](CONTRACTS.md).
 
 ## Results (frozen held-out test set, decompiler `5dc6bfd`)
 

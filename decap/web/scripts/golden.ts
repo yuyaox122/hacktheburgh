@@ -1,7 +1,7 @@
 // Golden check (SPEC §6.4, P0 gate): the browser simulator (src/sim) vs iverilog on the same netlist.
 //
 // iverilog side: SKY130 HD functional models generated here straight from the per-cell Liberty JSON in
-// data/pdk/ (independent of ingest/liberty.py and lib.json), like docs/decap/smoke/mkcells.py.
+// data/pdk/ (independent of ingest/liberty.py and lib.json).
 // TS side: src/sim/sim.ts driven by web/public/data/lib.json (what the app loads).
 // Both start with every flip-flop at 0 and see the same seeded random stimulus. Each cycle we compare, before
 // and after the rising clock edge, every output port bit and every flip-flop output.

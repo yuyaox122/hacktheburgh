@@ -5,7 +5,7 @@ names (aliases for their flip-flops), with next(x) = x one clock later and 'A wh
 the code-written English are Ian's (decap/agent/decap_agent/claim_expr.py, stub_witness.english), imported here so
 the agent, its stub, its fallback and this checker read every claim the same way.
 
-Setup (docs/decap/research/witness-plan.md): rst_n = 1, ena = 1, registers free. Every flip-flop is cut: its Q
+Setup (docs/decap/witness-plan.md): rst_n = 1, ena = 1, registers free. Every flip-flop is cut: its Q
 becomes a free input q_<id>, and next(q_<id>) is its next-state function (D, enable, scan, clear/preset)
 evaluated on the same inputs. So "proven" means: for EVERY input and EVERY register value, one clock step.
 

@@ -100,7 +100,7 @@ cd ../decap/web && npm run dev             # Vite proxies /redstone to the bridg
 ```
 
 **Everything on one laptop (the pitch: Alex's, Windows).** You need Python 3, JDK 21, Node, Yosys (or `pip install yowasp-yosys` plus a `yosys` shim), and Minecraft Java 1.21.11. iverilog is optional: without it the pre-build check is skipped.
-1. `git fetch && git switch 58-redstone-web`
+1. `git fetch && git switch main && git pull`
 2. `cd redstone`, then `python chipdata.py fetch tt_um_Electom_cla_4bits` (once), then `python demo.py start` (first run: put the 1.21.11 `server.jar` at `tools/server-1.21.11.jar`).
 3. In a second terminal: `python bridge.py`
 4. In a third: `cd decap/web && npm install && npm run dev`, then open `http://localhost:5173/#/minecraft`.
@@ -141,3 +141,61 @@ The server jar is Mojang's vanilla `server.jar` for 1.21.11 (SHA-1 `64bb6d76…`
 - No latches or memories.
 - On the playable server the two clock phases are levers, so stepping the clock means flipping `HOLD_M` up, `HOLD_S` down, `HOLD_S` up, then `HOLD_M` down.
 - Rows are real and x is to scale within a few µm, but z is stretched to make room for the routing channels.
+
+## Developer notes
+
+### Two servers
+
+| Server | Folder | Game port | RCON | Used for |
+|---|---|---|---|---|
+| check | `server/` | 25566 | 25576 | `check.py`; ticks are **frozen** and stepped. Start/stop: `python3 mc.py start` / `stop` |
+| demo | `server-demo/` | **25565** | 25577 | the playable world; ticks run normally. Start/stop: `python3 demo.py start` / `stop` |
+
+`demo.py` sets the env vars for the demo server itself. For ad-hoc RCON to it, prefix commands with `REDSTONE_SERVER_DIR=server-demo REDSTONE_RCON_PORT=25577`. Data (`data/`), outputs (`out/<chip>/layout.json`), servers and `tools/` are all gitignored.
+
+### Demo world
+
+| Build | Location |
+|---|---|
+| Alex's real-layout CLA (his `minecraft/` datapack, run unmodified) | z −16..76 |
+| `tt_um_sign_addsub`, 2-D | x 528..1156, z 201..411 |
+| Primitive showroom | x −8..60, z ≈ 318..344 |
+| Verilog `counter` (one row) | x 0..600, z ≈ 600..780 |
+| `tt_um_Electom_cla_4bits`, 2-D | x 512..1170, z 801..1022 |
+| Tiny FPGA | x 0..980, z 1201..1462 |
+| Builds from the website (`bridge.py`, registry in `out/web/registry.json`) | z ≥ 3000 |
+
+The world spawn is at the last chip `demo.py chip` built.
+
+### Re-verify after any change
+
+```sh
+python3 sim.py tt_um_sign_addsub && python3 sim.py tt_um_Electom_cla_4bits
+python3 pnr.py tt_um_sign_addsub && python3 check.py chip tt_um_sign_addsub 50
+python3 pnr.py tt_um_Electom_cla_4bits --z 800 && python3 check.py chip tt_um_Electom_cla_4bits 30
+python3 verilog.py examples/counter.v --z 600 && python3 check.py vchip examples/counter.v 30
+```
+
+`verilog.py` writes `out/<module name>/`, and Decap's decompiled modules keep the chip's name, so running it on a decompile overwrites that chip's 2-D layout. Regenerate it with `pnr.py <chip>`.
+
+### Gotchas we already paid for
+
+- In 1.21.11, repeater and comparator `facing` points **toward the input** (`facing=west` means the signal flows east).
+- **Vanilla RCON can't take pipelined packets.** Send one command at a time (`MC.cmds` does).
+- **Game rules are snake_case** in 1.21.11: `max_block_modifications`, `advance_time`, `random_tick_speed`, `max_command_sequence_length`.
+- **Floor:** bedrock plus 3 stone, so the floor top is at y=−61 and builds start at −60.
+- **`setblock` doesn't compute dust shapes.** `pnr._shape_dust` writes them explicitly.
+- **Placement order:** supports, then components. `redstone_block` constants go **last**, so their neighbours update. The world starts all-zero.
+- **Unloaded chunks:** forceload before building. A position that isn't loaded fails silently in `execute if block` ("not loaded").
+- **`/tick` needs permission level 3.** Command blocks have level 2, and a function containing `/tick` can't be called from one. That's why `clock` and `clock_fast` are separate.
+- **Mirrored (FS) cells** have their GDS origin at the top edge, so their row is y − 2.72 µm.
+- **A fresh `Driver`** must write every lever on its first `set`.
+- **RCON** uses the public password `redstone` and listens on every interface. Only run the servers on a network you trust.
+- **Never `pkill -f "tools/board wait"`.** Other sessions run board watchers on the same Mac.
+
+### Next ideas
+
+- **Bigger FPGA:** give Verilog designs a tiled 2-D placement (one CLB per tile). The one-row layout reaches 2.2M blocks at 8 CLBs.
+- **Speed and size:** z is mostly routing channels. Better spine-column choice would need fewer tracks, and pads facing south into row 1's channel would save one channel per IO net. Dropping the output repeater of comparator tiles saves 1 rt per gate; INH2 / NOR2 using both comparator sides needs 10–35% fewer primitives (ABC needs a BUF cell in the Liberty file or it segfaults).
+- **Clock domains:** segdecode has 3 domains (negedge flops clocked by data pins), which is rejected today.
+- A picture for the pitch: `python3 mapview.py <chip> 2`.
