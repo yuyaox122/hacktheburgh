@@ -108,7 +108,8 @@ def create_stub_app() -> FastAPI:
     def scoped_cones(chip: str, scope: Scope) -> list[str]:
         """Cones that intersect the scope (all cones if the scope is empty)."""
         present = cones_of(chip)
-        alias = {"uo_out[0]": "out", "uo_out[1]": "hit", "next(count)": "count"}
+        alias = {"uo_out[0]": "out", "uo_out[1]": "hit", "next(count)": "count",
+                 "b0": "count", "b1": "count", "b2": "hit", "b3": "trig"}   # block ids, as recover_blocks lists them
         scope = scope.model_copy(update={"cone_of": alias.get(scope.cone_of, scope.cone_of)})
         if not (scope.cells or scope.nets or scope.cone_of):
             return present

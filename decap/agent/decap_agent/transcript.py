@@ -108,5 +108,6 @@ class TranscriptMiddleware(Middleware):
                                is_error=bool(getattr(result, "is_error", False)),
                                wall_s=round(time.perf_counter() - t0, 4),
                                # top-level so the 3D view can light these up without parsing results
-                               scope=args.get("scope"), cells=touched.get("cells", []), nets=touched.get("nets", []))
+                               scope=args.get("scope"), cells=touched.get("cells", []), nets=touched.get("nets", []),
+                               lines=touched.get("lines", []))
         return result

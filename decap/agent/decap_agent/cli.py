@@ -7,6 +7,8 @@
   decap explain CHIP --cone-of X       Witness: a region agent looks, claims, gets checked, refines (LLM)
   decap claim CHIP "expr" --cone-of X  Witness: send one claim straight to the checker (no LLM)
   decap formalise "sentence" [CHIP]    the judge's sentence -> a formal line + the checker's English (--check: verdict)
+  decap bench --split dev              Witness bench: a region agent per unrecognised block, first drafts scored
+  decap bench --freeze-hash            the hash to post before scoring the test split (--split test needs --frozen)
   decap mcp [--http PORT]              serve the tools over MCP (stdio by default)
   decap replay FILE [--check]          step through a recorded run; --check re-runs and compares
   decap stream FILE [--port 8790]      serve a transcript to the UI (SSE /events)
@@ -173,6 +175,19 @@ def main(argv: list[str] | None = None) -> int:
     _scope_args(f)
     f.add_argument("--model", help="default: $DECAP_FORMALISE_MODEL or anthropic:claude-sonnet-5-5")
     f.add_argument("--check", action="store_true", help="also send it to the checker (after the person confirms)")
+    b = sub.add_parser("bench", help="Witness bench driver")
+    b.add_argument("--split", choices=["dev", "test"], default="dev")
+    b.add_argument("--chips", help="comma-separated subset of the split")
+    b.add_argument("--max-regions", type=int, default=4)
+    b.add_argument("--max-refine", type=int, default=2)
+    b.add_argument("--concurrency", type=int, default=3)
+    b.add_argument("--model", help="e.g. cli:sonnet or anthropic:claude-sonnet-5-5 (default: $DECAP_WITNESS_MODEL)")
+    b.add_argument("--no-cache", action="store_true")
+    b.add_argument("--out", help="bench JSON (default: runs/bench-<split>-<time>.json)")
+    b.add_argument("--frozen", action="store_true", help="required for --split test: the freeze hash is posted")
+    b.add_argument("--freeze-hash", action="store_true", help="print the freeze hash and exit")
+    b.add_argument("--ablate", metavar="TRANSCRIPT", help="re-check every claim in a bench transcript with random and "
+                                                          "biased simulation instead of Yosys (no LLM; real core only)")
     m = sub.add_parser("mcp", help="serve tools over MCP")
     m.add_argument("--http", type=int, metavar="PORT", help="streamable HTTP on this port instead of stdio")
     r = sub.add_parser("replay", help="step through a recorded run")
@@ -235,6 +250,35 @@ def main(argv: list[str] | None = None) -> int:
         from .formalise import formalise
         _print(asyncio.run(formalise(args.sentence, server=server if args.chip else None, chip=args.chip,
                                      scope=_scope(args), model=args.model, transcript=transcript, check=args.check)))
+    elif args.cmd == "bench":
+        from .bench import freeze_hash, run_bench
+        from .witness import DEFAULT_MODEL
+        rows = asyncio.run(_call(server, "list_chips", {}))
+        if args.freeze_hash:
+            first = next(r["chip"] for r in rows if r.get("split") == "dev")
+            region = asyncio.run(_call(server, "get_region", {"chip": first, "scope": {}}))
+            model_name = args.model or os.environ.get("DECAP_WITNESS_MODEL", DEFAULT_MODEL)
+            _print(freeze_hash(model_name, Path("decap/bench/split.json"), region.get("decompiler", "unknown")))
+            return 0
+        if args.ablate:
+            from .bench import ablate
+            res = ablate(load(Path(args.ablate)))
+            _print({k: v for k, v in res.items() if k != "rows"})
+            return 0
+        if args.split == "test" and not args.frozen:
+            print("[decap] refusing to score the held-out split without --frozen (post the freeze hash first)",
+                  file=sys.stderr)
+            return 2
+        chips = [r["chip"] for r in rows if r.get("split") == args.split]
+        if args.chips:
+            want = args.chips.split(",")
+            chips = [c for c in chips if c in want]
+        out = Path(args.out) if args.out else RUNS / f"bench-{args.split}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.json"
+        res = asyncio.run(run_bench(server, chips, model=args.model, max_regions=args.max_regions,
+                                    max_refine=args.max_refine, transcript=transcript, concurrency=args.concurrency,
+                                    cache_dir=None if args.no_cache else CACHE, out_path=out,
+                                    log=lambda m: print(m, file=sys.stderr)))
+        _print(res["summary"] | {"wall_s": res["wall_s"], "out": str(out)})
     elif args.cmd == "claim":
         out = asyncio.run(_call(server, "propose_claim", {"chip": args.chip, "scope": _scope(args), "claim": args.claim,
                                                           "label": args.label, "check": not args.dry}))

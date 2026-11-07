@@ -74,13 +74,14 @@ def uncovered(m: Model, node, outputs: list[dict]) -> list[str]:
     return missing
 
 
-def check_claim(chip: str, body: ClaimIn) -> dict:
+def check_claim(chip: str, body: ClaimIn, mode: str = "biased", n: int = 4096) -> dict:
+    """mode: 'biased' (the core's mostly-1/mostly-0 patterns) or 'random' (plain Monte Carlo)."""
     v = _get(chip)
     m: Model = model(v)
     r = region_of(v, body.scope)
     base = {"chip": chip, "claim": body.claim, "label": body.label, "touched": r["touched"], "netlist_sha": netlist_sha(v),
             "decompiler": DECOMPILER, "source": SOURCE,
-            "method": "netlist simulation, rst_n=1 ena=1, registers free (fallback checker, not Yosys)"}
+            "method": f"netlist simulation ({mode}, n={n}), rst_n=1 ena=1, registers free (fallback checker, not Yosys)"}
     try:
         node = parse(body.claim)
         ev = Evaluator(m.widths)
@@ -96,7 +97,7 @@ def check_claim(chip: str, body: ClaimIn) -> dict:
     refs = sorted(names(node))
     if sum(m.widths[n] for _, n in refs) <= 16 and all(
             ev.holds(node, dict(zip(refs, vs))) for vs in itertools.product(*[range(1 << m.widths[n]) for _, n in refs])):
-        return {**base, "verdict": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
+        return {**base, "verdict": "tautology", "truth": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
 
     sel = []
     for k, n, hi, lo in ref_bits(node):
@@ -105,7 +106,7 @@ def check_claim(chip: str, body: ClaimIn) -> dict:
     sup = m.support(sel) | {b for b in sel if isinstance(b, int) and (b in m.in_bit or b in m.q_of)
                             and not (b in m.in_bit and m.in_bit[b][0] in FIXED)}
     varying = sorted(sup)
-    vals, mask, exhaustive = m.run(varying, 4096, 7, biased=True)
+    vals, mask, exhaustive = m.run(varying, n, 7, biased=(mode == "biased"))
     envs = []
     for j in range(mask.bit_length()):
         env = {(k, n): Model.value(vals, m.bits_of(k, n), j) for k, n in refs}
@@ -126,7 +127,7 @@ def check_claim(chip: str, body: ClaimIn) -> dict:
                         cex[f"q_{fid}"] = bit
             for k, n in refs:
                 cex.setdefault(f"next({n})" if k == "next" else n, env[(k, n)])
-            return {**base, "verdict": "refuted", **out, "counterexample": cex,
+            return {**base, "verdict": "refuted", "truth": "refuted", **out, "counterexample": cex,
                     "refute_kind": "unclassified (fallback: no reset BMC)"}
 
     lits, cone = out["literals"], r["cone_literals"]
@@ -144,7 +145,7 @@ def check_claim(chip: str, body: ClaimIn) -> dict:
               else f"labelled shape: {body.label}" if label_ok else f"{lits} literals vs {cone} in the decompiled lines"
               if cleared else "no shorter than the decompile and no known shape")
     verdict = "tested" if cleared else "partial" if on_topic and complete is False else "restated"
-    return {**base, "verdict": verdict, **out, "exhaustive": exhaustive, "vectors": mask.bit_length(),
+    return {**base, "verdict": verdict, "truth": "tested", **out, "exhaustive": exhaustive, "vectors": mask.bit_length(),
             "credit": {"cleared": cleared, "complete": complete, "reason": reason, "literals": lits, "cone_literals": cone}}
 
 
