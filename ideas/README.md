@@ -4,6 +4,7 @@ Scored by a 3-model council (Claude Sonnet 5.5, Claude Opus 5.5, Grok 4.7) on on
 
 | # | Idea | Track | Before → after (mean) | File |
 |---|---|---|---|---|
+| ★ | **GlassDie**: every open chip made of glass; blind structure discovery across ~375 real chips, proven on held-out chips, then watch it run in 3D silicon (evolved from Decap) | G-Research (+MetaView) | 85.0 → **90.7** ✅ passes the bar | [08-glassdie.md](08-glassdie.md) |
 | 1 | **Fault Lines**: hidden fault planes drive an aftershock forecast + inspection decision | G-R × HRT | 89.7 → **89.3** | [01-fault-lines.md](01-fault-lines.md) |
 | 2 | **Invisible Ink**: red-team arena where a legal AI must sign/refuse real T&Cs with hidden traps | Wordsmith | 86.7 → **86.3** | [02-invisible-ink.md](02-invisible-ink.md) |
 | 3 | **Bought Stars**: fake-GitHub-star campaigns predict malware takedowns | G-R × HRT | 85.0 → **84.3** | [03-bought-stars.md](03-bought-stars.md) |
@@ -12,9 +13,10 @@ Scored by a 3-model council (Claude Sonnet 5.5, Claude Opus 5.5, Grok 4.7) on on
 | T | **Decap "Silicon, live"** (Yuyao, #4): real chip in 3D with live gate-level simulation | G-Research (+MetaView) | 81.0 → **85.3** | [06-decap.md](06-decap.md) |
 | T | **Sea-Route "Channel Window"** (Ian, #6): learned crossing window → rescue pre-positioning | G-R × HRT | 71.0 → **79.0** | [07-sea-route-nowcast.md](07-sea-route-nowcast.md) |
 
-**No idea formally cleared the bar** (mean ≥90 and no judge below 85). Fault Lines came closest (every judge 87+ across four versions).
+**GlassDie is the only idea to clear the bar** (mean ≥90 and no judge below 85): Sonnet 89 · Opus 92 · Grok 91. Fault Lines is the best combined G-R × HRT entry (89.3).
 
 ## Recommendation
+- **Single-track maximum:** GlassDie for G-Research (+ MetaView). First task: pull the pinned OpenLane image + SKY130 PDK on two laptops.
 - **G-R × HRT:** Fault Lines. Run its hour-6 log-likelihood gate before anything else.
 - **Wordsmith:** Invisible Ink (safest: no bot-walled sites) or Clear to Launch (if UK IPO search can be automated; test in hour 0).
 - **Strongest single-track alternative:** Decap for G-Research + MetaView (Opus 89). Choosing it means giving up the combined HRT prize.
