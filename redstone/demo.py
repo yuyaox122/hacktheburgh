@@ -66,6 +66,10 @@ def goto_function(lay: dict) -> None:
     fn = mcmod.SRV / "world" / "datapacks" / "redstone_chip" / "data" / "redstone" / "function" / "goto"
     fn.mkdir(parents=True, exist_ok=True)
     (fn / f"{lay['chip'].lower()}.mcfunction").write_text(f"tp @s {x} {Y + 6} {z} facing {x} {Y} {z - 30}\n")
+    own = fn.parent / lay["chip"].lower()
+    own.mkdir(parents=True, exist_ok=True)
+    (own / "settle.mcfunction").write_text(f"tick sprint {2 * lay['settle_rt'] + 20}\n"
+                                           'tellraw @a {"text":"fast-forwarded until the outputs settle","color":"yellow"}\n')
 
 
 def clock_button(mc: MC, lay: dict) -> None:
