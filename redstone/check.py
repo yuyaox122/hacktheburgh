@@ -122,6 +122,42 @@ def check_chip(mc: MC, chip: str, n: int) -> int:
     return bad
 
 
+def check_verilog(mc: MC, src: str, n: int) -> int:
+    import json as _json
+    from pathlib import Path as _P
+    import verilog
+    import world
+    m = verilog.synth(_P(src))
+    meta = _json.loads((world.ROOT / "out" / m["name"] / "verilog.json").read_text())
+    lay = world.load(meta["top"])
+    print(f"{meta['top']}: {lay['stats']}")
+    world.build(mc, lay)
+    mc.cmd("tick rate 1000")
+    drv = world.Driver(mc, lay)
+    drv.set({b: 0 for b in lay["inputs"]})
+    seq = meta["clock"] is not None
+    if seq:
+        drv.set({"HOLD_M": 0, "HOLD_S": 1})
+    drv.wait(2 * drv.settle)
+    vecs = verilog.vectors(meta["inputs"], n)
+    ref = verilog.IverilogRef(meta["source"], meta["top"], meta["inputs"], meta["outputs"], meta["clock"]).run(vecs)
+    bad = 0
+    t0 = time.time()
+    for i, (v, want) in enumerate(zip(vecs, ref)):
+        drv.set(v)
+        if seq:
+            drv.clock()
+        got = drv.read(meta["outputs"])
+        ok = got == want
+        bad += not ok
+        fmt = lambda r: "".join(str(r[b]) for b in meta["outputs"])
+        print(f"  {i:3d} in={''.join(str(v[b]) for b in meta['inputs'])} want={fmt(want)} got={fmt(got)} "
+              f"{'ok' if ok else 'MISMATCH'}", flush=True)
+    print(f"{meta['top']}: {n} vectors in vanilla 1.21.11 vs iverilog on the source, {bad} mismatches "
+          f"({time.time() - t0:.0f}s)")
+    return bad
+
+
 def main() -> None:
     what = sys.argv[1] if len(sys.argv) > 1 else "prims"
     with MC() as mc:
@@ -142,6 +178,9 @@ def main() -> None:
             for x in fails[:20]:
                 print("  ", x)
             sys.exit(1 if fails else 0)
+        elif what == "vchip":
+            n = int(sys.argv[3]) if len(sys.argv) > 3 else 20
+            sys.exit(1 if check_verilog(mc, sys.argv[2], n) else 0)
         elif what == "chip":
             n = int(sys.argv[3]) if len(sys.argv) > 3 else 20
             sys.exit(1 if check_chip(mc, sys.argv[2], n) else 0)
