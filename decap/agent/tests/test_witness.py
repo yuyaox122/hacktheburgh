@@ -175,7 +175,7 @@ def test_real_chip_checker_catches_a_planted_bug(monkeypatch):
         async with Client(server) as c:
             return result_payload(await c.call_tool("propose_claim", {"chip": "tt_um_kapilan_alarm", "scope": alarm,
                                                                       "claim": claim}, raise_on_error=False))
-    good = run(go("next(bit0) == (bit0 | ({count0, count1} == {uio_in[2:0], ui_in}))"))
+    good = run(go("(uio_out[7] == bit0) && (next(bit0) == (bit0 | ({count0, count1} == {uio_in[2:0], ui_in})))"))
     # the core's own checker (core/claims.py, Yosys) answers once it exists; the fallback only fills the gap
     assert (good["verdict"], good["source"]) in {("proven", "yosys"), ("tested", "fallback-sim")} and good["credit"]["complete"]
     bad = run(go("next(bit0) == (bit0 | ({count0, count1} == {uio_in[2:0], ui_in[7:1], 1'b0}))"))
