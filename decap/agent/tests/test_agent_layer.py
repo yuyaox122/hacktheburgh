@@ -1,5 +1,8 @@
 import asyncio
 import json
+import os
+
+import pytest
 
 from fastapi.testclient import TestClient
 from fastmcp import Client
@@ -89,6 +92,29 @@ def test_transcript_carries_scope_and_touched_cells(tmp_path):
     assert last["scope"] == {"cone_of": "trig"}
     assert last["cells"] and all(c.startswith("trg_") for c in last["cells"])
     assert "trig" in last["nets"]
+
+
+def test_unknown_arguments_are_rejected_not_silently_dropped(tmp_path):
+    # FastMCP only warns and drops unknown args; a misspelled `scope` would silently search the whole chip.
+    t = Transcript(tmp_path / "t.jsonl")
+    [(is_error, payload)] = run(calls(build_server(create_stub_app(), t),
+                                      ("find_rare_triggers", {"chip": "stub_counter8", "scop": {"cone_of": "hit"}})))
+    text = json.dumps(payload)
+    assert is_error and "scop" in text and "scope" in text, text
+    assert load(tmp_path / "t.jsonl")[-1]["is_error"] is True
+
+
+REAL_CORE = os.environ.get("DECAP_REAL_CORE_ROOT")
+
+
+@pytest.mark.skipif(not REAL_CORE, reason="set DECAP_REAL_CORE_ROOT to a 4-decap-build checkout with decap/data fetched")
+def test_real_core_judge_moment(monkeypatch, capsys):
+    monkeypatch.syspath_prepend(REAL_CORE)
+    monkeypatch.setenv("DECAP_CORE_APP", "decap.api.main:app")
+    assert cli.main(["--no-transcript", "demo", "--n", "137"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["condition"] == "ui_in == 8'd137" and out["netlist_vs_author_source"] == "failed"
+    assert out["counterexample"]["ui_in"] == 137 and out["fix_verdict"] == "proven"
 
 
 def test_clean_chip_flags_only_the_legitimate_comparator():

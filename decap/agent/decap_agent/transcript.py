@@ -60,6 +60,31 @@ def result_payload(result: Any) -> Any:
     return texts
 
 
+class StrictArgsMiddleware(Middleware):
+    """Reject tool calls with arguments the tool doesn't have.
+
+    FastMCP's FastAPI bridge only *warns* and drops unknown arguments, so an agent that misspells
+    `scope` or `against` would silently get the default (e.g. the whole chip, or the wrong proof).
+    Here that becomes a loud tool error that lists the valid arguments, so the agent can retry.
+    """
+
+    def __init__(self):
+        self._props: dict[str, set[str]] | None = None
+
+    async def on_call_tool(self, context, call_next):
+        server = getattr(getattr(context, "fastmcp_context", None), "fastmcp", None)
+        if server is not None and self._props is None:
+            tools = await server.list_tools(run_middleware=False)
+            self._props = {t.name: set((getattr(t, "parameters", None) or {}).get("properties", {})) for t in tools}
+        name = getattr(context.message, "name", "")
+        allowed = (self._props or {}).get(name)
+        unknown = sorted(set((getattr(context.message, "arguments", None) or {})) - allowed) if allowed is not None else []
+        if unknown:
+            from fastmcp.exceptions import ToolError
+            raise ToolError(f"unknown argument(s) {unknown} for {name}; valid arguments: {sorted(allowed)}")
+        return await call_next(context)
+
+
 class TranscriptMiddleware(Middleware):
     """Records every tool call that passes through the Decap MCP server."""
 

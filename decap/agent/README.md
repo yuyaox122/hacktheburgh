@@ -9,11 +9,22 @@ This layer lets any AI agent use Decap's tools, and lets the judges watch it hap
 - **`decap` CLI.** Includes a scripted, no-LLM version of the demo's judge moment.
 - **Transcript.** One JSONL event per tool call or agent answer, from any client. It feeds the UI's live timeline (SSE), replay, and the data for any calibration work.
 
-**Status: v0, against a STUB core** (`decap_agent/stub_core.py`), a made-up 8-bit counter. Every stub result says `"source": "stub"`. Once Yuyao's FastAPI app exists, point at it and nothing else changes:
+**Status: v0.2, verified against Yuyao's real core** (branch `4-decap-build`; 13 tools generated from its API). On the real Tiny Tapeout chip `tt_um_Electom_cla_4bits`, `decap demo --n 137` does the following in about 3 s:
+1. plants 137 (9 cells, proven);
+2. finds `ui_in == 8'd137` at `assign uo_out[0] = state0[2] | (ui_in == 8'd137);`;
+3. proves the netlist against the author's source: **failed**, with counterexample `ui_in = 137`;
+4. runs `remove_trigger`: **proven**.
+
+Without a core, a STUB (`decap_agent/stub_core.py`, a made-up counter, every result `"source": "stub"`) is served instead. The stub also models **region scope**, which the real core doesn't have yet.
 
 ```bash
-export DECAP_CORE_APP=decap.api.main:app   # module:attr of the core FastAPI app (name TBC in decap/CONTRACTS.md)
+# from a checkout of 4-decap-build whose decap/data/ is fetched (cd decap && python -m ingest.fetch); needs `brew install yosys`
+export DECAP_CORE_APP=decap.api.main:app PYTHONPATH=$PWD
+decap/agent/.venv/bin/decap demo --n 137          # real chip (first dev chip, or --chip tt_um_mac)
+DECAP_REAL_CORE_ROOT=$PWD decap/agent/.venv/bin/pytest -q decap/agent/tests   # includes the real-core test
 ```
+
+**Strict arguments:** the FastAPI bridge only *warns* and drops arguments a tool doesn't have, so an agent that misspells `scope` or `against` would silently get the default. `StrictArgsMiddleware` turns that into a tool error that lists the valid arguments.
 
 ## Quick start
 
