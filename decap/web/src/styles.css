@@ -248,8 +248,8 @@ canvas.wave { width: 100%; height: 44px; display: block; }
 .tile .foot .why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--del); }
 .tile .foot .miss { color: var(--del); }
 .tile .cov { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-.tile .bar { width: 48px; height: 4px; border-radius: 2px; background: var(--panel-3); overflow: hidden; }
-.tile .bar i { display: block; height: 100%; background: var(--adder); }
+.tile .cov .bar { width: 48px; height: 4px; border-radius: 2px; background: var(--panel-3); overflow: hidden; }
+.tile .cov .bar i { display: block; height: 100%; background: var(--adder); }
 .split-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .split-h h2 { font-size: 18px; font-family: var(--font-body); font-weight: 600; }
 
@@ -271,6 +271,29 @@ canvas.wave { width: 100%; height: 44px; display: block; }
 .codes > .pane + .pane { border-left: 1px solid var(--line); }
 .lower { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); min-height: 0; }
 .lower > .pane + .pane { border-left: 1px solid var(--line); }
+.chiphead .layoutsw button { font-size: 12px; }
+.only-focus { display: none; }
+/* Layout "focus": decompiled code full height on the left; details then netlist in a sidebar. The author's source swaps in over the code. */
+.chippage[data-layout="focus"] { grid-template-columns: minmax(0, 1fr) minmax(360px, 34%); grid-template-rows: auto minmax(0, 1fr) minmax(0, .8fr);
+  grid-template-areas: "head head" "code side" "code graph"; }
+.chippage[data-layout="focus"] .codes, .chippage[data-layout="focus"] .lower,
+.chippage[data-layout="graph"] .codes, .chippage[data-layout="graph"] .lower { display: contents; }
+.chippage[data-layout="focus"] .chiphead { grid-area: head; }
+.chippage[data-layout="focus"] .p-dec, .chippage[data-layout="focus"] .p-auth { grid-area: code; }
+.chippage[data-layout="focus"] .p-auth { display: none; }
+.chippage[data-layout="focus"].show-author .p-auth { display: flex; }
+.chippage[data-layout="focus"].show-author .p-dec { display: none; }
+.chippage[data-layout="focus"] .only-focus { display: inline-flex; }
+.chippage[data-layout="focus"] .p-side { grid-area: side; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.chippage[data-layout="focus"] .p-graph { grid-area: graph; border-left: 1px solid var(--line); }
+/* Layout "graph": the netlist as the hero across the top, both sources below, details down the right. */
+.chippage[data-layout="graph"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(340px, 28%); grid-template-rows: auto minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas: "head head head" "graph graph side" "dec auth side"; }
+.chippage[data-layout="graph"] .chiphead { grid-area: head; }
+.chippage[data-layout="graph"] .p-graph { grid-area: graph; border-bottom: 1px solid var(--line); }
+.chippage[data-layout="graph"] .p-dec { grid-area: dec; }
+.chippage[data-layout="graph"] .p-auth { grid-area: auth; border-left: 1px solid var(--line); }
+.chippage[data-layout="graph"] .p-side { grid-area: side; border-left: 1px solid var(--line); }
 .graphwrap { position: relative; flex: 1; min-height: 0; }
 .graphwrap canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 .graphwrap .tip { transform: translate(12px, 12px); }

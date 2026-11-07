@@ -18,6 +18,19 @@ const KIND_WORD: Record<string, string> = {
 
 type Tab = "proof" | "find" | "fix" | "blocks";
 
+/** Three working page layouts (picked in the header, remembered per browser). The DOM is the same; CSS places the panes. */
+const LAYOUTS = [
+  { id: "split", name: "Split", tip: "Both sources side by side, netlist and details below" },
+  { id: "focus", name: "Focus", tip: "Decompiled code full height; details and netlist in a sidebar" },
+  { id: "graph", name: "Netlist", tip: "The netlist graph on top, both sources below, details on the right" },
+];
+const LAYOUT_KEY = "decap.chipLayout";
+let layoutNow: string | null = null;
+function chipLayout(): string {
+  if (!layoutNow) { try { layoutNow = localStorage.getItem(LAYOUT_KEY); } catch { /* storage blocked */ } }
+  return LAYOUTS.some((l) => l.id === layoutNow) ? layoutNow! : "split";
+}
+
 export class ChipPage {
   readonly el = document.createElement("div");
   private clean: ChipResult | null = null;
@@ -107,40 +120,47 @@ export class ChipPage {
     const r = this.result;
     if (!r) return;
     const a = this.author;
+    const verdictWord = r.verdict === "tested" ? "tested only" : r.verdict;
+    const statTip = `${r.stats.logic_cells} logic cells · ${r.stats.flops} flip-flops · ${r.stats.cell_types} cell types · ${r.stats.area_um2.toFixed(0)} µm²\n`
+      + `coverage ${r.coverage.pct.toFixed(1)}% (${r.coverage.explained_cells}/${r.coverage.logic_cells} cells in recognised blocks)\n`
+      + `${r.decompiled.lines} lines decompiled${a ? ` vs ${a.lines} by the author` : ""}`;
+    this.el.dataset.layout = chipLayout();
     this.el.innerHTML = `
       <header class="chiphead">
         <h2>${esc(r.title || r.chip)} <small>${esc(r.chip)}</small></h2>
-        <span class="verdict ${r.verdict}" title="${esc(r.proof.detail ?? "")}">Equivalence: ${r.verdict === "tested" ? "tested, not proven" : r.verdict}</span>
-        <span class="pill">${esc(r.split)}${r.split === "test" ? " · held out" : ""}</span>
-        ${this.planted ? `<div class="seg" role="group" aria-label="Which copy"><button type="button" data-variant="clean" aria-pressed="${!this.showPlanted}">clean copy</button><button type="button" data-variant="planted" aria-pressed="${this.showPlanted}">planted copy, N = ${this.planted.plant?.n ?? "?"}${this.plantSource === "fixture" ? " (fixture)" : this.plantSource === "preplanted" ? " (pre-planted)" : ""}</button></div>` : ""}
-        <div class="chipstats">
-          <span><b>${r.stats.logic_cells}</b> logic cells</span><span><b>${r.stats.flops}</b> flip-flops</span>
-          <span><b>${r.stats.cell_types}</b> cell types</span><span><b>${r.stats.area_um2.toFixed(0)}</b> µm²</span>
-          <span class="cov" title="Cells explained by recognised blocks (not leftover logic)">coverage <span class="bar"><i style="width:${Math.min(100, r.coverage.pct)}%"></i></span><b>${r.coverage.pct.toFixed(1)}%</b> <span>(${r.coverage.explained_cells}/${r.coverage.logic_cells})</span></span>
-          <span><b>${r.decompiled.lines}</b> lines decompiled${a ? ` vs <b>${a.lines}</b> by the author` : ""}</span>
+        <span class="verdict ${r.verdict}" title="${esc(r.proof.detail ?? "")}">${esc(verdictWord)}</span>
+        ${r.split === "test" ? `<span class="pill" title="Held out: never seen while Decap was built">held out</span>` : `<span class="pill">${esc(r.split)}</span>`}
+        ${this.planted ? `<div class="seg" role="group" aria-label="Which copy"><button type="button" data-variant="clean" aria-pressed="${!this.showPlanted}">clean</button><button type="button" data-variant="planted" aria-pressed="${this.showPlanted}">planted N = ${this.planted.plant?.n ?? "?"}${this.plantSource === "fixture" ? " (fixture)" : this.plantSource === "preplanted" ? " (pre-planted)" : ""}</button></div>` : ""}
+        <div class="chipstats" title="${esc(statTip)}">
+          <span><b>${r.stats.logic_cells}</b> cells</span>
+          <span class="cov">coverage <span class="bar"><i style="width:${Math.min(100, r.coverage.pct)}%"></i></span><b>${r.coverage.pct.toFixed(0)}%</b></span>
+          <span><b>${r.decompiled.lines}</b>${a ? ` / ${a.lines}` : ""} lines</span>
         </div>
         <span class="grow" style="flex:1"></span>
         ${this.source === "fixture" ? `<span class="pill warn">fixture data</span>` : ""}
-        ${this.in3d ? `<a class="btn sm" href="#/stage/${encodeURIComponent(this.chip)}" title="This chip's real layout in 3D, with a live simulator">View in 3D</a>` : ""}
-        <button class="btn sm" type="button" id="cpGuide">Ask the guide <kbd>G</kbd></button>
+        <div class="seg layoutsw" role="group" aria-label="Layout" title="Page layout">${LAYOUTS.map((l) => `<button type="button" data-layout="${l.id}" aria-pressed="${l.id === this.el.dataset.layout}" title="${esc(l.tip)}">${esc(l.name)}</button>`).join("")}</div>
+        ${this.in3d ? `<a class="btn sm" href="#/stage/${encodeURIComponent(this.chip)}" title="This chip's layout in 3D, with a live simulator">View in 3D</a>` : ""}
+        <button class="btn sm" type="button" id="cpGuide" title="Ask the guide (G)">Ask</button>
       </header>
       <div class="codes">
-        <section class="pane" aria-label="Decompiled Verilog">
-          <div class="pane-h">Decompiled by Decap <b>${r.variant === "planted" ? "planted copy" : "names stripped"}</b><span class="grow"></span><span>${r.decompiled.lines} lines</span></div>
+        <section class="pane p-dec" aria-label="Decompiled Verilog">
+          <div class="pane-h">Decompiled <b>${r.variant === "planted" ? "planted copy" : "names stripped"}</b><span class="grow"></span>
+            ${a ? `<button class="btn sm only-focus" type="button" data-auth="1" title="Show what the author wrote">Author's source</button>` : ""}<span>${r.decompiled.lines} lines</span></div>
           <div class="pane-b"><ol class="code click" id="cpCode"></ol></div>
         </section>
-        <section class="pane" aria-label="Author source">
-          <div class="pane-h">What the author wrote ${a ? `<span class="filetabs">${Object.keys(a.files).map((f) => `<button type="button" data-file="${esc(f)}" aria-pressed="${f === this.file}">${esc(f)}</button>`).join("")}</span>` : ""}<span class="grow"></span>
-            ${a ? `<span>${a.lines} lines</span> <span class="pill ${a.check === "proven" ? "ok" : a.check === "bounded" ? "warn" : a.check === "failed" ? "bad" : ""}" title="${esc(a.check_detail ?? "")}">netlist ≡ source: ${esc(a.check)}</span> ${this.repoLink(a)}` : ""}</div>
+        <section class="pane p-auth" aria-label="Author source">
+          <div class="pane-h">Author's source ${a ? `<span class="filetabs">${Object.keys(a.files).map((f) => `<button type="button" data-file="${esc(f)}" aria-pressed="${f === this.file}">${esc(f)}</button>`).join("")}</span>` : ""}<span class="grow"></span>
+            ${a ? `<span class="pill ${a.check === "proven" ? "ok" : a.check === "bounded" ? "warn" : a.check === "failed" ? "bad" : ""}" title="${esc(`Shipped netlist checked against this source: ${a.check}${a.check_detail ? `. ${a.check_detail}` : ""}`)}">matches netlist: ${esc(a.check)}</span> ${this.repoLink(a)}
+            <button class="btn sm only-focus" type="button" data-auth="0" title="Back to the decompiled Verilog">Decompiled</button>` : ""}</div>
           <div class="pane-b">${a && this.file ? `<ol class="code" id="cpAuthor"></ol>` : `<div class="empty">No author source for this chip.</div>`}</div>
         </section>
       </div>
       <div class="lower">
-        <section class="pane" aria-label="Netlist graph">
-          <div class="pane-h">Stripped netlist <b>${r.netlist.cells.length} cells, no names</b><span class="grow"></span><button class="btn sm" type="button" id="cpFit" title="Fit (0)">Fit</button></div>
+        <section class="pane p-graph" aria-label="Netlist graph">
+          <div class="pane-h">Netlist <b>${r.netlist.cells.length} cells, no names</b><span class="grow"></span><button class="btn sm" type="button" id="cpFit" title="Fit (0)">Fit</button></div>
           <div class="graphwrap" id="cpGraph"><div class="overlay glegend" id="cpGLegend"></div></div>
         </section>
-        <section class="pane" aria-label="Details">
+        <section class="pane p-side" aria-label="Details">
           <nav class="tabs" role="tablist">
             ${(["proof", "find", "fix", "blocks"] as Tab[]).map((t) => `<button type="button" role="tab" data-tab="${t}" aria-selected="${this.tab === t}">${{ proof: "Proof", find: "Find a trigger", fix: "Fix", blocks: `Blocks (${r.blocks.length})` }[t]}</button>`).join("")}
           </nav>
@@ -154,7 +174,10 @@ export class ChipPage {
       label: (id) => (r.cell_lines[id] ? `line ${r.cell_lines[id]}` : "unexplained"),
     });
     this.applyMarks();
-    $("#cpGLegend", this.el).innerHTML = `<span>scroll to zoom · drag to pan · click a cell</span>${r.flags.length ? `<span style="color:var(--del)">■ flagged cone</span>` : ""}${this.fixRes ? `<span style="color:var(--fall)">■ removed by Fix</span>` : ""}`;
+    const gl = $("#cpGLegend", this.el);
+    gl.innerHTML = `${r.flags.length ? `<span style="color:var(--del)">■ flagged cone</span>` : ""}${this.fixRes ? `<span style="color:var(--fall)">■ removed by Fix</span>` : ""}`;
+    gl.hidden = !gl.innerHTML;
+    $("#cpGraph", this.el).title = "Scroll to zoom, drag to pan, click a cell";
     this.bind();
   }
 
@@ -274,6 +297,15 @@ export class ChipPage {
     $$<HTMLElement>("[data-variant]", this.el).forEach((b) => b.addEventListener("click", () => this.setVariant(b.dataset.variant === "planted")));
     $("#cpFit", this.el).addEventListener("click", () => { this.graph?.fit(); this.graph?.draw(); });
     $("#cpGuide", this.el).addEventListener("click", () => app.askGuide?.(""));
+    $$<HTMLElement>("[data-layout]", this.el).forEach((b) => b.addEventListener("click", () => {
+      const id = b.dataset.layout!;
+      try { localStorage.setItem(LAYOUT_KEY, id); } catch { /* private window: per-visit only */ }
+      layoutNow = id;
+      this.el.dataset.layout = id; this.el.classList.remove("show-author");
+      $$("[data-layout]", this.el).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      requestAnimationFrame(() => { this.graph?.fit(); this.graph?.draw(); });
+    }));
+    $$<HTMLElement>("[data-auth]", this.el).forEach((b) => b.addEventListener("click", () => this.el.classList.toggle("show-author", b.dataset.auth === "1")));
   }
   private bindSide() {
     const side = $("#cpSide", this.el);
