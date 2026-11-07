@@ -31,11 +31,11 @@ Humans over agents. Only the team lead reassigns work between teammates. If anyo
 
 ## 4. Who owns what
 
-Fill in areas and folders once the project split is decided. Until then, ask on the board before editing outside files you created.
+Rows are added as streams are agreed. For anything not listed, ask on the board before editing outside files you created. The most specific folder wins (`decap/agent/` beats `decap/`).
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
-| TBD | `@yuyaox122` (Yuyao) | TBD |
+| Decap core: ingest, decompiler + Yosys proof, bench, API, web app | `@yuyaox122` (Yuyao) | `decap/` (except decap/agent/, next row) |
+| Decap agent layer: MCP skills, `decap` CLI, agent transcript stream, run replay | `@izhangfly` (Ian) | `decap/agent/` |
 | TBD | `@advcode118` (Alex) | TBD |
-| TBD | `@izhangfly` (Ian) | TBD |
 | Shared (AGENTS.md, README, tools/, .claude/, .github/) | `@yuyaox122` (lead) | repo root |
