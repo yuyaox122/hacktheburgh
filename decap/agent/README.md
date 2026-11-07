@@ -123,10 +123,28 @@ decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the check
 - **Credit needs a complete claim.** A true partial fact ("once set, bit0 stays set": 2 literals vs 50) used to
   pass the 1/3-literals rule. Now credit also needs the claim to pin down the output bits it names for every
   input (verdict `partial` otherwise). The live agent found that loophole on its own first run.
-- **Real chips before the checker lands:** `DECAP_CORE_APP=decap_agent.core_witness:app PYTHONPATH=<checkout>`
-  adds `get_region`, `probe_truth` (with `fix`) and a FALLBACK `propose_claim` (netlist simulation; verdicts
-  `tested`/`refuted`/`partial`, never `proven`) on top of the real core, without editing a core file. Each route steps
-  aside once the core has one with the same operation_id.
+- **Real chips before the checker lands:** `get_region` and `probe_truth` (with `fix`) are core routes now
+  (PR #37, decap/api/scope.py). `DECAP_CORE_APP=decap_agent.core_witness:app PYTHONPATH=<checkout>` adds a FALLBACK
+  `propose_claim` (netlist simulation with the core's biased patterns; verdicts `tested`/`refuted`/`partial`, never
+  `proven`). It steps aside once core/claims.py ships a route with the same operation_id.
+- **Why the proof matters, in one example:** a claim with a planted bug (kapilan's alarm compares hour bit 0 with 0
+  instead of ui_in[0]) passed 4096 plain random vectors, because the 11-bit alarm match almost never happens at
+  random. Biased patterns caught it; Yosys catches it by construction.
+
+### The formaliser (judge's moment)
+
+```
+decap formalise "LED 3 lights when switches 1 and 2 are on" [CHIP --cone-of X] [--check]
+```
+One LLM call (no tools) turns the sentence into a formal line, plus the reading choices it made (`assumptions`)
+and, if the sentence is ambiguous, the other reading (`alternative`). The line is parse-checked (one retry
+with the parser's error), and with a chip, `propose_claim(check=false)` returns the checker's English for the
+confirm step. `--check` then runs the checker. Board legend by default: switch k = ui_in[k], LED k = uo_out[k];
+the web can pass its own.
+
+**Measured** on 30 sloppy phrasings (`python -m decap_agent.formalise [model]`), scored by logical equivalence
+with the accepted readings, which also checks the width traps: 'plus one' → `+ 8'd1`, 'times two' → `<< 1`.
+claude-sonnet-5-5 scored 30/30 (median 3.0 s); claude-haiku-5-5 scored 30/30 (median 2.6 s).
 - **Budget:** the controller puts the region + a 1024-vector probe in the first prompt; the LLM may probe twice more;
   6 requests / 120k input tokens per attempt. Uncapped, one 23-input region cost 1.37M tokens; now about 3k.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import pytest
 from fastmcp import Client
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
@@ -140,3 +141,41 @@ def test_probe_fix_holds_inputs():
     held = result_payload(run(go({"en": 0})))
     assert held["fixed"] == {"en": 0} and all(r["out"]["next(count)"] == r["in"]["count"] for r in held["samples"])
     assert run(go({"nope": 1})).is_error
+
+
+def test_formaliser_validates_and_renders(tmp_path):
+    from decap_agent.formalise import equivalent, formalise
+    outputs = iter([{"claim": "uo_out[1] == (count == 8'd200", "assumptions": []},          # broken: retried once
+                    {"claim": "uo_out[1] == (count == 8'd200)", "assumptions": ["'the compare LED' = uo_out[1]"]}])
+
+    def fn(messages, info):
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, next(outputs))])
+    t = Transcript(tmp_path / "f.jsonl")
+    out = run(formalise("the compare LED is on exactly when the count is 200", server=build_server(create_stub_app()),
+                        chip=CHIP, scope=HIT, model=FunctionModel(fn), transcript=t, check=True))
+    assert out["error"] is None and out["english"] and out["verdict"]["verdict"] == "proven"
+    assert [e["kind"] for e in load(t.path)][-1] == "formalise"
+    assert equivalent("(ui_in[1] & ui_in[2]) -> uo_out[3]", "!(ui_in[1] && ui_in[2]) || uo_out[3]")
+    assert not equivalent("uo_out == ui_in + 1", "uo_out == ui_in + 8'd1")     # widths matter
+
+
+REAL = os.environ.get("DECAP_REAL_CORE_ROOT")
+
+
+@pytest.mark.skipif(not REAL, reason="set DECAP_REAL_CORE_ROOT to a checkout of main with decap/data fetched")
+def test_real_chip_fallback_checker_catches_a_planted_bug(monkeypatch):
+    monkeypatch.syspath_prepend(REAL)
+    monkeypatch.chdir(REAL)
+    from decap_agent.core_witness import app
+    server = build_server(app)
+    alarm = {"cone_of": "uio_out[7]"}
+
+    async def go(claim):
+        async with Client(server) as c:
+            return result_payload(await c.call_tool("propose_claim", {"chip": "tt_um_kapilan_alarm", "scope": alarm,
+                                                                      "claim": claim}, raise_on_error=False))
+    good = run(go("next(bit0) == (bit0 | ({count0, count1} == {uio_in[2:0], ui_in}))"))
+    assert good["verdict"] == "tested" and good["credit"]["complete"] and good["source"] == "fallback-sim"
+    bad = run(go("next(bit0) == (bit0 | ({count0, count1} == {uio_in[2:0], ui_in[7:1], 1'b0}))"))
+    assert bad["verdict"] == "refuted" and "count0" in bad["counterexample"]
+    assert run(go("next(bit0) == 1'b1 when bit0"))["verdict"] == "partial"
