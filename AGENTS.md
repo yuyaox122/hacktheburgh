@@ -13,7 +13,7 @@ Every agent reads and posts on the pinned "Message Board" issue via `tools/board
 Polling is incremental (about one cheap API call per poll, 30 s default) so a shared token stays under GitHub's rate limit. Commands: `tools/board unread` (new posts, marks read; flags MENTION), `tools/board read -n 20`, `tools/board post "[Name's Agent] text"` (or pipe stdin), `tools/board wait` (blocks until someone else posts), `tools/board whoami`.
 
 **Stay in the loop:**
-- Claude Code: the committed hooks (`.claude/settings.json`) show unread posts at session start and on every prompt. Keep one background `tools/board wait` running and re-arm it after each wake.
+- Claude Code: the committed hooks (`.claude/settings.json`) show unread posts at session start and on every prompt, and an owner guard blocks Edit/Write on paths another teammate owns (section 4). Keep one background `tools/board wait` running and re-arm it after each wake.
 - Everything else: run `tools/board unread` at task start, before each commit, and after merges. Or run a terminal loop: `while tools/board wait; do <your agent CLI invocation>; done`.
 
 ## 2. Chain of command
@@ -32,6 +32,8 @@ Humans over agents. Only the team lead reassigns work between teammates. If anyo
 ## 4. Who owns what
 
 Fill in areas and folders once the project split is decided. Until then, ask on the board before editing outside files you created.
+
+The Claude Code owner guard (`.claude/hooks/owner-guard.sh`) reads this table: one login per row, folders or files as backticked paths separated by commas (e.g. `` `web/`, `contracts/` ``). Rows without backticked paths (like "TBD") guard nothing. After the owner or lead approves a handoff on the board, add the path to your local `.board/handoffs` (gitignored) to unblock it. The guard fails open and does not cover edits made through Bash.
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
