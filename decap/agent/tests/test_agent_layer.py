@@ -14,8 +14,9 @@ from decap_agent.server import build_server
 from decap_agent.stub_core import create_stub_app
 from decap_agent.transcript import Transcript, load, result_payload
 
-EXPECTED_TOOLS = {"list_chips", "strip_names", "recover_blocks", "decompile", "prove_equiv", "simulate",
-                  "find_rare_triggers", "plant_trigger", "cone_of_influence", "critical_path"}
+EXPECTED_TOOLS = {"list_chips", "resolve_scope", "strip_names", "recover_blocks", "decompile", "prove_equiv",
+                  "simulate", "find_rare_triggers", "plant_trigger", "cone_of_influence", "critical_path"}
+PLANTED = "stub_counter8+t137"
 
 
 def run(coro):
@@ -57,6 +58,39 @@ def test_arguments_reach_the_core():
     assert [s["hit"] for s in sim["trace"]] == [0, 1, 0]
 
 
+def test_region_scope_reaches_the_core_and_limits_the_work():
+    # The headline feature: agents aimed at a selected region. A dropped nested `scope` would silently widen to the whole chip.
+    results = run(calls(
+        build_server(create_stub_app()),
+        ("plant_trigger", {"chip": "stub_counter8", "n": 137}),
+        ("find_rare_triggers", {"chip": PLANTED, "scope": {"cone_of": "hit"}}),
+        ("find_rare_triggers", {"chip": PLANTED, "scope": {"cells": ["trg_3"]}}),
+        ("find_rare_triggers", {"chip": PLANTED}),
+        ("prove_equiv", {"chip": PLANTED, "against": "author_source", "scope": {"nets": ["hit"]}}),
+        ("prove_equiv", {"chip": PLANTED, "against": "author_source", "scope": {"cone_of": "out"}}),
+        ("resolve_scope", {"chip": PLANTED, "scope": {"nets": ["nope"]}}),
+    ))
+    (_, _), (_, hit_only), (_, trg_only), (_, whole), (_, legit), (_, out), (bad_err, _) = results
+    assert [f["cone"] for f in hit_only["flagged"]] == ["c1"]
+    assert [f["cone"] for f in trg_only["flagged"]] == ["c2"]
+    assert [f["cone"] for f in whole["flagged"]] == ["c1", "c2"]
+    assert trg_only["touched"]["cells"][0].startswith("trg_") and "cmp_0" not in trg_only["touched"]["cells"]
+    assert legit["verdict"] == "proven"           # the author's source explains the 'hit' comparator
+    assert out["verdict"] == "failed" and out["counterexample"]["ui_in"] == 137 and out["failing_cone"] == "c2"
+    assert bad_err, "a scope that matches nothing must be an error, not the whole chip"
+
+
+def test_transcript_carries_scope_and_touched_cells(tmp_path):
+    t = Transcript(tmp_path / "t.jsonl")
+    run(calls(build_server(create_stub_app(), t),
+              ("plant_trigger", {"chip": "stub_counter8", "n": 5}),
+              ("find_rare_triggers", {"chip": "stub_counter8+t5", "scope": {"cone_of": "trig"}})))
+    last = load(tmp_path / "t.jsonl")[-1]
+    assert last["scope"] == {"cone_of": "trig"}
+    assert last["cells"] and all(c.startswith("trg_") for c in last["cells"])
+    assert "trig" in last["nets"]
+
+
 def test_clean_chip_flags_only_the_legitimate_comparator():
     [(_, res)] = run(calls(build_server(create_stub_app()), ("find_rare_triggers", {"chip": "stub_counter8"})))
     assert [f["likely"] for f in res["flagged"]] == ["legitimate"]
@@ -83,11 +117,13 @@ def test_demo_finds_the_judges_number(tmp_path, capsys):
     assert cli.main(["--transcript", str(path), "demo", "--n", "42"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["found"] == "wire trig = (ui_in == 8'd42);"
+    assert out["region"] == {"cone_of": "out"} and out["region_cells"] == 22
     assert out["decompile_vs_netlist"] == "proven" and out["netlist_vs_author_source"] == "failed"
     assert out["counterexample"]["ui_in"] == 42 and out["source"] == "stub"
     events = load(path)
-    assert [e["tool"] for e in events][:2] == ["list_chips", "plant_trigger"]
+    assert [e["tool"] for e in events][:4] == ["list_chips", "plant_trigger", "strip_names", "resolve_scope"]
     assert all(e["kind"] == "tool" and e["wall_s"] >= 0 for e in events)
+    assert any(e["cells"] for e in events), "the 3D view needs cells to light up"
 
 
 def test_replay_check_passes_and_detects_tampering(tmp_path, capsys):

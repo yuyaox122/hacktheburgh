@@ -56,6 +56,19 @@ With `from_fastapi`, Yuyao's API *is* the tool definition:
 | path params, body model fields, `Field(description=…)` | the tool's input schema |
 | the response model or dict | the structured result recorded in the transcript |
 
+### Region scope: agents aimed at a selected part of the chip (Yuyao's ask, 7 Nov 19:31)
+Every tool that works on a chip takes an optional `scope` and returns what it `touched`, so the 3D view can light it up:
+
+```json
+"scope":   {"cells": ["trg_3"], "nets": ["hit"], "cone_of": "out"}      // any mix; empty = whole chip
+"touched": {"cells": ["trg_0", "trg_1", ...], "nets": ["trig", "ui_in[0]", ...]}
+```
+
+- `resolve_scope(chip, scope)` turns a user's selection into the exact cones and cells; pass the same scope on to other tools.
+- A scope that matches nothing is an **error**, never a silent widening to the whole chip.
+- The transcript copies `scope`, `cells` and `nets` to the top level of each tool event, for the timeline and the 3D highlight.
+- A real core should return real netlist cell ids (the ids TT Explorer / the 3D view use) in `touched.cells`.
+
 **⚠️ Two traps found while building (FastMCP 4.1 + FastAPI 0.162):**
 - A request body whose fields all have defaults is still *required* by FastAPI, so an agent that sends only `chip` gets a 422.
 - Declaring it `body: Model | None = None` is worse: the schema becomes `anyOf` and FastMCP **silently drops** the body's arguments. In our test, a planted chip then "proved" equal to its author's source.

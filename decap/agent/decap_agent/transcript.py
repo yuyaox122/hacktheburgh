@@ -1,8 +1,9 @@
 """Transcript: one JSON line per event, so runs can be streamed to the UI and replayed.
 
 Event kinds:
-  tool   - an MCP tool call (tool, args, result, is_error, wall_s); written by TranscriptMiddleware,
-           so it records calls from *any* client: the guide, the CLI, Claude Code, JetBrains Air.
+  tool   - an MCP tool call (tool, args, result, is_error, wall_s, scope, cells, nets); written by
+           TranscriptMiddleware, so it records calls from *any* client: the guide, the CLI, Claude Code,
+           JetBrains Air. `cells`/`nets` = what the call touched, for the 3D view to light up.
   agent  - a guide-agent answer (question, answer, model, tokens, requests, wall_s).
   note   - free text (e.g. "demo started").
 Every event has seq, ts (UTC ISO), run_id.
@@ -76,7 +77,11 @@ class TranscriptMiddleware(Middleware):
             self.transcript.record("tool", tool=name, args=args, result=None, is_error=True,
                                    error=f"{type(exc).__name__}: {exc}", wall_s=round(time.perf_counter() - t0, 4))
             raise
-        self.transcript.record("tool", tool=name, args=args, result=result_payload(result),
+        payload = result_payload(result)
+        touched = payload.get("touched", {}) if isinstance(payload, dict) else {}
+        self.transcript.record("tool", tool=name, args=args, result=payload,
                                is_error=bool(getattr(result, "is_error", False)),
-                               wall_s=round(time.perf_counter() - t0, 4))
+                               wall_s=round(time.perf_counter() - t0, 4),
+                               # top-level so the 3D view can light these up without parsing results
+                               scope=args.get("scope"), cells=touched.get("cells", []), nets=touched.get("nets", []))
         return result
