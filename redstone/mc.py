@@ -27,6 +27,7 @@ SRV = ROOT / os.environ.get("REDSTONE_SERVER_DIR", "server")
 JAR = ROOT / "tools" / "server-1.21.11.jar"
 PASSWORD = "redstone"
 PORT = int(os.environ.get("REDSTONE_RCON_PORT", "25576"))
+HOST = os.environ.get("REDSTONE_RCON_HOST", "127.0.0.1")   # another machine's server (bridge.py)
 GAME_PORT = int(os.environ.get("REDSTONE_GAME_PORT", "25566"))
 FLOOR_Y = -61                     # top block of the flat floor; builds start at FLOOR_Y + 1 = -60
 
@@ -74,7 +75,7 @@ def start(timeout: float = 180) -> None:
 
 def _rcon_up() -> bool:
     try:
-        socket.create_connection(("127.0.0.1", PORT), timeout=1).close(); return True
+        socket.create_connection((HOST, PORT), timeout=1).close(); return True
     except OSError:
         return False
 
@@ -97,7 +98,7 @@ class MC:
         self.k = 1
 
     def __enter__(self):
-        self.s = socket.create_connection(("127.0.0.1", PORT), timeout=60)
+        self.s = socket.create_connection((HOST, PORT), timeout=60)
         self._send(3, PASSWORD)
         if self._recv()[0] == -1:
             raise SystemExit("rcon auth failed")

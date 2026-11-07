@@ -1,4 +1,4 @@
-// Decap web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare), shared chrome, keyboard shortcuts.
+// Decap web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare, #/minecraft), shared chrome, keyboard shortcuts.
 
 import "./styles.css";
 import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./data/load";
@@ -6,6 +6,7 @@ import { StagePage } from "./ui/stagePage";
 import { WallPage } from "./ui/wallPage";
 import { ChipPage } from "./ui/chipPage";
 import { ComparePage } from "./ui/comparePage";
+import { MinecraftPage } from "./ui/minecraftPage";
 import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
@@ -23,6 +24,7 @@ root.innerHTML = `
       <a href="#/wall" data-r="wall" title="Every benchmark chip and its proof (2)">Results</a>
       <a href="#/chip" data-r="chip" title="One chip read back as Verilog (3)">Decompile</a>
       <a href="#/compare" data-r="compare" title="Find chips like your design (4)">Compare</a>
+      <a href="#/minecraft" data-r="minecraft" title="Build Verilog in real Minecraft redstone (5)">Minecraft</a>
     </nav>
     <div class="actions">
       <span class="status" id="apiStatus"><i></i><span>Connecting</span></span>
@@ -47,6 +49,7 @@ let stageErr: string | null = null;
 let wall: WallPage | null = null;
 let chip: ChipPage | null = null;
 let comparePg: ComparePage | null = null;
+let mcPg: MinecraftPage | null = null;
 let current: { el: HTMLElement; unmount?: () => void } | null = null;
 
 /** Load the Stage for a chip (null = the current one, else the default); switching chips frees the old 3D view. */
@@ -110,6 +113,12 @@ async function route() {
     show(comparePg.el, true);
     const c = comparePg;
     app.guideContext = () => c.context(); app.guideHighlight = undefined; app.pageCommands = () => [];
+  } else if (r === "minecraft") {
+    mcPg ??= new MinecraftPage();
+    const m = mcPg;
+    show(m.el, false, () => m.unmount());
+    await m.mount(arg ? decodeURIComponent(arg) : null);
+    app.guideContext = () => m.context(); app.guideHighlight = undefined; app.pageCommands = () => [];
   } else { location.hash = "#/stage"; }
 }
 addEventListener("hashchange", route);
@@ -143,6 +152,7 @@ const palette = new Palette((): PaletteCommand[] => [
   { label: "Results", key: "2", run: () => (location.hash = "#/wall") },
   { label: "Decompile", key: "3", run: () => (location.hash = "#/chip") },
   { label: "Compare", key: "4", run: () => (location.hash = "#/compare") },
+  { label: "Minecraft: build Verilog in redstone", key: "5", run: () => (location.hash = "#/minecraft") },
   { label: "Ask the guide", key: "G", run: () => guide.open() },
   { label: "Presenter mode", key: "D", run: () => demo.toggle() },
   { label: "Larger text", key: "", run: () => document.body.classList.toggle("projector") },
@@ -171,6 +181,7 @@ addEventListener("keydown", (e) => {
   else if (k === "2") location.hash = "#/wall";
   else if (k === "3") location.hash = "#/chip";
   else if (k === "4") location.hash = "#/compare";
+  else if (k === "5") location.hash = "#/minecraft";
   else if (k === "g" || k === "G") { e.preventDefault(); guide.toggle(); }
   else if (k === "w" || k === "W") setWrap(!wrapOn());
   else if (k === "d" || k === "D") demo.toggle();
