@@ -34,6 +34,9 @@ COLORS = ["red", "orange", "yellow", "lime", "green", "cyan", "light_blue", "blu
           "brown", "white", "light_gray", "gray", "black"]
 TILE_DELAY = {"INH": 4, "NOT": 4, "OR": 2, "LATCH": 4, "IN": 1, "OUT": 1}
 PORT_DX = {"A": 0, "OUT": 2, "B": 4}
+# a spine column must be >= 2 blocks from every port column and outside every tile, in its own slot and the next
+assert all(t.size[0] <= SPINE_DX for t in P.BUS.values())
+assert all(min(abs(SPINE_DX - c), abs(SPINE_DX - (PITCH_2D + c))) >= 2 for c in PORT_DX.values())
 
 
 @dataclass
@@ -109,7 +112,7 @@ def place(pn: tm.PrimNetlist) -> tuple[list[Unit], int, int]:
     overlap. A cell's primitives stay together. Without one (Verilog): everything in one row, as before."""
     logic, pads = _units(pn)
     ys = sorted({p.y for p in pn.prims if p.y is not None}, reverse=True)
-    if not ys:
+    if not ys or any(p.y is None for p in pn.prims):      # no (complete) real placement: one row
         units = logic + pads
         units.sort(key=lambda u: (u.x_real, u.kind != "OUT", u.name))
         for i, u in enumerate(units):
@@ -208,7 +211,7 @@ def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
         d["seg"] = {}
         for r, cs in d["pins"].items():
             xs = cs + ([d["spine"]] if "spine" in d else [])
-            seg = {"net": d["net"], "lo": min(xs), "hi": max(xs), "d": d}
+            seg = {"lo": min(xs), "hi": max(xs)}
             d["seg"][r] = seg
             chans[r].append(seg)
     T = [_tracks(chans[r]) for r in range(R)]
@@ -257,6 +260,7 @@ def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
             labels.append((x0 + u.x, Y, z0 + 3, u.name if n not in (tm.CONST0, tm.CONST1) else f"{u.name}\ntied {n[-1]}"))
     for r, col in const_ports:
         last.append((x0 + col, Y, zt[r] - 1, "redstone_block"))
+        owner[(x0 + col, Y, zt[r] - 1)] = f"tile:const@{col},{r}"
     # a sign under each chip cell's group of tiles: instance name and cell type (as in the GDS and Decap)
     if R > 1:
         seen = set()
@@ -328,11 +332,10 @@ def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
                     node["flow"] = {(1, 0): "east", (-1, 0): "west", (0, 1): "south", (0, -1): "north"}[(dv[0], dv[2])]
         _check_tree(d["net"], tree)
 
-        def ahead(cell):
-            best = 0
-            for kid in tree[cell]["kids"]:
-                best = max(best, 1 if tree[kid]["elig"] else 1 + ahead(kid))
-            return best
+        dist = {}                                        # cells to the next eligible cell or port, per branch
+        for cell in reversed(order):
+            dist[cell] = max([1 if tree[k]["elig"] else 1 + dist[k] for k in tree[cell]["kids"]], default=0)
+        ahead = dist.__getitem__
 
         reps = set()
         stack = [(root, 15)]                             # driver tile's output repeater feeds the port at 15
@@ -369,7 +372,9 @@ def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
     xs = [k[0] for k in blocks]
     zs = [k[2] for k in blocks]
     ys_ = [k[1] for k in blocks]
-    stats = {"units": len(units), "rows": R, "nets": len(nets), "spines": sum("spine" in d for d in nets),
+    shift = max([abs(u.x / pitch - u.x_real / UM_PER_SLOT) * UM_PER_SLOT for u in units
+                 if R > 1 and u.row > 0], default=0.0)
+    stats = {"units": len(units), "rows": R, "max_x_shift_um": round(shift, 1), "nets": len(nets), "spines": sum("spine" in d for d in nets),
              "tracks": T, "repeaters_in_wires": rep_count, "spine_cells": spine_cells,
              "blocks": len(blocks) + len(last), "settle_rt": settle,
              "size": (max(xs) - min(xs) + 1, max(zs) - min(zs) + 1)}

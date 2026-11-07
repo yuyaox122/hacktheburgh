@@ -9,8 +9,8 @@ Compiles a Tiny Tapeout 08 chip's gate-level netlist into **actual redstone**: c
 | Primitives (BUF, NOT, INH, OR, LATCH), every rotation, truth tables plus random transitions | all pass |
 | Bus tiles (north-facing ports) | all pass |
 | Techmap: netlist cells vs primitives, 2,000 random vectors (`sim.py`) | 0 mismatches on both chips |
-| `tt_um_sign_addsub` (combinational): 105 primitives in the chip's 3 real rows + a pad row, 629 × 153 blocks, ~25k blocks, 27 spines, settles in 170 redstone ticks | **200/200 vectors** match |
-| `tt_um_Electom_cla_4bits` (sequential): 5 flip-flops as two-phase latches, with reset; 2 real rows + a pad row, 677 × 140 blocks, ~31k blocks, 26 spines, settles in 131 rt | **60/60 cycles** match |
+| `tt_um_sign_addsub` (combinational): 105 primitives in the chip's 5 real rows + a pad row, 629 × 211 blocks, ~26k blocks, 35 spines, settles in 178 redstone ticks | **200/200 vectors** match |
+| `tt_um_Electom_cla_4bits` (sequential): 5 flip-flops as two-phase latches, with reset; 4 real rows + a pad row, 659 × 222 blocks, ~33k blocks, 31 spines, settles in 139 rt | **60/60 cycles** match |
 | Verilog path: `examples/mul2.v` (3×3 multiplier) vs iverilog on the source | **40/40 vectors** match |
 | Verilog path: `examples/counter.v` (4-bit up/down counter, load, enable, async reset) vs iverilog | **40/40 cycles** match |
 
@@ -22,8 +22,8 @@ Compiles a Tiny Tapeout 08 chip's gate-level netlist into **actual redstone**: c
    - combinational cells go through Yosys `abc -g OR,ANDNOT` and become NOT / INH (a&!b) / OR;
    - each flip-flop becomes a master/slave LATCH pair, held by two global phase nets (`HOLD_M`, `HOLD_S`), with a local asynchronous reset or set.
 3. **`pnr.py`** places the chip in 2-D and routes it with a "bus" fabric that is correct by construction:
-   - **Rows:** one tile row per real standard-cell row of the chip, in real order (north = higher GDS y, matching Alex's layout, where GDS y maps to −z). The IO pads get their own row along the north edge, at the pins' real x, because the real pins are all on the north edge. Constant outputs (tied pins, no wire) are packed as unlit lamps west of the first real pad.
-   - **x is to scale:** one 8-block tile slot per µm of real x (so 8 blocks/µm), legalised with minimum displacement so tiles don't overlap. A cell's primitives stay together, and a sign under each group names the instance and cell type (`_41_` / `a21oi_1`, the same names as the GDS and Decap).
+   - **Rows:** one tile row per real standard-cell row of the chip, in real order. Mirrored (FS) cells have their GDS origin at their top edge, so their row is origin y − 2.72 µm; without that correction two physical rows merge into one (north = higher GDS y, matching Alex's layout, where GDS y maps to −z). The IO pads get their own row along the north edge, at the pins' real x, because the real pins are all on the north edge. Constant outputs (tied pins, no wire) are packed as unlit lamps west of the first real pad.
+   - **x is to scale, approximately:** one 8-block tile slot per µm of real x (so 8 blocks/µm), legalised with minimum displacement so tiles don't overlap. A cell with k primitives needs k slots but is only 1.4–3.7 µm wide, so legalising moves tiles up to 3 µm (sign_addsub) or 6.5 µm (cla_4bits) from their real x; `pnr.py` prints this as `max_x_shift_um`. A cell's primitives stay together, and a sign under each group names the instance and cell type (`_41_` / `a21oi_1`, the same names as the GDS and Decap).
    - **z is stretched:** a real row is 2.72 µm, but a tile row plus its routing channel needs 15–55 blocks, so rows keep their order but not their spacing.
    - **Channels:** north of every tile row, one east–west trunk per net on y=3. Nets whose spans don't overlap share a track (left-edge channel routing). Each port owns a north–south column at floor level, with a solid staircase up to its trunk.
    - **Spines:** a net with pins in several rows gets a north–south spine on y=6, in a column no port uses (offset 6 of every 8-block slot). In each channel it serves, the spine dips down to that channel's trunk by a 3-step staircase and climbs back up. y=6 runs 2 blocks of air above trunks and 5 above tiles, so it crosses them without touching.
@@ -78,4 +78,4 @@ The server jar is Mojang's vanilla `server.jar` for 1.21.11 (SHA-1 `64bb6d76…`
 - Only one clock domain, driven straight from `clk` with no inverted or gated clocks.
 - No latches or memories.
 - On the playable server the two clock phases are levers, so stepping the clock means flipping `HOLD_M` up, `HOLD_S` down, `HOLD_S` up, then `HOLD_M` down.
-- Rows are real and x is to scale, but z is stretched to make room for the routing channels.
+- Rows are real and x is to scale within a few µm, but z is stretched to make room for the routing channels.

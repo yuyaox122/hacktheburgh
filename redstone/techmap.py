@@ -24,6 +24,7 @@ WIRE = re.compile(r"^(buf|clkbuf|dlygate|dlymetal|dlyb|bufbuf|probe_p|lpflow_.*b
 FLOP = re.compile(r"^df(xtp|rtp|stp|rtn|bbp|sbp|xbp|rbp|stp)_\d+$")
 CONST0, CONST1 = "1'b0", "1'b1"
 HOLD_M, HOLD_S = "HOLD_M", "HOLD_S"
+ROW_H = 2.72                        # sky130_fd_sc_hd standard-cell row height (um)
 
 
 @dataclass
@@ -34,7 +35,7 @@ class Prim:
     out: str
     cell: str                       # instance it came from ("" for shared helpers)
     x: float                        # real x of that instance (um), for placement order
-    y: float | None = None          # real y (um) = which standard-cell row; None when there is no layout (Verilog)
+    y: float | None = None          # bottom of its standard-cell row (um); None when there is no layout (Verilog)
 
 
 @dataclass
@@ -143,7 +144,9 @@ def build(chip: str) -> PrimNetlist:
         return f"{cell}.n{k[0]}"
 
     xs = {c.name: g["cells"].get(c.name, (0, 0))[0] for c in logic}
-    ys = {c.name: g["cells"][c.name][1] for c in logic if c.name in g["cells"]}
+    # row bottom: a mirrored cell's origin is its top edge, so one origin y is shared by two physical rows
+    ys = {c.name: round(g["cells"][c.name][1] - (ROW_H if c.name in g["flipped"] else 0.0), 2)
+          for c in logic if c.name in g["cells"]}
     for c in comb:
         d = cd.celldef(c.type)
         for out_pin, plist, out_alias in map_type(c.type):

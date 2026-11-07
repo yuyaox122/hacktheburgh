@@ -60,12 +60,15 @@ def showroom(mc: MC) -> None:
 
 
 def goto_function(lay: dict) -> None:
-    """/function redstone:goto/<chip> teleports you to the chip's input levers, looking north at the build."""
+    """/function redstone:goto/<chip> teleports you just south of the chip's levers and lamps, looking south over
+    the build (in 2-D the levers and lamps are the northmost row, so they're right behind you)."""
     xs = [p[0] for p in lay["inputs"].values()]
     x, z = (min(xs) + max(xs)) // 2, max(p[2] for p in lay["inputs"].values()) + 5   # just south of the levers
     fn = mcmod.SRV / "world" / "datapacks" / "redstone_chip" / "data" / "redstone" / "function" / "goto"
     fn.mkdir(parents=True, exist_ok=True)
-    (fn / f"{lay['chip'].lower()}.mcfunction").write_text(f"tp @s {x} {Y} {z} facing {x} {Y} {z - 30}\n")
+    (fn / f"{lay['chip'].lower()}.mcfunction").write_text(
+        f"tp @s {x} {Y} {z} facing {x} {Y - 8} {z + 30}\n"
+        'tellraw @s {"text":"levers (inputs) and lamps (outputs) are just behind you, to the north","color":"gold"}\n')
     own = fn.parent / lay["chip"].lower()
     own.mkdir(parents=True, exist_ok=True)
     (own / "settle.mcfunction").write_text(f"tick sprint {2 * lay['settle_rt'] + 20}\n"

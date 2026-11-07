@@ -2,7 +2,7 @@
 
 Written Sat 7 Nov 2026, about 22:00, at the end of the session that built `redstone/`. Updated about 23:00, after the session that built the **2-D layout** (§4). Read this first, then `README.md`.
 
-**Status:** both TT08 chips are built in 2-D (real rows, x to scale) and pass the vanilla check. The 2-D builds are smaller and faster than the old single row. Next ideas are at the end of §4.
+**Status:** both TT08 chips are built in 2-D (real rows, x to scale within 3–6.5 µm) and pass the vanilla check. The 2-D builds are smaller and faster than the old single row. Next ideas are at the end of §4.
 
 ---
 
@@ -35,12 +35,12 @@ Written Sat 7 Nov 2026, about 22:00, at the end of the session that built `redst
 |---|---|
 | Spawn signpost (from the first session; not re-checked, may still list the old one-row coordinates) | (250, −60, 124) |
 | Alex's real-layout CLA (his datapack, run unmodified) | z −16..76 |
-| `tt_um_sign_addsub`, 2-D | x 528..1156, z 201..353 |
+| `tt_um_sign_addsub`, 2-D | x 528..1156, z 201..411 |
 | Primitive showroom | x −8..60, z ≈ 318..344 |
-| `tt_um_Electom_cla_4bits`, 2-D | x 512..1188, z 401..540 |
+| `tt_um_Electom_cla_4bits`, 2-D (moved: it no longer fits at z 400) | x 512..1170, z 801..1022 |
 | Verilog `counter` (one row) | x 0..600, z ≈ 600..780 |
 
-The world spawn is at the last chip built (`demo.py chip` sets it): cla_4bits' levers, (1050, −60, 441).
+The world spawn is at the last chip built (`demo.py chip` sets it): cla_4bits' levers, (1050, −60, 841).
 
 The demo world also has these functions:
 - `redstone:goto/<chip>` teleports to a build.
@@ -62,14 +62,14 @@ Yuyao **doesn't have Minecraft installed yet**. Once they're in, run `python3 de
 | `tt_um_sign_addsub` (combinational, 105 primitives), **2-D** | 200/200 |
 | `tt_um_Electom_cla_4bits` (5 flops as two-phase latches, local async reset), **2-D** | 60/60 cycles |
 | Verilog `examples/mul2.v` and `examples/counter.v`, vs iverilog on the source (one row; blocks identical to before 2-D except wire colours) | 40/40 each; counter re-run 30/30 after 2-D |
-| Live (ticks running), 2-D: adder 3/3 random vectors; CLA 3/3 random clock cycles (demo server) | correct |
+| Live (ticks running), 2-D: adder 3/3 random vectors (after the row fix); CLA 3/3 random clock cycles (before the row fix, not re-run live) | correct |
 | Live, old one-row builds: CLA 3+5, 9+8+1, 15+15+1; counter reset / count / load / down | correct |
 
 Commands to re-verify after any change:
 ```sh
 python3 sim.py tt_um_sign_addsub && python3 sim.py tt_um_Electom_cla_4bits
 python3 pnr.py tt_um_sign_addsub && python3 check.py chip tt_um_sign_addsub 50
-python3 pnr.py tt_um_Electom_cla_4bits --z 400 && python3 check.py chip tt_um_Electom_cla_4bits 30
+python3 pnr.py tt_um_Electom_cla_4bits --z 800 && python3 check.py chip tt_um_Electom_cla_4bits 30
 python3 verilog.py examples/counter.v --z 600 && python3 check.py vchip examples/counter.v 30
 ```
 
@@ -120,15 +120,23 @@ The design below ("rows + channels + spines") was built as recommended, with no 
 
 | | one row (before) | 2-D (now) |
 |---|---|---|
-| sign_addsub | 833 × 74, 31.9k blocks, settle 223 rt | 629 × 153, 24.6k blocks, **settle 170 rt**, 4 rows, 27 spines |
-| cla_4bits | 801 × 82, 36.2k blocks, settle 171 rt | 677 × 140, 30.6k blocks, **settle 131 rt**, 3 rows, 26 spines |
+| sign_addsub | 833 × 74, 31.9k blocks, settle 223 rt | 629 × 211, 26.0k blocks, **settle 178 rt**, 5 real rows + pads, 35 spines |
+| cla_4bits | 801 × 82, 36.2k blocks, settle 171 rt | 659 × 222, 33.3k blocks, **settle 139 rt**, 4 real rows + pads, 31 spines |
+
+**Review fixes (same evening):**
+- Rows: GDS origins of mirrored (FS) cells are their top edge, so `chipdata.read_gds` now returns `flipped`, and techmap uses row bottom = y − 2.72. Before this fix, pairs of physical rows were merged.
+- Partial placement falls back to one row instead of crashing.
+- Constant-1 port blocks are owned, so the DRC sees them.
+- Look-ahead is O(n), and the spine-column clearance is asserted at import.
+- Sign text escapes backslashes.
+- `goto` faces south over the build.
 
 Code changes:
 - `techmap.Prim.y` holds the real row (GDS y), and `PrimNetlist.cell_type` holds the cell types for the signs.
-- `pnr.place` puts row 0 = IO pads at the real pin x (constant outputs packed west as unlit lamps), and rows 1.. = real rows, north first. Its `_legalise` is minimum-displacement (Abacus-style clusters) at 1 slot (8 blocks) per µm.
+- `pnr.place` puts row 0 = IO pads at the real pin x (constant outputs packed west as unlit lamps), and rows 1.. = real rows, north first. Its `_legalise` is minimum-displacement (Abacus-style clusters) at 1 slot (8 blocks) per µm; the worst displacement is printed as `max_x_shift_um` (3.0 / 6.5 µm).
 - `pnr.route` builds each net as an undirected wire graph (port runs, trunks, dips, spine runs), then orients it from the driver's port by BFS. That BFS raises on loops or a disconnected net. A repeater is eligible on any straight, flat, unbranched cell. `_check_tree` rejects two cells of one net that could connect without being joined.
 - `world.build` clears up to y=8 and writes multi-line signs.
-- `demo.py goto` now lands just south of the levers, at ground level.
+- `demo.py goto` now lands just south of the levers, at ground level, facing south over the build.
 - New `mapview.py <chip>` writes `out/<chip>/map.png`, a top-down picture (wires coloured by layer).
 - Verilog designs (no `y`) still get the one-row layout with pitch 6.
 

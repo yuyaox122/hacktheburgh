@@ -125,7 +125,9 @@ def _gdsreal(b: bytes) -> float:
 
 
 def read_gds(chip: str) -> dict:
-    """{'cells': {inst: (x_um, y_um)}, 'pins': {label: (x_um, y_um)}, 'die': (w, h)} from the top structure."""
+    """{'cells': {inst: (x_um, y_um)}, 'pins': {label: (x_um, y_um)}, 'die': (w, h), 'flipped': {inst}} from the
+    top structure. (x, y) is the SREF origin; for a mirrored cell (STRANS reflection, the FS rows) that origin is the
+    cell's TOP edge, so its row's bottom is y - the row height."""
     d = (DATA / "tt08" / chip / f"{chip}.gds").read_bytes()
     i, cur, el, dbu, structs, order = 0, None, None, 1e-9, {}, []
     while i < len(d):
@@ -155,6 +157,8 @@ def read_gds(chip: str) -> dict:
             el["s"] = p.rstrip(b"\0").decode()
         elif rt == 0x2C:
             el["prop"] = p.rstrip(b"\0").decode()
+        elif rt == 0x1A:
+            el["strans"] = struct.unpack(">H", p[:2])[0]
         elif rt == 0x11:
             if el["k"] == 0x0A:
                 cur["srefs"].append(el)
@@ -169,7 +173,9 @@ def read_gds(chip: str) -> dict:
     pins = {t["s"]: (t["xy"][0][0] * um, t["xy"][0][1] * um) for t in top["texts"] if "s" in t}
     xs = [x for b in top["bnds"] for x, _ in b["xy"]] or [0, 161000]
     ys = [y for b in top["bnds"] for _, y in b["xy"]] or [0, 111520]
-    return {"cells": cells, "pins": pins, "die": ((max(xs) - min(xs)) * um, (max(ys) - min(ys)) * um)}
+    flipped = {_clean(r["prop"]) for r in top["srefs"] if "prop" in r and r.get("strans", 0) & 0x8000}
+    return {"cells": cells, "pins": pins, "die": ((max(xs) - min(xs)) * um, (max(ys) - min(ys)) * um),
+            "flipped": flipped}
 
 
 # ---------------------------------------------------------------- Liberty functions

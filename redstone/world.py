@@ -39,7 +39,7 @@ def build(mc: MC, lay: dict, verbose: bool = True) -> None:
         mc.cmd(f"setblock {x} {YB + y} {z} {s}")
     for x, y, z, text in lay.get("labels", []):
         lines = (text.split("\n") + ["", "", "", ""])[:4]
-        msgs = ",".join('"' + s.replace('"', "'") + '"' for s in lines)
+        msgs = ",".join('"' + s.replace("\\", "/").replace('"', "'") + '"' for s in lines)
         mc.cmd(f'setblock {x} {YB + y} {z} oak_sign[rotation=0]{{front_text:{{messages:[{msgs}]}}}}')
     if verbose:
         print(f"  built {len(blocks) + len(lay['last'])} blocks in {time.time() - t0:.0f}s", flush=True)
