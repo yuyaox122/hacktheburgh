@@ -1,6 +1,6 @@
 """Verilog -> redstone: synthesise any (small) Verilog design straight to the redstone primitives.
 
-    python verilog.py examples/counter.v [--top counter] [--z 600]     # -> out/<top>/layout.json
+    python verilog.py examples/counter.v [--top counter] [--z 600] [--out DIR]   # -> out/<top>/layout.json
     python check.py vchip examples/counter.v 30                         # build in vanilla, compare with iverilog
 
 Yosys: synth -flatten, flip-flops legalised to rising-edge D flops with optional active-high async reset or set,
@@ -255,7 +255,12 @@ if __name__ == "__main__":
     lay = pnr.route(pn, z_min=z)
     lay.chip = pn.chip
     print(lay.stats)
-    pnr.save(lay, ROOT / "out" / pn.chip)
+    # --out <dir>: Decap's decompiled modules keep the chip's name, so the default out/<module>/ would overwrite
+    # that chip's 2-D layout; refuse that unless --out says where to go.
+    out = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else ROOT / "out" / pn.chip
+    if "--out" not in sys.argv and (out / "layout.json").exists() and not (out / "verilog.json").exists():
+        raise SystemExit(f"{out} holds a chip layout (not from Verilog); pass --out <dir> to write somewhere else")
+    pnr.save(lay, out)
     meta = {"source": str(Path(src).resolve()), "top": pn.chip, "clock": pn.stats.get("clock"),
             "inputs": [b for b in pn.inputs if b not in (tm.HOLD_M, tm.HOLD_S)], "outputs": list(pn.outputs)}
-    (ROOT / "out" / pn.chip / "verilog.json").write_text(json.dumps(meta))
+    (out / "verilog.json").write_text(json.dumps(meta))

@@ -77,6 +77,30 @@ python3 demo.py chip tiny_fpga && python3 fpga.py demo   # playable: /function r
 
 An FPGA is a regular grid, so a tiled layout (one CLB per tile, with short local wires) is the way to go bigger.
 
+## From the Decap website (`bridge.py`)
+
+The Decap web app has a **Minecraft** page (`#/minecraft`) that drives the demo server live:
+
+- **Decompile page → Build in Minecraft** sends the Verilog on screen (clean, or with the planted trigger) here. After **Fix**, *Build fixed copy in Minecraft* builds the repaired Verilog.
+- **Your Verilog** box: any small design (one clock, optional async reset), about 600 gates at most.
+- Each design is compiled with Yosys, then the redstone netlist is checked against **iverilog running the source** (200 random vectors or clock cycles). The page shows the result before anything is built.
+- **Build** places it in the world with one datapack function: 45k–76k blocks in about 3 s. Web builds have their own lane at z ≥ 3000, x from 0.
+- **Switches** on the page flip the real levers. **Lamps** are read back from the world every 0.5 s and compared with the netlist simulation. *Fast-forward* sprints the server until the outputs settle (about 1 s). **Clock** plays one rising edge.
+- **Levers / Above / Side** teleport the players in the world, so the person playing sees the build from that spot.
+- The **3-D view** draws every block the bridge places, from the same block list, so it works with no Minecraft client.
+
+Checked live, through the page's own HTTP calls:
+- Decap's decompiled `cla_4bits` with trigger 77 planted: random vectors with clock edges 6/6; the `uo_out[0]` lamp lights on 77 and not on 76 or 78. The clean copy stays dark on 77.
+- The example MAC: `acc` goes 6, 12, 13 over three clock edges.
+
+```sh
+python3 demo.py start                      # Minecraft server (LAN: port 25565, Java 1.21.11, offline mode)
+python3 bridge.py                          # http://127.0.0.1:8002/redstone/
+cd ../decap/web && npm run dev             # Vite proxies /redstone to the bridge; open #/minecraft
+```
+
+**Playing on another laptop (the pitch):** the server listens on every interface. The Minecraft page shows the address to join (Multiplayer → Direct Connect → `<LAN IP>:25565`). Then run `python3 demo.py op` so that player can use `/tick`. If the venue Wi-Fi blocks laptop-to-laptop traffic, use a phone hotspot.
+
 ## Run it
 
 ```sh

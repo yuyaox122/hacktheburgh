@@ -7,6 +7,7 @@ import { NetGraph } from "./graph";
 import { $, $$, esc, hiVerilog, toast } from "./dom";
 import { icon } from "./icons";
 import { app } from "./state";
+import { pendingBuild } from "../data/redstone";
 
 const KIND_COLOUR: Record<string, string> = {
   adder: "var(--adder)", subtractor: "var(--adder)", counter: "var(--reg)", register: "var(--reg)", shift: "var(--reg)",
@@ -131,6 +132,7 @@ export class ChipPage {
         <span class="grow"></span>
         <div class="acts">
           ${this.in3d ? `<a class="btn" href="#/stage/${encodeURIComponent(this.chip)}" title="This chip's real layout in 3D, with a live simulator">${icon.cube}Explore in 3D</a>` : ""}
+          <button class="btn" type="button" id="cpMinecraft" title="Compile this decompiled Verilog to redstone and build it in Minecraft">${icon.cube}Build in Minecraft</button>
           <button class="btn" type="button" id="cpGuide" title="Ask about this chip (G)">${icon.sparkle}Ask</button>
         </div>
       </header>
@@ -269,6 +271,7 @@ export class ChipPage {
       ${f ? `<div class="callout ${f.data.verdict === "proven" ? "good" : f.data.verdict === "tested" ? "warn" : "bad"}"><b>${f.data.verdict === "proven" ? "Proven. The chip is back to what the author wrote." : f.data.verdict === "tested" ? "Tested, not proven." : "The fix did not prove."}</b>
         <span>${esc(f.data.detail)}</span><span>${f.data.removed_cells.length} cells removed in ${f.data.seconds.toFixed(1)} s${f.source === "fixture" ? ". Sample result." : ""}</span></div>
         <div class="group"><span class="eyebrow">Removed</span><div class="chips">${f.data.removed_cells.map((c) => `<button type="button" class="linkbtn" data-cell="${esc(c)}">${esc(c)}</button>`).join("")}</div></div>
+        <div class="acts"><button class="btn" type="button" id="cpMinecraftFix" title="Build the fixed Verilog in Minecraft, next to the copy with the trigger">${icon.cube}Build fixed copy in Minecraft</button></div>
         <details><summary>Fixed Verilog</summary><ol class="code">${f.data.verilog.split("\n").map((t, i) => `<li><span class="n">${i + 1}</span><span class="bk"></span><span class="t">${hiVerilog(t) || " "}</span><span></span></li>`).join("")}</ol></details>` : ""}
       ${this.err ? `<div class="callout bad">${esc(this.err)}</div>` : ""}</div>`;
   }
@@ -284,6 +287,24 @@ export class ChipPage {
     $$<HTMLElement>("[data-variant]", this.el).forEach((b) => b.addEventListener("click", () => this.setVariant(b.dataset.variant === "planted")));
     $("#cpFit", this.el).addEventListener("click", () => { this.graph?.fit(); this.graph?.draw(); });
     $("#cpGuide", this.el).addEventListener("click", () => app.askGuide?.(""));
+    $("#cpMinecraft", this.el).addEventListener("click", () => this.toMinecraft());
+  }
+  /** Hand the Verilog on screen (clean, or with the planted trigger) to the Minecraft page, which builds it. */
+  private toMinecraft(fixed = false) {
+    const r = this.result;
+    if (!r) return;
+    const short = this.chip.replace(/^tt_um_/, "");
+    const plant = fixed ? this.planted?.plant : r.variant === "planted" ? r.plant : null;
+    const n = plant?.n ?? null;
+    const variant = fixed ? "fixed" : r.variant;
+    const verilog = fixed ? this.fixRes?.data.verilog : r.decompiled.verilog;
+    if (!verilog) return;
+    pendingBuild.req = {
+      verilog, id: `${short}_${variant}${n != null ? `_${n}` : ""}`,
+      title: `${r.title || this.chip}: ${fixed ? `trigger ${n} removed by Fix` : variant === "planted" ? `with trigger ${n}` : "clean"}, decompiled by Decap`,
+      origin: { chip: this.chip, variant, n, operand: (plant as { operand?: string } | null | undefined)?.operand },
+    };
+    location.hash = "#/minecraft";
   }
   private bindSide() {
     const side = $("#cpSide", this.el);
@@ -294,6 +315,7 @@ export class ChipPage {
     $<HTMLInputElement>("#cpN", side)?.addEventListener("keydown", (e) => { if (e.key === "Enter") this.plant(); });
     $("#cpCone", side)?.addEventListener("click", () => this.lightFlags());
     $("#cpFix", side)?.addEventListener("click", () => this.fix());
+    $("#cpMinecraftFix", side)?.addEventListener("click", () => this.toMinecraft(true));
   }
 
   setVariant(planted: boolean) {
