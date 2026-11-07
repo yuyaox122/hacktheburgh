@@ -2,6 +2,8 @@
 
     python demo.py start          # server-demo/ on localhost:25565 (Minecraft Java 1.21.11 -> Multiplayer -> localhost)
     python demo.py prims          # build the verified primitives with levers and lamps
+    python demo.py chip <name>    # build a routed chip (out/<name>/layout.json), with goto + clock functions
+    python demo.py op             # make everyone online an operator (for /tick sprint and the clock functions)
     python demo.py stop
 """
 from __future__ import annotations
@@ -86,6 +88,10 @@ def clock_button(mc: MC, lay: dict) -> None:
     (fn / "clock.mcfunction").write_text(
         'tellraw @a {"text":"clock: settling inputs, then one rising edge ...","color":"yellow"}\n'
         + f"schedule function redstone:{slug}/clock_1 {wait}t\n")
+    # /tick needs permission level 3, which command blocks do not have, so the fast version is separate
+    (fn / "clock_fast.mcfunction").write_text(f"tick sprint {5 * wait + 40}\nfunction redstone:{slug}/clock\n")
+    (fn / "settle.mcfunction").write_text(f"tick sprint {wait}\n"
+                                          'tellraw @a {"text":"fast-forwarded until the outputs settle","color":"yellow"}\n')
     (fn / "clock_1.mcfunction").write_text(steps[0] + f"\nschedule function redstone:{slug}/clock_2 {wait}t\n")
     (fn / "clock_2.mcfunction").write_text(steps[1] + f"\nschedule function redstone:{slug}/clock_3 {wait}t\n")
     (fn / "clock_3.mcfunction").write_text(steps[2] + f"\nschedule function redstone:{slug}/clock_4 {wait}t\n")
@@ -127,6 +133,12 @@ def main() -> None:
             mc.cmd(f"setworldspawn {sx} {sy} {sz}")
             mc.cmd(f'tellraw @a {{"text":"{a[1]} built in redstone: flip the levers (inputs), watch the lamps (outputs)","color":"gold"}}')
             print(f"built {a[1]}; spawn at {sx} {sy} {sz}; stats {lay['stats']}")
+    elif a[0] == "op":
+        with MC() as mc:
+            online = mc.cmd("list").split(":", 1)[-1].strip()
+            for name in [n.strip() for n in online.split(",") if n.strip()]:
+                print(mc.cmd(f"op {name}"))
+            print("online:", online or "nobody")
     elif a[0] == "prims":
         with MC() as mc:
             showroom(mc)

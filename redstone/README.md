@@ -59,9 +59,15 @@ python3 demo.py start && python3 demo.py chip tt_um_sign_addsub   # playable ser
 
 The server jar is Mojang's vanilla `server.jar` for 1.21.11 (SHA-1 `64bb6d76…`), downloaded into `tools/`. It is not committed, and running it means accepting the Minecraft EULA.
 
-**To play:** in Minecraft Java 1.21.11, go to Multiplayer → `localhost`.
-- Levers are the chip's input pins and lamps are its output pins, each labelled by a sign.
-- After you flip a lever, the outputs take about 20 s to settle at normal speed. `/tick rate 100` makes that 5× faster.
+**To play:** in Minecraft Java 1.21.11, go to Multiplayer → `localhost`. Then run `python3 demo.py op` once, so your player can use `/tick` and the functions below.
+
+- **Inputs and outputs:** levers are the chip's input pins and lamps are its output pins, each labelled by a sign.
+- **Teleport:** `/function redstone:goto/<chip>`, for example `redstone:goto/counter`, `redstone:goto/tt_um_sign_addsub` or `redstone:goto/tt_um_electom_cla_4bits`.
+- **Fast-forward until the outputs settle:** `/function redstone:<chip>/settle`. At normal speed one change takes about 10–25 s.
+- **Clock (sequential chips):**
+  - The **CLOCK button** next to the levers plays one rising edge at normal speed (about 1–2 min).
+  - `/function redstone:<chip>/clock_fast` does the same in about 1–2 s by sprinting the server.
+- **Real layout next to it:** if Alex's `minecraft/` datapack is installed in the same world (`python build.py <chip> --install <world>`), his real-layout build sits at z −16..76, north of these builds (all at z ≥ 200).
 
 ## Limits (for now)
 

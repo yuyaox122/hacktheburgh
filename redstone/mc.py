@@ -38,7 +38,7 @@ PROPS = {
     "enable-rcon": "true", "rcon.port": str(PORT), "rcon.password": PASSWORD, "spawn-protection": "0",
     "server-port": str(GAME_PORT), "generate-structures": "false", "max-tick-time": "-1", "view-distance": "10",
     "simulation-distance": "10", "level-name": "world", "motd": "redstone chip", "enable-command-block": "true",
-    "pause-when-empty-seconds": "0", "sync-chunk-writes": "false",
+    "pause-when-empty-seconds": "0", "function-permission-level": "4", "sync-chunk-writes": "false",
 }
 
 
