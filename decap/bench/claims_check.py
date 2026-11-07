@@ -56,6 +56,22 @@ def main() -> int:
     ok = r["verdict"] == "proven" and r["credit"]["cleared"]
     bad += not ok
     print(f"{'ok ' if ok else 'BAD'} credit      {r['credit']}")
+    # coverage (Ian's rule): the cone of uio_out[7] also holds bit0's next state, so a claim about the buffered
+    # copy alone (uio_out[7] == bit0) must not explain the region; with next(bit0) as well it covers everything.
+    from api.scope import Scope, region_of
+    v = service.get(ALARM)
+    cone = region_of(v, Scope(cone_of="uio_out[7]"))
+    r = claims.check(v, "uio_out[7] == bit0", region=cone)
+    ok = r["verdict"] == "partial" and r["credit"].get("missing") == ["next(bit0)"]
+    bad += not ok
+    print(f"{'ok ' if ok else 'BAD'} {r['verdict']:<11} (want partial    ) {r['seconds']:>5.2f}s  {ALARM} cone uio_out[7]: "
+          f"uio_out[7] == bit0  -> {r['credit']['reason']}")
+    both = f"(uio_out[7] == bit0) & ({LATCH})"
+    r = claims.check(v, both, region=cone)
+    ok = r["verdict"] in ("proven", "restated") and r["credit"]["complete"] is True and "missing" not in r["credit"]
+    bad += not ok
+    print(f"{'ok ' if ok else 'BAD'} {r['verdict']:<11} (want complete ) {r['seconds']:>5.2f}s  {ALARM} cone uio_out[7]: "
+          f"both outputs -> {r['credit']['reason']}")
     print("all passed" if not bad else f"{bad} FAILED")
     return 1 if bad else 0
 

@@ -14,9 +14,11 @@ Order, as in Ian's fallback: unparseable -> tautology -> (free-register proof)
   refuted with free regs -> BMC from reset, 30 cycles, real flip-flops:
                               fails -> refuted, refute_kind "semantic"
                               holds -> k-induction (sat -tempinduct): inductive (true from reset, proven) / bounded
-Credit (Yuyao, 7 Nov): the claim must mention one of the region's outputs, pin those output bits down for every
-input (completeness: SAT finds no two different output values that both satisfy it), and be a labelled shape or
-use at most 1/3 of the literals of the region's decompiled lines.
+Credit (Yuyao, 7 Nov): the claim must mention one of the region's outputs, mention EVERY output bit of the region
+(ports by bit, next(reg)[k] = next(q_<flop k>); Ian's coverage rule, so a claim about one buffered copy of a flop
+can't explain a whole region), pin those output bits down for every input (completeness: SAT finds no two different
+output values that both satisfy it), and be a labelled shape or use at most 1/3 of the literals of the region's
+decompiled lines.
 """
 from __future__ import annotations
 
@@ -35,7 +37,7 @@ from .prove import gate_verilog
 _AGENT = Path(__file__).resolve().parents[1] / "agent"   # Ian's package, importable as decap_agent (pure stdlib modules)
 if str(_AGENT) not in sys.path:
     sys.path.append(str(_AGENT))
-from decap_agent.claim_expr import ClaimSyntaxError, Evaluator, Node, literals, names, output_bits, parse, unparse  # noqa: E402
+from decap_agent.claim_expr import ClaimSyntaxError, Evaluator, Node, literals, names, output_bits, parse, ref_bits, unparse  # noqa: E402
 from decap_agent.stub_witness import SHAPES, _has_op, english  # noqa: E402
 
 FIXED = {"rst_n": 1, "ena": 1}
@@ -298,6 +300,32 @@ def region_outputs(outputs: list[dict]) -> set[tuple[str, str]]:
     return want
 
 
+def uncovered(sig: Signals, node: Node, outputs: list[dict]) -> list[str]:
+    """Region output bits the claim never mentions, through any alias (as Ian's fallback: core_witness.uncovered)."""
+    said = set()
+    for kind, name, hi, lo in ref_bits(node):
+        rng = range(sig.widths[name]) if hi is None else range(lo, hi + 1)
+        if kind == "sig" and name in sig.ports:
+            said |= {("P", name, k) for k in rng}
+        elif kind == "next" and sig.nextable(name):
+            fids = sig.fids(name)
+            said |= {("D", fids[k]) for k in rng if k < len(fids)}
+    missing = []
+    for o in outputs:
+        nm = o["name"]
+        for k in o.get("bits_in_region", [0]):
+            if o["kind"] == "port":
+                key, lab = ("P", nm, k), f"{nm}[{k}]"
+            elif o["kind"] == "register_next":
+                flops = o.get("flops") or [f"q_{f}" for f in sig.fids(nm[5:-1])]
+                key, lab = ("D", flops[k][2:]), (f"{nm}[{k}]" if len(flops) > 1 else nm)
+            else:
+                key, lab = ("D", nm[7:-1]), nm
+            if key not in said:
+                missing.append(lab)
+    return missing
+
+
 def check(v, claim: str, label: str = "", region: dict | None = None, do_check: bool = True,
           timeout: int = TIMEOUT) -> dict:
     """Check one claim. region: get_region's output for the claim's scope (outputs, cone_literals, touched);
@@ -373,8 +401,9 @@ def check(v, claim: str, label: str = "", region: dict | None = None, do_check: 
     else:
         want = {("sig", o) for o in sig.outputs} | {("next", r) for r in sig.regs} | {("next", f"q_{f}") for f in sig.flops}
     on_topic = bool(used & want)
+    missing = uncovered(sig, node, region["outputs"]) if on_topic and region is not None else []
     complete = False
-    if on_topic:
+    if on_topic and not missing:
         ob = output_bits(node, want, sig.widths)   # next(x) has x's width
         alt = {(k, n) for k, n, _ in ob}
         c = _yosys(free_module(sig, node, alt, ob), "claimfree", [], f"-prove __ok 1 -timeout {timeout}", timeout)
@@ -384,6 +413,7 @@ def check(v, claim: str, label: str = "", region: dict | None = None, do_check: 
     short = cone is not None and lits * 3 <= cone
     cleared = on_topic and complete is True and (label_ok or short)
     reason = ("says nothing about this region's outputs" if not on_topic
+              else f"does not cover every output of the region: missing {', '.join(missing[:6])}" if missing
               else "true, but it does not say what the output is for every input" if complete is False
               else "completeness check timed out" if complete is None
               else f"labelled shape: {label}" if label_ok
@@ -391,4 +421,4 @@ def check(v, claim: str, label: str = "", region: dict | None = None, do_check: 
               else "no shorter than the decompile and no known shape")
     verdict = truth if cleared else "partial" if on_topic and complete is False else "restated"
     return done(verdict=verdict, truth=truth, **out, **extra,
-                credit={"cleared": cleared, "complete": complete, "reason": reason, "literals": lits, "cone_literals": cone})
+                credit={"cleared": cleared, "complete": complete, **({"missing": missing} if missing else {}), "reason": reason, "literals": lits, "cone_literals": cone})
