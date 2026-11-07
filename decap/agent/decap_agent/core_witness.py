@@ -47,6 +47,33 @@ def region_outputs(outputs: list[dict]) -> set[tuple[str, str]]:
     return want
 
 
+def uncovered(m: Model, node, outputs: list[dict]) -> list[str]:
+    """Region output bits the claim never mentions (through any alias): a claim must explain the whole region."""
+    mentioned = set()
+    for kind, name, hi, lo in ref_bits(node):
+        rng = range(m.widths[name]) if hi is None else range(lo, hi + 1)
+        for k in rng:
+            if kind == "sig" and name in m.ports:
+                mentioned.add(("P", name, k))
+            elif kind == "next" and name in m.regs:
+                mentioned.add(("D", m.regs[name][k]))
+            elif kind == "next" and name.startswith("q_"):
+                mentioned.add(("D", name[2:]))
+    missing = []
+    for o in outputs:
+        nm = o["name"]
+        for k in o.get("bits_in_region", [0]):
+            if o["kind"] == "port":
+                key, label = ("P", nm, k), f"{nm}[{k}]"
+            elif o["kind"] == "register_next":
+                key, label = ("D", o["flops"][k][2:]), (f"{nm}[{k}]" if o["width"] > 1 else nm)
+            else:
+                key, label = ("D", nm[7:-1]), nm
+            if key not in mentioned:
+                missing.append(label)
+    return missing
+
+
 def check_claim(chip: str, body: ClaimIn) -> dict:
     v = _get(chip)
     m: Model = model(v)
@@ -107,9 +134,11 @@ def check_claim(chip: str, body: ClaimIn) -> dict:
     label_ok = shape is not None and (body.label == "constant" or _has_op(node, shape))
     want = region_outputs(r["outputs"])
     on_topic = bool(names(node) & want)
-    complete = is_complete(ev, node, envs or [{}], output_bits(node, want, m.widths)) if on_topic else False
+    missing = uncovered(m, node, r["outputs"]) if on_topic else []
+    complete = (is_complete(ev, node, envs or [{}], output_bits(node, want, m.widths)) and not missing) if on_topic else False
     cleared = on_topic and bool(complete) and (label_ok or lits * 3 <= cone)
     reason = ("says nothing about this region's outputs" if not on_topic
+              else f"does not cover every output of the region: missing {', '.join(missing[:6])}" if missing
               else "true, but it does not say what the output is for every input" if complete is False
               else "too many output bits to check completeness here (the Yosys checker can)" if complete is None
               else f"labelled shape: {body.label}" if label_ok else f"{lits} literals vs {cone} in the decompiled lines"

@@ -66,7 +66,8 @@ class Formal(BaseModel):
 
 
 def build_formaliser(model: Any = None) -> Agent:
-    return Agent(model or os.environ.get("DECAP_FORMALISE_MODEL", DEFAULT_MODEL), instructions=INSTRUCTIONS,
+    from .cli_model import resolve
+    return Agent(resolve(model, os.environ.get("DECAP_FORMALISE_MODEL", DEFAULT_MODEL)), instructions=INSTRUCTIONS,
                  output_type=Formal, defer_model_check=True)
 
 
