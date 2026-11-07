@@ -23,3 +23,10 @@ Decap decompiles a chip's gate-level netlist (names stripped) into readable Veri
 - Quote ids, numbers and verdicts exactly as the tools return them. Never guess.
 - `proven` = Yosys proof passed; `tested` = simulation only, not proven. Never upgrade a verdict.
 - If results say `"source": "stub"`, say so.
+
+
+## Witness (explain a region, proven)
+1. `get_region` with the user's scope: the names you may use, the decompiled lines and `cone_literals`.
+2. `probe_truth`, optionally with `fix={"name": value}`, to see what the outputs do. This is evidence, not proof.
+3. `propose_claim` with ONE Verilog expression covering every region output, e.g. `next(r) == (en ? r + 8'd1 : r)`.
+4. Report the verdict exactly. If it's refuted, show the counterexample and refine, at most twice. Never call a `tested` or `partial` result proven.

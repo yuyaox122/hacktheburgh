@@ -243,3 +243,22 @@ def test_transcript_lifts_touched_lines(tmp_path):
     run(go())
     ev = [e for e in load(t.path) if e["kind"] == "tool"][-1]
     assert "lines" in ev and ev["cells"]
+
+
+def test_timeline_renders_only_checked_runs(tmp_path):
+    from decap_agent.timeline import render, runs_from
+    ev = [
+        {"kind": "claim", "chip": "tt_um_x", "scope": {"cone_of": "b3"}, "attempt": 0, "first_draft": True, "source": "yosys",
+         "claim": "uo_out[0] == ui_in[0]", "verdict": "refuted", "truth": "refuted", "refute_kind": "semantic",
+         "counterexample": {"ui_in": 137, "q_c4": 1, "uo_out[0]": 0}},
+        {"kind": "claim", "chip": "tt_um_x", "scope": {"cone_of": "b3"}, "attempt": 1, "first_draft": False, "source": "yosys",
+         "claim": "uo_out[0] == (ui_in == 8'd137)", "verdict": "proven", "truth": "proven", "checker_s": 0.07,
+         "credit": {"cleared": True, "literals": 2, "cone_literals": 30}, "english": "Bit 0 of uo_out equals ui_in equals 137."},
+        {"kind": "claim", "chip": "tt_um_y", "scope": {"cone_of": "b1"}, "attempt": 0, "first_draft": True,
+         "source": "fallback-sim", "claim": "uo_out == 0", "verdict": "tested"},
+    ]
+    assert len(runs_from(ev)) == 1 and len(runs_from(ev, include_fallback=True)) == 2
+    page = render(ev)
+    assert page.count('class="att focus"') == 1 and "uo_out[0] == (ui_in == 8&#x27;d137)" in page
+    assert "Breaks at" in page and "10001001" in page and "+1 flip-flop bits" in page
+    assert "tt_um_y" not in page and "<title>Witness</title>" in page
