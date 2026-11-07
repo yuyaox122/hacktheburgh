@@ -14,6 +14,7 @@ import json
 import math
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import cells as lib
@@ -122,10 +123,27 @@ def groups(bits: list[str], pins: dict[str, str]) -> dict[str, list[tuple[str, i
     return g
 
 
+def fetch_chip(chip: str) -> Path:
+    """Download the chip's netlist, GDS and info.yaml from the public TT08 repo (Apache-2.0) into data/<chip>/."""
+    d = ROOT / "data" / chip
+    d.mkdir(parents=True, exist_ok=True)
+    for f in (f"{chip}.v", f"{chip}.gds", "info.yaml"):
+        if (d / f).exists():
+            continue
+        print("fetching", f)
+        r = subprocess.run(["gh", "api", f"repos/TinyTapeout/tinytapeout-08/contents/projects/{chip}/{f}",
+                            "-H", "Accept: application/vnd.github.raw"], capture_output=True)
+        if r.returncode:
+            raise SystemExit(f"could not fetch {chip}/{f} (is `gh` logged in?): {r.stderr.decode()[-300:]}")
+        (d / f).write_bytes(r.stdout)
+    return d
+
+
 def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: int | None = None,
                  target: str | None = None) -> dict:
-    d = ROOT / "data" / chip
+    d = fetch_chip(chip)
     nl = nlmod.parse(d / f"{chip}.v")
+    lib.fetch({c.type for c in nl.logic} | {"inv_1", "and2_1", "and4_1", "or2_1"})  # plant() simulates first
     trojan = None
     if plant_n is not None:
         target, tnames = plantmod.plant(nl, plant_n, target)
