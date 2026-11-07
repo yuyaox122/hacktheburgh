@@ -23,6 +23,8 @@ from typing import Literal
 from fastapi import Body, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from . import stub_witness
+
 SOURCE = "stub"
 BASE = "stub_counter8"
 BASE_COMPARE = 200
@@ -75,6 +77,19 @@ class ConeIn(BaseModel):
     cone: str = Field(description="A cone id from decompile or find_rare_triggers, e.g. 'c2'.")
 
 
+class ProbeIn(ScopeIn):
+    n: int = Field(256, ge=1, le=4096, description="How many random input vectors to try (all of them if the region has <= 12 input bits).")
+    seed: int = Field(1, description="Random seed, so a probe can be repeated.")
+
+
+class ClaimIn(ScopeIn):
+    claim: str = Field(description="One Verilog expression about the region, e.g. \"next(count) == count + 8'd1 when en\". "
+                                   "Names: ports and flip-flops as get_region lists them; next(x) = x one clock later; "
+                                   "'A when B' means B -> A.")
+    label: str = Field("", description="Known shape, if any: adder, incrementer, counter, comparator, mux, decoder, constant.")
+    check: bool = Field(True, description="False: only parse and render the English (the confirm step), no verdict.")
+
+
 def create_stub_app() -> FastAPI:
     app = FastAPI(title="Decap core (stub)", version="0.2.0")
     planted: dict[str, int] = {}
@@ -92,6 +107,8 @@ def create_stub_app() -> FastAPI:
     def scoped_cones(chip: str, scope: Scope) -> list[str]:
         """Cones that intersect the scope (all cones if the scope is empty)."""
         present = cones_of(chip)
+        alias = {"uo_out[0]": "out", "uo_out[1]": "hit", "next(count)": "count"}
+        scope = scope.model_copy(update={"cone_of": alias.get(scope.cone_of, scope.cone_of)})
         if not (scope.cells or scope.nets or scope.cone_of):
             return present
         hit = []
@@ -241,5 +258,31 @@ def create_stub_app() -> FastAPI:
         return {"chip": chip, "delay_ns_estimate": delays[slowest], "cone": slowest,
                 "path": CONES[slowest]["cells"][:3] + ["…"], "label": "estimate from Liberty delays (stub)",
                 "touched": touched([slowest]), "source": SOURCE}
+
+    # ---- Witness: agents explain a region in one claim; only the checker decides (contract: board, 7 Nov 20:32)
+    @app.post("/chips/{chip}/region", operation_id="get_region")
+    def get_region(chip: str, body: ScopeIn = Body(default_factory=ScopeIn)) -> dict:
+        """Describe a region before making a claim about it: its inputs and outputs (the names a claim may use),
+        the decompiled lines it covers, and how many literals that code has. Call this first."""
+        cones = scoped_cones(chip, body.scope)
+        return {"chip": chip, **stub_witness.get_region(cones), "touched": touched(cones), "source": SOURCE}
+
+    @app.post("/chips/{chip}/probe", operation_id="probe_truth")
+    def probe_truth(chip: str, body: ProbeIn = Body(default_factory=ProbeIn)) -> dict:
+        """Try many input vectors on the region and show what its outputs did (random, or every input if the region is
+        small). Free to call; a pattern that held on samples can still be false, which only propose_claim decides."""
+        cones = scoped_cones(chip, body.scope)
+        return {"chip": chip, **stub_witness.probe(cones, trigger_of(chip), body.n, body.seed),
+                "touched": touched(cones), "source": SOURCE}
+
+    @app.post("/chips/{chip}/claim", operation_id="propose_claim")
+    def propose_claim(chip: str, body: ClaimIn) -> dict:
+        """Submit one claim about the region to the checker. Verdicts: proven (and credited), restated (proven but no
+        shorter than the decompile), refuted (with the counterexample input), tautology, unparseable."""
+        cones = scoped_cones(chip, body.scope)
+        res = stub_witness.check(body.claim, cones, trigger_of(chip), body.label, run=body.check)
+        return {"chip": chip, "claim": body.claim, "label": body.label, **res, "touched": touched(cones),
+                "netlist_sha": "stub", "decompiler": "stub", "method": "exhaustive simulation (stub checker)",
+                "source": SOURCE}
 
     return app

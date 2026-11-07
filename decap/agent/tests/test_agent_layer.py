@@ -18,7 +18,8 @@ from decap_agent.stub_core import create_stub_app
 from decap_agent.transcript import Transcript, load, result_payload
 
 EXPECTED_TOOLS = {"list_chips", "resolve_scope", "strip_names", "recover_blocks", "decompile", "prove_equiv",
-                  "simulate", "find_rare_triggers", "plant_trigger", "cone_of_influence", "critical_path"}
+                  "simulate", "find_rare_triggers", "plant_trigger", "cone_of_influence", "critical_path",
+                  "get_region", "probe_truth", "propose_claim"}
 PLANTED = "stub_counter8+t137"
 
 
