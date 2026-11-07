@@ -1,0 +1,2290 @@
+<title>Decap</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: an IDE for silicon. Source on the left, the decapped package in the middle, inspect / analyse / surgery / guide on the right,
+   a logic analyser along the bottom. Deliberately single-theme: silicon under a microscope, lit by bond-wire gold. */
+:root {
+  --bg: #090d13;
+  --panel: #0f151d;
+  --panel-2: #141c27;
+  --panel-3: #1a2431;
+  --line: #212c3a;
+  --line-2: #2e3c4f;
+  --fg: #e2e9f3;
+  --muted: #8995a9;
+  --faint: #5a677b;
+  --accent: #e2b04e;        /* bond-wire gold */
+  --accent-ink: #1a1405;
+  --add: #4cc38a;
+  --del: #ef6b73;
+  --high: #ffd45e;          /* a wire carrying 1 */
+  --fall: #5ec8ff;          /* a wire falling to 0 */
+  --reg: #c98a3a;
+  --adder: #2fb3a6;
+  --detect: #8f7ce0;
+  --clock: #ec7a3c;
+  --met1: #4f7fe0;
+  --met2: #b46ad0;
+  --poly: #c2465a;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.45; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(240px, 21%) minmax(0, 1fr) minmax(320px, 27%);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "top top top" "code view right" "sim sim sim";
+  padding-left: max(0px, env(safe-area-inset-left, 0px));
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------- top bar ---------- */
+.top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  padding-block: 9px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line); background: linear-gradient(180deg, var(--panel-2), var(--panel)); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand b { font-family: var(--font-display); font-weight: 700; font-size: 21px; letter-spacing: .04em; text-transform: uppercase; }
+.brand .die { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 3px; position: relative;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, transparent) 0 2px, transparent 2px 4px);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); }
+.brand small { color: var(--muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.designname { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 13px; }
+.designname .meta { color: var(--muted); font-family: var(--font-body); font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--muted); white-space: nowrap; }
+.pill.ok { color: var(--add); border-color: color-mix(in srgb, var(--add) 45%, transparent); background: color-mix(in srgb, var(--add) 10%, transparent); }
+.pill.bad { color: var(--del); border-color: color-mix(in srgb, var(--del) 45%, transparent); background: color-mix(in srgb, var(--del) 10%, transparent); }
+.pill.gold { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.top .spacer { flex: 1; }
+.btn { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 11px; font-size: 13px; transition: border-color .15s, background .15s; }
+.btn:hover:not(:disabled) { border-color: var(--muted); background: var(--panel-3); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, white); }
+.btn.danger { color: var(--del); }
+.btn.sm { padding: 3px 8px; font-size: 12px; }
+.btn:disabled { opacity: .45; cursor: default; }
+kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.switch input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 7px; padding: 2px; background: var(--bg); }
+.seg button { border: 0; background: transparent; padding: 3px 10px; border-radius: 5px; font-size: 12.5px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--panel-3); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-2); }
+
+/* ---------- panes ---------- */
+.pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
+.pane-h { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line);
+  font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); min-height: 36px; }
+.pane-h b { color: var(--fg); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0; text-transform: none; font-weight: 500; }
+.code-pane { grid-area: code; border-right: 1px solid var(--line); }
+.right { grid-area: right; border-left: 1px solid var(--line); }
+
+/* code */
+#code { list-style: none; margin: 0; padding: 8px 0; overflow: auto; flex: 1; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.75; }
+#code li { display: grid; grid-template-columns: 34px 14px minmax(0, 1fr) auto; align-items: baseline; padding-right: 10px; cursor: pointer; white-space: pre; position: relative; }
+#code li:hover { background: var(--panel-2); }
+#code li.active { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+#code li.active::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); }
+#code li .n { color: var(--faint); text-align: right; padding-right: 8px; user-select: none; }
+#code li .m { color: var(--muted); }
+#code li .t { overflow: hidden; text-overflow: ellipsis; }
+#code li .badge { font-family: var(--font-body); font-size: 10.5px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 10px; padding: 0 6px; margin-left: 6px; }
+#code li.add { background: color-mix(in srgb, var(--add) 13%, transparent); }
+#code li.add .m { color: var(--add); }
+#code li.del { background: color-mix(in srgb, var(--del) 11%, transparent); }
+#code li.del .m { color: var(--del); }
+#code li.del .t { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--del) 60%, transparent); color: var(--muted); }
+#code li.suspect { background: color-mix(in srgb, var(--del) 20%, transparent); }
+#code li.suspect .badge { color: var(--del); border-color: var(--del); }
+.k { color: #c792ea; } .c { color: #5f6f86; font-style: italic; } .num { color: #f2b36b; } .op { color: #89ddff; }
+.codehint { padding: 8px 14px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* recovered (reverse mode) */
+#recovered { flex: 1; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+#recovered p.lead { margin: 0; color: var(--muted); font-size: 12.5px; }
+.score { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--add) 35%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--add) 7%, transparent); }
+.score b { font-family: var(--font-mono); color: var(--add); font-weight: 600; }
+.block { text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
+.block:hover, .block.on { border-color: var(--accent); }
+.block b { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.block span { font-size: 12.5px; color: var(--muted); }
+.block i { font-style: normal; font-size: 11px; color: var(--accent); }
+
+/* ---------- viewport ---------- */
+.viewport { grid-area: view; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
+#gl { width: 100%; height: 100%; display: block; touch-action: none; }
+#labels { position: absolute; inset: 0; pointer-events: none; }
+.pinlabel { font-family: var(--font-mono); font-size: 10.5px; color: var(--accent); background: color-mix(in srgb, var(--bg) 72%, transparent);
+  padding: 1px 5px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); pointer-events: auto; cursor: pointer; }
+.pinlabel:hover { background: var(--accent); color: var(--accent-ink); }
+.pinlabel.on { box-shadow: 0 0 10px color-mix(in srgb, var(--high) 70%, transparent); border-color: var(--high); color: var(--high); }
+.pinlabel.pwr { color: var(--muted); border-color: var(--line-2); cursor: default; pointer-events: none; }
+.layerlabel { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg); background: color-mix(in srgb, var(--panel) 85%, transparent); border-left: 2px solid var(--muted); padding: 1px 6px; white-space: nowrap; transition: opacity .2s; }
+.celltag { font-family: var(--font-mono); font-size: 11px; color: var(--accent-ink); background: var(--accent); padding: 2px 6px; border-radius: 4px; white-space: nowrap; transform: translateY(-16px); box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+.overlay { position: absolute; background: color-mix(in srgb, var(--panel) 84%, transparent); border: 1px solid var(--line); border-radius: 9px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.stats { top: 12px; left: 12px; padding: 8px 12px; display: grid; grid-template-columns: auto auto; gap: 2px 14px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.stats dt { color: var(--muted); } .stats dd { margin: 0; font-family: var(--font-mono); text-align: right; }
+.d-add { color: var(--add); } .d-del { color: var(--del); }
+.layers { top: 12px; right: 12px; width: 196px; font-size: 12px; }
+.layers > button { width: 100%; display: flex; justify-content: space-between; align-items: center; background: none; border: 0; padding: 7px 11px; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.layers .lbody { padding: 0 11px 10px; display: grid; gap: 5px; }
+.layers label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.layers label input { accent-color: var(--accent); margin: 0; }
+.layers .sw { margin-left: auto; }
+.layers .ex { display: grid; gap: 3px; margin-top: 4px; padding-top: 7px; border-top: 1px solid var(--line); }
+.layers .ex span { display: flex; justify-content: space-between; color: var(--muted); }
+.layers input[type=range] { width: 100%; accent-color: var(--accent); }
+.legend { left: 12px; bottom: 12px; padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: calc(100% - 24px); font-size: 11.5px; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .ramp { width: 140px; height: 8px; border-radius: 4px; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
+.banner { left: 50%; transform: translateX(-50%); bottom: 50px; padding: 10px 14px; display: flex; gap: 12px; align-items: center; max-width: min(92%, 660px); font-size: 13px; }
+.banner.good { border-color: color-mix(in srgb, var(--add) 50%, transparent); }
+.banner.bad { border-color: color-mix(in srgb, var(--del) 55%, transparent); }
+.banner .ok { color: var(--add); font-weight: 600; white-space: nowrap; }
+.banner .no { color: var(--del); font-weight: 600; white-space: nowrap; }
+.tour { right: 12px; bottom: 50px; width: min(350px, calc(100% - 24px)); padding: 14px; display: grid; gap: 8px; border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.tour h3 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 18px; text-wrap: balance; }
+.tour p { margin: 0; font-size: 13px; }
+.tour .row { display: flex; align-items: center; gap: 8px; }
+.tour .row small { color: var(--muted); flex: 1; font-variant-numeric: tabular-nums; }
+.tip { position: absolute; pointer-events: none; padding: 5px 8px; font-family: var(--font-mono); font-size: 11px; white-space: nowrap; transform: translate(14px, 14px); z-index: 3; }
+.tip small { color: var(--muted); }
+.skip { left: 50%; top: 50%; transform: translate(-50%, 140px); padding: 6px 12px; font-size: 12px; color: var(--muted); }
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; }
+
+/* ---------- right column: tabs ---------- */
+.tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); }
+.tabs button { flex: 1; background: none; border: 0; border-bottom: 2px solid transparent; padding: 9px 4px 8px; font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .03em; position: relative; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tabs button .dot { position: absolute; top: 7px; margin-left: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.tabpanel { flex: 1; min-height: 0; overflow: auto; }
+.sect { padding: 12px 14px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.sect h4 { margin: 0; font-family: var(--font-display); font-size: 14px; font-weight: 600; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
+.sect h4 .pill { margin-left: auto; }
+.sect p { margin: 0; font-size: 12.5px; }
+.sect .muted, .muted { color: var(--muted); }
+.acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.insp-empty { color: var(--muted); font-size: 13px; margin: 0; }
+.insp-title { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.insp-title > div { display: grid; gap: 1px; min-width: 0; }
+.insp-title b { font-family: var(--font-mono); font-size: 14px; font-weight: 500; }
+.insp-title small { font-family: var(--font-mono); color: var(--muted); font-size: 11.5px; word-break: break-all; }
+.insp-role { margin: 0; font-size: 13px; }
+.schem { width: 100%; height: auto; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: 12.5px; margin: 0; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.pins { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
+.pins td { padding: 3px 6px 3px 0; border-top: 1px solid var(--line); }
+.pins td:last-child { text-align: right; }
+.bit { display: inline-block; min-width: 18px; text-align: center; border-radius: 3px; padding: 0 4px; background: var(--panel-3); color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+.bit.on { background: var(--high); color: #2a1f00; font-weight: 600; }
+.bits { display: flex; gap: 3px; flex-wrap: wrap; }
+.tt { border-collapse: collapse; font-family: var(--font-mono); font-size: 11.5px; }
+.tt th, .tt td { padding: 1px 8px; text-align: center; border-bottom: 1px solid var(--line); }
+.tt th { color: var(--muted); font-weight: 500; }
+.tt td.out { color: var(--accent); }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-family: var(--font-mono); font-size: 12.5px; text-align: left; }
+
+/* analyse */
+.wf { display: grid; gap: 3px; font-size: 11.5px; }
+.wf .r { display: grid; grid-template-columns: 76px minmax(0, 1fr) 44px; gap: 8px; align-items: center; cursor: pointer; }
+.wf .r:hover .nm { color: var(--accent); }
+.wf .nm { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf .tr { position: relative; height: 12px; background: var(--panel-2); border-radius: 2px; }
+.wf .bar { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.wf .ns { font-family: var(--font-mono); text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.metric { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.metric div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; display: grid; }
+.metric small { color: var(--muted); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+.metric b { font-family: var(--font-mono); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.vecs { display: flex; flex-wrap: wrap; gap: 5px; }
+.vec { font-family: var(--font-mono); font-size: 11px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 6px; }
+.vec:hover { border-color: var(--accent); }
+.goal { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12.5px; }
+.goal input { width: 64px; background: var(--bg); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 7px; font-family: var(--font-mono); }
+.callout { font-size: 12.5px; padding: 8px 10px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--line); display: grid; gap: 4px; }
+.callout.bad { border-color: color-mix(in srgb, var(--del) 50%, transparent); background: color-mix(in srgb, var(--del) 8%, var(--panel-2)); }
+.callout.good { border-color: color-mix(in srgb, var(--add) 45%, transparent); background: color-mix(in srgb, var(--add) 7%, var(--panel-2)); }
+.fine { margin: 0; font-size: 11.5px; color: var(--muted); }
+
+/* surgery */
+.pipe { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
+.pipe li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; color: var(--muted); }
+.pipe li::before { content: ""; width: 10px; height: 10px; margin: 4px 0 0 3px; border-radius: 50%; border: 1.5px solid var(--line-2); box-sizing: border-box; }
+.pipe li.run { color: var(--fg); } .pipe li.run::before { border-color: var(--accent); border-top-color: transparent; animation: spin .7s linear infinite; }
+.pipe li.done { color: var(--fg); } .pipe li.done::before { background: var(--add); border-color: var(--add); }
+.pipe li.fail { color: var(--del); } .pipe li.fail::before { background: var(--del); border-color: var(--del); }
+.pipe li.attempt { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; grid-template-columns: 1fr; padding-top: 4px; }
+.pipe li.attempt::before { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.deltas { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.deltas th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 0; }
+.deltas td { padding: 3px 0; border-top: 1px solid var(--line); font-family: var(--font-mono); }
+.deltas td:not(:first-child), .deltas th:not(:first-child) { text-align: right; }
+.deltas td:first-child { font-family: var(--font-body); }
+
+/* guide */
+.chat { display: flex; flex-direction: column; height: 100%; min-height: 360px; }
+#msgs { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.msg { max-width: 92%; padding: 8px 11px; border-radius: 10px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.ai { background: var(--panel-2); border: 1px solid var(--line); align-self: flex-start; }
+.msg.me { background: color-mix(in srgb, var(--accent) 18%, var(--panel-2)); align-self: flex-end; }
+.msg .tool { display: block; margin-top: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--accent); white-space: normal; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+.chip { font-size: 12px; background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 3px 10px; }
+.chip:hover { border-color: var(--accent); }
+#askForm { display: flex; gap: 8px; padding: 0 14px 10px; }
+#askInput { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line-2); border-radius: 6px; padding: 7px 10px; }
+#aiNote { margin: 0; padding: 0 14px 12px; font-size: 11.5px; color: var(--muted); }
+
+/* ---------- logic analyser ---------- */
+.sim { grid-area: sim; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; border-top: 1px solid var(--line); background: var(--panel);
+  padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sim .ctrls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sim select { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
+.readout { display: grid; grid-template-columns: auto auto; gap: 0 12px; align-items: center; font-variant-numeric: tabular-nums; }
+.readout .big { font-family: var(--font-mono); font-size: 26px; line-height: 1; min-width: 3ch; text-align: right; grid-row: span 2; }
+.leds { display: flex; gap: 3px; align-items: center; }
+.leds i { width: 9px; height: 9px; border-radius: 50%; background: var(--panel-3); border: 1px solid var(--line-2); }
+.leds i.on { background: var(--high); border-color: var(--high); box-shadow: 0 0 7px var(--high); }
+.leds .gap { width: 4px; }
+.leds .tc { margin-left: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+.subread { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+#wave { flex: 1; min-width: 240px; height: 104px; display: block; }
+
+/* ---------- command palette ---------- */
+.palette { position: fixed; inset: 0; background: rgba(4, 7, 11, .55); display: grid; place-items: start center; padding-top: 12vh; z-index: 20;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.palette .box { width: min(560px, 100%); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.55); overflow: hidden; }
+.palette input { width: 100%; box-sizing: border-box; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 13px 16px; font-size: 15px; outline: none; }
+.palette ul { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow: auto; }
+.palette li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px; }
+.palette li small { color: var(--muted); margin-left: auto; font-size: 11.5px; }
+.palette li.on { background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
+.palette .foot { padding: 7px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+
+@media (max-width: 1100px) {
+  .top .meta, .brand small { display: none; }
+}
+@media (max-width: 900px) {
+  html, body { height: auto; overflow: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "top" "view" "sim" "right" "code"; }
+  .viewport { height: 62vh; min-height: 360px; }
+  .code-pane, .right { border: 0; border-top: 1px solid var(--line); }
+  .right { height: 640px; }
+  #code { max-height: 460px; }
+  .stats { font-size: 11px; }
+  .layers { width: 170px; }
+  .banner { bottom: 46px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="die" aria-hidden="true"></span><b>Decap</b><small>chip IDE · prototype</small></div>
+    <div class="designname">tt_um_counter <span class="pill" id="variantPill">Original</span><span class="meta">SKY130 HD · 8-bit counter</span></div>
+    <div class="spacer"></div>
+    <div class="seg" role="group" aria-label="Colour the chip by">
+      <button type="button" data-view="logic" aria-pressed="true">Logic</button>
+      <button type="button" data-view="timing" aria-pressed="false">Timing</button>
+      <button type="button" data-view="activity" aria-pressed="false">Activity</button>
+    </div>
+    <button class="btn" id="btnTour" type="button">Guided tour</button>
+    <label class="switch" for="revMode"><input type="checkbox" id="revMode"> Hide source</label>
+    <button class="btn" id="btnPalette" type="button" aria-label="Open command palette">Commands <kbd>⌘K</kbd></button>
+  </header>
+
+  <aside class="pane code-pane" aria-label="Source">
+    <div class="pane-h" id="codeHead"></div>
+    <ol id="code"></ol>
+    <div id="recovered" hidden></div>
+    <div class="codehint" id="codeHint"></div>
+  </aside>
+
+  <main class="viewport" id="viewport" aria-label="3D chip view">
+    <canvas id="gl"></canvas>
+    <div id="labels"></div>
+    <dl class="overlay stats" id="stats"></dl>
+    <div class="overlay layers" id="layers">
+      <button type="button" id="layersToggle" aria-expanded="true">Layers <span aria-hidden="true">▾</span></button>
+      <div class="lbody" id="layersBody">
+        <label for="ly-m2"><input type="checkbox" id="ly-m2" data-layer="m2" checked> met2 <i class="sw" style="background:var(--met2)"></i></label>
+        <label for="ly-via"><input type="checkbox" id="ly-via" data-layer="via" checked> via <i class="sw" style="background:#c9d3e3"></i></label>
+        <label for="ly-m1"><input type="checkbox" id="ly-m1" data-layer="m1" checked> met1 <i class="sw" style="background:var(--met1)"></i></label>
+        <label for="ly-poly"><input type="checkbox" id="ly-poly" data-layer="poly" checked> poly <i class="sw" style="background:var(--poly)"></i></label>
+        <label for="ly-cell"><input type="checkbox" id="ly-cell" data-layer="cell" checked> cells <i class="sw" style="background:var(--adder)"></i></label>
+        <label for="ly-pkg"><input type="checkbox" id="ly-pkg" data-layer="pkg" checked> package <i class="sw" style="background:var(--accent)"></i></label>
+        <div class="ex"><span><label for="explode" style="cursor:default">Exploded view</label><kbd>X</kbd></span><input type="range" id="explode" min="0" max="100" value="0"></div>
+      </div>
+    </div>
+    <div class="overlay legend" id="legend"></div>
+    <div class="overlay banner" id="banner" hidden></div>
+    <div class="overlay tour" id="tour" hidden></div>
+    <div class="overlay tip" id="tip" hidden></div>
+    <button class="overlay skip" id="skipIntro" type="button" hidden>Skip intro</button>
+  </main>
+
+  <aside class="pane right" aria-label="Inspector, analysis, surgery and guide">
+    <nav class="tabs" role="tablist" aria-label="Right panel">
+      <button type="button" role="tab" id="tab-inspect" data-tab="inspect" aria-selected="true" aria-controls="p-inspect">Inspect</button>
+      <button type="button" role="tab" id="tab-analyse" data-tab="analyse" aria-selected="false" aria-controls="p-analyse">Analyse</button>
+      <button type="button" role="tab" id="tab-surgery" data-tab="surgery" aria-selected="false" aria-controls="p-surgery">Surgery</button>
+      <button type="button" role="tab" id="tab-guide" data-tab="guide" aria-selected="false" aria-controls="p-guide">Guide</button>
+    </nav>
+    <section class="tabpanel" id="p-inspect" role="tabpanel" aria-labelledby="tab-inspect"><div class="sect" id="inspector"></div></section>
+    <section class="tabpanel" id="p-analyse" role="tabpanel" aria-labelledby="tab-analyse" hidden>
+      <div class="sect" id="anTiming"></div>
+      <div class="sect" id="anFaults"></div>
+      <div class="sect" id="anGoal">
+        <h4>Goal seeking</h4>
+        <p class="muted">Search every reachable state for the shortest input sequence that gets the chip where you want it.</p>
+        <div class="goal">
+          <label for="goalN">Reach count</label><input id="goalN" type="number" min="0" max="255" value="200">
+          <button class="btn sm" id="goalGo" type="button">Find inputs</button>
+          <button class="btn sm" id="goalTc" type="button">Make tc = 1</button>
+        </div>
+        <div id="goalOut"></div>
+      </div>
+      <div class="sect" id="anPower"></div>
+      <div class="sect"><p class="fine">Prototype. The example design is hand-mapped to SKY130 HD standard cells with approximate placement. Delays, areas and power are estimates from typical cell values. The simulation, the 512-pattern equivalence checks, the fault scan and the state search are real and run in your browser. The full tool would run Yosys and OpenROAD on any change.</p></div>
+    </section>
+    <section class="tabpanel" id="p-surgery" role="tabpanel" aria-labelledby="tab-surgery" hidden>
+      <div class="sect">
+        <h4>Ask for a change</h4>
+        <p class="muted">The AI rewrites the Verilog, it becomes real cells, and Decap checks the result against all 512 register and input patterns before you trust it.</p>
+        <div class="acts">
+          <button class="btn primary" id="chFast" type="button">Make it faster</button>
+          <button class="btn" id="chDown" type="button">Make it count down</button>
+          <button class="btn" id="chRevert" type="button" disabled>Revert</button>
+        </div>
+        <label class="switch" for="diffToggle"><input type="checkbox" id="diffToggle" checked disabled> Show what changed</label>
+      </div>
+      <div class="sect" id="surgeryOut"><p class="muted">No change yet. The chip is the original design.</p></div>
+    </section>
+    <section class="tabpanel" id="p-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+      <div class="chat">
+        <div id="msgs" aria-live="polite"></div>
+        <div class="chips" id="chips"></div>
+        <form id="askForm">
+          <input id="askInput" autocomplete="off" placeholder="Ask about this chip…" aria-label="Ask the guide">
+          <button class="btn primary" id="askBtn" type="submit">Ask</button>
+          <button class="btn" id="stopBtn" type="button" hidden>Stop</button>
+        </form>
+        <p id="aiNote">Connecting the AI guide…</p>
+      </div>
+    </section>
+  </aside>
+
+  <footer class="sim" aria-label="Simulator">
+    <div class="ctrls">
+      <button class="btn" id="simReset" type="button" title="Pulse rst_n low">Reset</button>
+      <button class="btn" id="simStep" type="button" title="One clock edge ( . )">Step</button>
+      <button class="btn primary" id="simRun" type="button" title="Run or pause (Space)">Run</button>
+      <label class="switch" for="enToggle"><input type="checkbox" id="enToggle" checked> en</label>
+      <label for="speed" class="subread">signals</label>
+      <select id="speed" aria-label="Signal animation speed">
+        <option value="140">fast</option>
+        <option value="420" selected>slow-mo</option>
+        <option value="1200">super slow</option>
+      </select>
+    </div>
+    <div class="readout">
+      <span class="big" id="countDec">0</span>
+      <div class="leds" id="leds"></div>
+      <span class="subread" id="cycleRead">cycle 0</span>
+    </div>
+    <canvas id="wave" aria-label="Logic analyser trace of the last 40 clock cycles"></canvas>
+  </footer>
+</div>
+
+<div class="palette" id="palette" hidden role="dialog" aria-modal="true" aria-label="Command palette">
+  <div class="box">
+    <input id="palInput" autocomplete="off" placeholder="Type a command, a cell name or a line number…" aria-label="Command">
+    <ul id="palList" role="listbox"></ul>
+    <div class="foot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span><span><kbd>Space</kbd> run/pause</span><span><kbd>.</kbd> step</span><span><kbd>F12</kbd> go to source</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> views</span></div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+/* ===== PURE: library, netlists, simulation and analysis (no DOM) ===== */
+const SITE = 0.46, ROW_H = 2.72, ROW_SITES = 80, ROWS = 6;
+const CLK_Q = 0.33, SETUP = 0.12;
+const LIB = {
+  dfrtp_1: { sites: 20, seq: true, tr: 26, delay: 0.33, ins: ["CLK", "D", "RESET_B"], out: "Q", sym: "dff", fn: "Q takes the value of D on each rising clock edge. RESET_B = 0 forces Q to 0." },
+  xor2_1:  { sites: 7, tr: 12, delay: 0.21, ins: ["A", "B"], out: "X", sym: "xor", fn: "X = A XOR B (1 when the inputs differ)", ev: (a, b) => a ^ b },
+  and2_1:  { sites: 5, tr: 6,  delay: 0.14, ins: ["A", "B"], out: "X", sym: "and", fn: "X = A AND B", ev: (a, b) => a & b },
+  and3_1:  { sites: 5, tr: 8,  delay: 0.17, ins: ["A", "B", "C"], out: "X", sym: "and", fn: "X = A AND B AND C", ev: (a, b, c) => a & b & c },
+  and4_1:  { sites: 6, tr: 10, delay: 0.20, ins: ["A", "B", "C", "D"], out: "X", sym: "and", fn: "X = A AND B AND C AND D", ev: (a, b, c, d) => a & b & c & d },
+  and2b_1: { sites: 6, tr: 8,  delay: 0.16, ins: ["A_N", "B"], out: "X", sym: "andb", fn: "X = (NOT A_N) AND B", ev: (a, b) => (1 - a) & b },
+  clkbuf_4:{ sites: 6, tr: 10, delay: 0.12, ins: ["A"], out: "X", sym: "buf", fn: "X = A, with a strong drive for the clock network", ev: (a) => a },
+  tapvpwrvgnd_1: { sites: 1, phys: true, fn: "Well tap. Ties the silicon wells to power and ground so the transistors behave." },
+  decap_8: { sites: 8, phys: true, fn: "Decoupling capacitor. A tiny reservoir that keeps the supply voltage steady." },
+  decap_4: { sites: 4, phys: true, fn: "Decoupling capacitor. A tiny reservoir that keeps the supply voltage steady." },
+  fill_1:  { sites: 1, phys: true, fn: "Filler. Keeps the power rails and wells continuous along the row." },
+};
+const full = (t) => "sky130_fd_sc_hd__" + t;
+const area = (t) => LIB[t].sites * SITE * ROW_H;
+const PORT_NETS = ["clk", "rst_n", "en"];
+const QN = Array.from({ length: 8 }, (_, i) => "q" + i);
+const DN = Array.from({ length: 8 }, (_, i) => "d" + i);
+const bitsOf = (n) => Array.from({ length: 8 }, (_, i) => (n >> i) & 1);
+const toNum = (b) => b.reduce((s, x, i) => s | (x << i), 0);
+const bin8 = (n) => n.toString(2).padStart(8, "0");
+const hex2 = (n) => n.toString(16).toUpperCase().padStart(2, "0");
+
+const V_BASE = [
+  "module tt_um_counter (",
+  "    input  wire       clk,",
+  "    input  wire       rst_n,",
+  "    input  wire       en,",
+  "    output wire [7:0] count,",
+  "    output wire       tc",
+  ");",
+  "    reg [7:0] q;",
+  "",
+  "    always @(posedge clk or negedge rst_n)",
+  "        if (!rst_n)  q <= 8'd0;",
+  "        else if (en) q <= q + 8'd1;",
+  "",
+  "    assign count = q;",
+  "    assign tc    = &q;",
+  "endmodule",
+];
+const laVerilog = (bug) => [
+  "module tt_um_counter (",
+  "    input  wire       clk,",
+  "    input  wire       rst_n,",
+  "    input  wire       en,",
+  "    output wire [7:0] count,",
+  "    output wire       tc",
+  ");",
+  "    reg  [7:0] q;",
+  "    wire [7:0] carry;",
+  "",
+  "    always @(posedge clk or negedge rst_n)",
+  "        if (!rst_n)  q <= 8'd0;",
+  "        else         q <= q ^ carry;",
+  "",
+  "    // Carry-lookahead: every bit checks all lower bits at once",
+  "    wire g03 = &q[3:0];",
+  bug ? "    wire g46 = &q[5:4];" : "    wire g46 = &q[6:4];",
+  "    assign carry[0] = en;",
+  "    assign carry[1] = en & q[0];",
+  "    assign carry[2] = en & (&q[1:0]);",
+  "    assign carry[3] = en & (&q[2:0]);",
+  "    assign carry[4] = en & g03;",
+  "    assign carry[5] = en & g03 & q[4];",
+  "    assign carry[6] = en & g03 & (&q[5:4]);",
+  "    assign carry[7] = en & g03 & g46;",
+  "",
+  "    assign count = q;",
+  "    assign tc    = &q;",
+  "endmodule",
+];
+const V_DOWN = V_BASE.map((l, i) => (i === 11 ? "        else if (en) q <= q - 8'd1;" : l));
+
+function commonCells(src, verb) {
+  const c = [];
+  c.push({ id: "clkbuf", type: "clkbuf_4", ins: { A: "clk" }, out: "clk_buf", group: "clock", src: src.clk,
+    role: "Clock buffer. A strong driver that delivers the clock to all 8 flip-flops at the same instant." });
+  for (let i = 0; i < 8; i++) c.push({ id: `q_reg[${i}]`, type: "dfrtp_1", ins: { CLK: "clk_buf", D: `d${i}`, RESET_B: "rst_n" }, out: `q${i}`, group: "register", src: src.clk,
+    role: `Bit ${i} of the counter's memory. It holds one 0 or 1 and updates on every clock tick.` });
+  c.push({ id: "xor0", type: "xor2_1", ins: { A: "q0", B: "en" }, out: "d0", group: "adder", src: src.xor, role: "Flips bit 0 whenever counting is enabled." });
+  for (let i = 1; i < 8; i++) c.push({ id: `xor${i}`, type: "xor2_1", ins: { A: `q${i}`, B: `c${i}` }, out: `d${i}`, group: "adder", src: src.xor,
+    role: `Flips bit ${i} when the ${verb} for bit ${i} arrives.` });
+  c.push({ id: "and_tlo", type: "and4_1", ins: { A: "q0", B: "q1", C: "q2", D: "q3" }, out: "t_lo", group: "detect", src: src.tc, role: "Checks whether the lower 4 bits are all 1." });
+  c.push({ id: "and_thi", type: "and4_1", ins: { A: "q4", B: "q5", C: "q6", D: "q7" }, out: "t_hi", group: "detect", src: src.tc, role: "Checks whether the upper 4 bits are all 1." });
+  c.push({ id: "and_tc", type: "and2_1", ins: { A: "t_lo", B: "t_hi" }, out: "tc", group: "detect", src: src.tc, role: "Terminal count. Goes to 1 when the counter reaches 255, just before it wraps to 0." });
+  return c;
+}
+function lookaheadCells(bug) {
+  const c = commonCells({ clk: 11, xor: 13, tc: 28 }, "carry");
+  const L = [
+    ["la_g03", "and4_1", { A: "q0", B: "q1", C: "q2", D: "q3" }, "g03", 16],
+    bug ? ["la_g46", "and2_1", { A: "q4", B: "q5" }, "g46", 17] : ["la_g46", "and3_1", { A: "q4", B: "q5", C: "q6" }, "g46", 17],
+    ["la_c1", "and2_1", { A: "en", B: "q0" }, "c1", 19],
+    ["la_c2", "and3_1", { A: "en", B: "q0", C: "q1" }, "c2", 20],
+    ["la_c3", "and4_1", { A: "en", B: "q0", C: "q1", D: "q2" }, "c3", 21],
+    ["la_c4", "and2_1", { A: "en", B: "g03" }, "c4", 22],
+    ["la_c5", "and3_1", { A: "en", B: "g03", C: "q4" }, "c5", 23],
+    ["la_c6", "and4_1", { A: "en", B: "g03", C: "q4", D: "q5" }, "c6", 24],
+    ["la_c7", "and3_1", { A: "en", B: "g03", C: "g46" }, "c7", 25],
+  ];
+  for (const [id, type, ins, out, src] of L) c.push({ id, type, ins, out, group: "adder", src,
+    role: out === "g03" ? "Group check: are bits 0 to 3 all 1? Shared by the upper carries."
+      : out === "g46" ? (bug ? "Meant to check bits 4 to 6, but it only looks at bits 4 and 5." : "Group check: are bits 4 to 6 all 1? Used by the carry into bit 7.")
+      : `Lookahead carry into bit ${out.slice(1)}. Checks en and all lower bits at once instead of waiting for a chain.` });
+  return c;
+}
+const VARIANTS = {
+  base: { label: "Original", verilog: V_BASE, cells() {
+    const c = commonCells({ clk: 10, xor: 12, tc: 15 }, "carry");
+    for (let i = 1; i < 8; i++) c.push({ id: `and_c${i}`, type: "and2_1", ins: { A: i === 1 ? "en" : `c${i - 1}`, B: `q${i - 1}` }, out: `c${i}`, group: "adder", src: 12,
+      role: `Carry into bit ${i}. It is 1 only when counting is on and every lower bit is 1. Each carry waits for the one before it, like dominoes.` });
+    return c; } },
+  la_bug: { label: "Lookahead, attempt 1", verilog: laVerilog(true), cells: () => lookaheadCells(true) },
+  lookahead: { label: "Carry-lookahead", verilog: laVerilog(false), cells: () => lookaheadCells(false) },
+  down: { label: "Count down", verilog: V_DOWN, cells() {
+    const c = commonCells({ clk: 10, xor: 12, tc: 15 }, "borrow");
+    for (let i = 1; i < 8; i++) c.push({ id: `dn_c${i}`, type: "and2b_1", ins: { A_N: `q${i - 1}`, B: i === 1 ? "en" : `c${i - 1}` }, out: `c${i}`, group: "adder", src: 12,
+      role: `Borrow into bit ${i}. It is 1 only when counting is on and every lower bit is 0.` });
+    return c; } },
+};
+
+function analyse(key) {
+  const spec = VARIANTS[key];
+  const cells = spec.cells();
+  const byId = {}, drv = {}, sinks = {};
+  for (const c of cells) {
+    byId[c.id] = c; drv[c.out] = c.id;
+    for (const [p, n] of Object.entries(c.ins)) (sinks[n] ??= []).push([c.id, p]);
+  }
+  const known = new Set([...PORT_NETS, ...QN]);
+  let rest = cells.filter((c) => !LIB[c.type].seq);
+  const order = [];
+  while (rest.length) {
+    const ready = rest.filter((c) => Object.values(c.ins).every((n) => known.has(n)));
+    if (!ready.length) throw new Error("combinational loop");
+    for (const c of ready) { order.push(c); known.add(c.out); }
+    rest = rest.filter((c) => !ready.includes(c));
+  }
+  const nets = [...new Set(cells.flatMap((c) => [...Object.values(c.ins), c.out]))];
+  const d = { key, label: spec.label, verilog: spec.verilog, cells, byId, drv, sinks, order, nets };
+  d.t = timing(d);
+  return d;
+}
+
+function evaluate(d, q, en, fault = null) {
+  const v = { clk: 0, rst_n: 1, en };
+  for (let i = 0; i < 8; i++) v[QN[i]] = q[i];
+  if (fault && fault.net in v) v[fault.net] = fault.v;
+  for (const c of d.order) {
+    const L = LIB[c.type];
+    v[c.out] = fault && fault.net === c.out ? fault.v : L.ev(...L.ins.map((p) => v[c.ins[p]]));
+  }
+  return v;
+}
+const nextQ = (d, q, en, fault = null) => { const v = evaluate(d, q, en, fault); return DN.map((n) => v[n]); };
+
+/* Static timing: arrival time of every net, then trace the slowest path back to where it starts */
+function timing(d) {
+  const arr = { clk: 0, rst_n: 0, en: 0 }, lvl = { clk: 0, rst_n: 0, en: 0 }, from = {};
+  for (const n of QN) { arr[n] = CLK_Q; lvl[n] = 0; }
+  for (const c of d.order) {
+    if (c.type.startsWith("clkbuf")) { arr[c.out] = LIB[c.type].delay; lvl[c.out] = 0; continue; }
+    let best = null, lv = 0;
+    for (const n of Object.values(c.ins)) {
+      if (best === null || (arr[n] ?? 0) > (arr[best] ?? 0)) best = n;
+      lv = Math.max(lv, lvl[n] ?? 0);
+    }
+    arr[c.out] = (arr[best] ?? 0) + LIB[c.type].delay; lvl[c.out] = lv + 1; from[c.out] = best;
+  }
+  const ends = [...DN, "tc"];
+  let end = ends[0];
+  for (const n of ends) if (arr[n] > arr[end]) end = n;
+  const path = []; let n = end;
+  while (d.drv[n] && !LIB[d.byId[d.drv[n]].type].seq) { path.unshift(d.drv[n]); n = from[n]; }
+  const delay = arr[end], period = delay + (end === "tc" ? 0 : SETUP);
+  return { arr, lvl, from, end, path, startNet: n, delay, depth: Math.max(...ends.map((e) => lvl[e])), period, fmax: 1000 / period };
+}
+function summary(d) {
+  return { cells: d.cells.length, area: d.cells.reduce((s, c) => s + area(c.type), 0), tr: d.cells.reduce((s, c) => s + LIB[c.type].tr, 0),
+    depth: d.t.depth, delay: d.t.delay, fmax: d.t.fmax };
+}
+/* Fan-in cone: everything that can affect a net within one clock cycle (optionally including the flip-flops at its edge) */
+function cone(d, net, boundary = false) {
+  const out = new Set(), stack = [net];
+  while (stack.length) {
+    const n = stack.pop(), id = d.drv[n];
+    if (!id || out.has(id)) continue;
+    const c = d.byId[id];
+    if (LIB[c.type].seq) { if (boundary) out.add(id); continue; }
+    out.add(id); stack.push(...Object.values(c.ins));
+  }
+  return out;
+}
+/* Fan-out cone: everything a net can affect before the next clock edge */
+function fanout(d, net) {
+  const out = new Set(), stack = [net];
+  while (stack.length) {
+    const n = stack.pop();
+    for (const [id] of d.sinks[n] ?? []) {
+      if (out.has(id)) continue;
+      out.add(id);
+      if (!LIB[d.byId[id].type].seq) stack.push(d.byId[id].out);
+    }
+  }
+  return out;
+}
+
+/* Reverse mode: recover blocks from structure plus exhaustive tests, without names or source; score against the hidden truth */
+function recover(d) {
+  const role = {}, blocks = [];
+  const seq = d.cells.filter((c) => LIB[c.type].seq);
+  blocks.push({ name: `${seq.length}-bit register`, truth: "register", cells: seq.map((c) => c.id), evidence: `${seq.length} flip-flops share one clock net and one reset net, and drive the count pins.` });
+  for (const c of seq) role[c.id] = `Stores bit ${c.out.slice(1)} of an ${seq.length}-bit register (it drives output pin count[${c.out.slice(1)}]).`;
+  const toggles = {}; let ok = true;
+  for (const c of seq) {
+    const x = d.byId[d.drv[c.ins.D]];
+    if (!x || x.type !== "xor2_1") { ok = false; continue; }
+    toggles[+c.out.slice(1)] = Object.values(x.ins).find((n) => n !== c.out);
+    role[x.id] = `Toggles bit ${c.out.slice(1)}: flips it whenever its other input is 1.`;
+  }
+  let up = ok, down = ok;
+  if (ok) for (let s = 0; s < 256; s++) for (let en = 0; en < 2; en++) {
+    const q = bitsOf(s), v = evaluate(d, q, en);
+    for (let i = 0; i < 8; i++) {
+      const lo = q.slice(0, i);
+      if (v[toggles[i]] !== (en && lo.every((b) => b) ? 1 : 0)) up = false;
+      if (v[toggles[i]] !== (en && lo.every((b) => !b) ? 1 : 0)) down = false;
+    }
+  }
+  const counter = new Set();
+  for (const c of seq) cone(d, c.ins.D).forEach((id) => counter.add(id));
+  if (up || down) {
+    blocks.push({ name: up ? "Binary up-counter logic" : "Binary down-counter logic", truth: "adder", cells: [...counter],
+      evidence: `Every flip-flop feeds back into itself through an XOR. Testing all 512 register and input patterns shows bit i flips exactly when en is 1 and every lower bit is ${up ? "1" : "0"}.` });
+    for (const id of counter) role[id] ??= up ? "Carry logic: decides which bits flip on the next tick." : "Borrow logic: decides which bits flip on the next tick.";
+  } else if (counter.size) {
+    blocks.push({ name: "Next-state logic (unrecognised)", truth: "adder", cells: [...counter], evidence: "Feeds the flip-flops, but does not match an up or down counter on all 512 patterns." });
+  }
+  const tcCone = [...cone(d, "tc")].filter((id) => !counter.has(id));
+  const fires = [];
+  for (let s = 0; s < 256; s++) if (evaluate(d, bitsOf(s), 0).tc) fires.push(s);
+  if (fires.length === 1) {
+    const k = fires[0];
+    blocks.push({ name: `Constant detector (== ${k})`, truth: "detect", cells: tcCone, secret: k,
+      evidence: `Output tc is 1 for exactly one of the 256 register values: ${k} (0b${bin8(k)}). The secret constant is readable straight off the gates.` });
+    for (const id of tcCone) role[id] = `Part of the detector that raises tc only when the register holds ${k}.`;
+  }
+  const clk = d.cells.filter((c) => c.type.startsWith("clkbuf"));
+  blocks.push({ name: "Clock distribution", truth: "clock", cells: clk.map((c) => c.id), evidence: "This buffer drives the clock pin of every flip-flop." });
+  for (const c of clk) role[c.id] = "Clock buffer feeding every flip-flop.";
+  let correct = 0, assigned = 0;
+  for (const b of blocks) for (const id of b.cells) { assigned++; if (d.byId[id].group === b.truth) correct++; }
+  return { blocks, role, score: { correct, assigned, total: d.cells.length } };
+}
+
+/* Stuck-at fault scan: for every net stuck at 0 or 1, which of the 512 one-cycle tests reveal it? Then a greedy minimal test set. */
+function observe(d, s, en, fault) {
+  const v = evaluate(d, bitsOf(s), en, fault);
+  let n = v.tc << 8;
+  for (let i = 0; i < 8; i++) n |= (v[DN[i]] << i) | (v[QN[i]] << (9 + i));
+  return n;
+}
+function faultScan(d) {
+  const nets = d.nets.filter((n) => n !== "clk" && n !== "clk_buf" && n !== "rst_n");
+  const good = new Int32Array(512);
+  for (let p = 0; p < 512; p++) good[p] = observe(d, p >> 1, p & 1, null);
+  const faults = [];
+  for (const net of nets) for (const v of [0, 1]) {
+    const f = { net, v }, det = [];
+    for (let p = 0; p < 512; p++) if (observe(d, p >> 1, p & 1, f) !== good[p]) det.push(p);
+    faults.push({ net, v, det });
+  }
+  let remaining = faults.filter((f) => f.det.length);
+  const tests = [];
+  while (remaining.length) {
+    const cnt = new Map();
+    for (const f of remaining) for (const p of f.det) cnt.set(p, (cnt.get(p) ?? 0) + 1);
+    let best = -1, bc = 0;
+    for (const [p, c] of cnt) if (c > bc || (c === bc && p < best)) { best = p; bc = c; }
+    tests.push({ p: best, s: best >> 1, en: best & 1, covers: bc });
+    remaining = remaining.filter((f) => !f.det.includes(best));
+  }
+  const detected = faults.filter((f) => f.det.length).length;
+  return { faults, total: faults.length, detected, undetected: faults.filter((f) => !f.det.length), tests, nets: nets.length };
+}
+
+/* Goal seeking: breadth-first search over all 256 register states with inputs {en=1, en=0, reset} */
+function goalSeek(d, start, goal, fault = null) {
+  const t0 = performance.now();
+  const prev = new Int16Array(256).fill(-1), act = new Int8Array(256);
+  const isGoal = (s) => (goal.tc ? evaluate(d, bitsOf(s), 0, fault).tc === 1 : s === goal.count);
+  prev[start] = start;
+  let found = isGoal(start) ? start : -1, explored = 1;
+  const queue = [start];
+  while (queue.length && found < 0) {
+    const s = queue.shift();
+    for (const a of [1, 0, 2]) {
+      const ns = a === 2 ? 0 : toNum(nextQ(d, bitsOf(s), a, fault));
+      if (prev[ns] >= 0) continue;
+      prev[ns] = s; act[ns] = a; explored++;
+      if (isGoal(ns)) { found = ns; break; }
+      queue.push(ns);
+    }
+  }
+  const ms = performance.now() - t0;
+  if (found < 0) return { ok: false, explored, ms };
+  const path = [];
+  for (let s = found; s !== start; s = prev[s]) path.unshift(act[s]);
+  return { ok: true, path, explored, ms, target: found };
+}
+
+/* Verification: exhaustive over all 256 states x 2 inputs, which is a complete proof for one clock step of this design */
+function verify(d, mode, base) {
+  let pass = 0, total = 0, same = 0, cex = null;
+  for (let s = 0; s < 256; s++) for (let en = 0; en < 2; en++) {
+    total++;
+    const q = bitsOf(s);
+    const got = toNum(nextQ(d, q, en)), gotTc = evaluate(d, q, en).tc;
+    const orig = toNum(nextQ(base, q, en)), origTc = evaluate(base, q, en).tc;
+    if (got === orig && gotTc === origTc) same++;
+    const want = mode === "down" ? (en ? (s + 255) & 255 : s) : orig, wantTc = mode === "down" ? (s === 255 ? 1 : 0) : origTc;
+    if (got === want && gotTc === wantTc) pass++;
+    else if (!cex) cex = { s, en, want, got, wantTc, gotTc, bits: [0, 1, 2, 3, 4, 5, 6, 7].filter((i) => ((want ^ got) >> i) & 1) };
+  }
+  return { pass, total, same, cex };
+}
+
+const BASE_ROWS = [
+  ["q_reg[0]", "xor0", "and_c1", "xor1", "q_reg[1]"],
+  ["q_reg[3]", "xor3", "and_c3", "and_c2", "xor2", "q_reg[2]"],
+  ["q_reg[4]", "xor4", "and_c4", "and_c5", "xor5", "q_reg[5]"],
+  ["q_reg[7]", "xor7", "and_c7", "and_c6", "xor6", "q_reg[6]"],
+  ["clkbuf", "and_tlo", "and_tc", "and_thi"],
+  [],
+];
+const BASE = analyse("base");
+const BASE_PLACE = (() => {
+  const P = {};
+  BASE_ROWS.forEach((ids, r) => {
+    const ws = ids.map((id) => LIB[BASE.byId[id].type].sites);
+    const free = ROW_SITES - 2 - ws.reduce((a, b) => a + b, 0);
+    const gap = Math.floor(free / (ids.length + 1));
+    let x = 1 + gap;
+    ids.forEach((id, k) => { P[id] = { row: r, x, w: ws[k] }; x += ws[k] + gap; });
+  });
+  return P;
+})();
+
+/* Incremental placement: keep unchanged cells where they are, put new cells on legal sites next to what they connect to */
+function place(d) {
+  const occ = Array.from({ length: ROWS }, () => Array(ROW_SITES).fill(false));
+  const P = {};
+  const mark = (p) => { for (let x = p.x; x < p.x + p.w; x++) occ[p.row][x] = true; };
+  for (let r = 0; r < ROWS; r++) { occ[r][0] = true; occ[r][ROW_SITES - 1] = true; }
+  for (const c of d.cells) {
+    const b = BASE_PLACE[c.id];
+    if (b && BASE.byId[c.id].type === c.type) { P[c.id] = { ...b }; mark(P[c.id]); }
+  }
+  for (const c of d.cells) {
+    if (P[c.id]) continue;
+    const w = LIB[c.type].sites, nb = [];
+    for (const n of Object.values(c.ins)) if (d.drv[n] && P[d.drv[n]]) nb.push(P[d.drv[n]]);
+    for (const [sid] of d.sinks[c.out] ?? []) if (P[sid]) nb.push(P[sid]);
+    const tx = nb.length ? nb.reduce((s, p) => s + p.x + p.w / 2, 0) / nb.length : ROW_SITES / 2;
+    const tr = nb.length ? nb.reduce((s, p) => s + p.row, 0) / nb.length : ROWS / 2;
+    let best = null;
+    for (let r = 0; r < ROWS; r++) for (let x = 1; x + w <= ROW_SITES - 1; x++) {
+      let fits = true;
+      for (let k = x; k < x + w; k++) if (occ[r][k]) { fits = false; break; }
+      if (!fits) continue;
+      const cost = Math.abs(x + w / 2 - tx) * SITE + Math.abs(r - tr) * ROW_H * 1.3;
+      if (!best || cost < best.cost) best = { row: r, x, w, cost };
+    }
+    P[c.id] = { row: best.row, x: best.x, w }; mark(P[c.id]);
+  }
+  const phys = [];
+  for (let r = 0; r < ROWS; r++) {
+    phys.push({ id: `tap_r${r}_l`, type: "tapvpwrvgnd_1", row: r, x: 0, w: 1 }, { id: `tap_r${r}_r`, type: "tapvpwrvgnd_1", row: r, x: ROW_SITES - 1, w: 1 });
+    let x = 1;
+    while (x < ROW_SITES - 1) {
+      if (occ[r][x]) { x++; continue; }
+      let run = 0; while (x + run < ROW_SITES - 1 && !occ[r][x + run]) run++;
+      while (run > 0) {
+        const t = run >= 8 ? "decap_8" : run >= 4 ? "decap_4" : "fill_1", w = LIB[t].sites;
+        phys.push({ id: `${t.split("_")[0]}_r${r}_x${x}`, type: t, row: r, x, w });
+        x += w; run -= w;
+      }
+    }
+  }
+  return { P, phys };
+}
+function diffAgainstBase(d) {
+  const added = new Set(), removed = [];
+  if (d.key === "base") return { added, removed };
+  for (const c of d.cells) { const b = BASE.byId[c.id]; if (!b || b.type !== c.type || JSON.stringify(b.ins) !== JSON.stringify(c.ins)) added.add(c.id); }
+  for (const c of BASE.cells) { const n = d.byId[c.id]; if (!n || n.type !== c.type || JSON.stringify(n.ins) !== JSON.stringify(c.ins)) removed.push(c); }
+  return { added, removed };
+}
+/* ===== END PURE ===== */
+
+/* ================= State ================= */
+const DIE_W = ROW_SITES * SITE, DIE_H = ROWS * ROW_H;
+const state = {
+  variant: "base", d: BASE, placed: place(BASE), rec: recover(BASE), faults: faultScan(BASE),
+  selected: null, selNet: null, hover: null, highlight: null, line: null, block: null, port: null, suspect: new Set(),
+  diffOn: true, reverse: false, view: "logic", explode: 0, explodeCur: 0,
+  layers: { pkg: true, cell: true, poly: true, m1: true, via: true, m2: true },
+  q: Array(8).fill(0), en: 1, cycle: 0, history: [], running: false, timer: null, playing: false,
+  fault: null, toggles: {}, cycles: 0, speed: 420, busy: false, tab: "inspect", lastGoal: null, critShow: false,
+};
+let values = evaluate(state.d, state.q, state.en);
+const shown = { ...values, clk_buf: 0 };
+const diffInfo = () => diffAgainstBase(state.d);
+const motionScale = () => (reduceMotion ? 0 : state.speed);
+const periodMs = () => Math.max(320, Math.round(state.d.t.period * motionScale() + 260));
+
+/* Anonymised names for reverse mode */
+let anonCell = {}, anonNet = {}, unAnon = {}, unAnonNet = {};
+function buildAnon() {
+  anonCell = {}; anonNet = {}; unAnon = {}; unAnonNet = {};
+  state.d.cells.forEach((c, k) => { const a = `_${String(k + 11).padStart(3, "0")}_`; anonCell[c.id] = a; unAnon[a] = c.id; });
+  let k = 40;
+  for (const c of state.d.cells) for (const n of [...Object.values(c.ins), c.out]) {
+    if (anonNet[n]) continue;
+    anonNet[n] = PORT_NETS.includes(n) || n === "tc" ? n : /^q\d$/.test(n) ? `count[${n.slice(1)}]` : `_n${k++}_`;
+    unAnonNet[anonNet[n]] = n;
+  }
+}
+const cellName = (id) => (state.reverse ? anonCell[id] ?? id : id);
+const netName = (n) => (state.reverse ? anonNet[n] ?? n : n);
+const resolveCell = (name) => { const s = String(name ?? "").trim(); return state.d.byId[s] ? s : unAnon[s] ?? null; };
+const resolveNet = (name) => {
+  const s = String(name ?? "").trim();
+  const m = /^count\[(\d)\]$/.exec(s); if (m) return "q" + m[1];
+  if (state.d.nets.includes(s)) return s;
+  if (unAnonNet[s]) return unAnonNet[s];
+  const id = resolveCell(s); return id ? state.d.byId[id].out : null;
+};
+
+/* ================= 3D scene ================= */
+const viewport = $("#viewport");
+let renderer, scene, camera, controls, labelRenderer, composer, bloom, chip, lid, lidMat;
+const L = {};
+let mLogic, mTop, mPoly, mPhys, mGhost, mMet1, mMet2, mVia, gM1, gM2, gVia, mPulse, selBox, hovBox, faultRing;
+let logicList = [], physList = [], polyOwner = [], segs = [], m1Segs = [], m2Segs = [], routes = {};
+const bondWires = [], pinEls = {}, layerLabels = [];
+let tagObj = null, pulses = [], events = [], dirty = true, grow = null;
+const fly = { t: 1, fromP: new THREE.Vector3(), toP: new THREE.Vector3(), fromT: new THREE.Vector3(), toT: new THREE.Vector3() };
+const intro = { on: false, t0: 0, dur: 2800, fromP: new THREE.Vector3(0, 62, 70), toP: new THREE.Vector3(), toT: new THREE.Vector3() };
+const EXPLODE_IDX = { pkg: 0, sub: 0, cell: 1, poly: 2, m1: 3, via: 4, m2: 5 };
+const Y = { cellTop: 0.42, poly: 0.45, m1: 0.66, via: 0.75, m2: 0.84 };
+
+function ioPins() {
+  const pins = {
+    en: { x: -2.8, z: 0.5 * ROW_H, side: -1, dir: "in" },
+    rst_n: { x: -2.8, z: 2.5 * ROW_H, side: -1, dir: "in" },
+    clk: { x: -2.8, z: 4.5 * ROW_H, side: -1, dir: "in" },
+  };
+  for (let i = 0; i < 8; i++) pins[`count[${i}]`] = { x: DIE_W + 2.8, z: (i + 0.5) * (DIE_H / 9), side: 1, dir: "out" };
+  pins.tc = { x: DIE_W + 2.8, z: 8.5 * (DIE_H / 9), side: 1, dir: "out" };
+  return pins;
+}
+const IO = ioPins();
+const portNet = (name) => (name.startsWith("count[") ? "q" + name.slice(6, -1) : name);
+
+function canvasTex(w, h, draw) {
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  draw(cv.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  t.userData.redraw = () => { draw(cv.getContext("2d"), w, h); t.needsUpdate = true; };
+  return t;
+}
+function drawMarking(g, w, h, big) {
+  g.clearRect(0, 0, w, h);
+  if (big) { g.fillStyle = "#0d1015"; g.fillRect(0, 0, w, h); }
+  g.fillStyle = big ? "rgba(178,186,198,.72)" : "rgba(150,158,170,.42)";
+  g.textBaseline = "middle"; g.textAlign = "center";
+  g.font = `600 ${big ? 92 : 64}px "IBM Plex Sans Condensed", "Arial Narrow", sans-serif`;
+  g.fillText("TT_UM_COUNTER", w / 2, h * (big ? 0.38 : 0.36));
+  g.font = `500 ${big ? 40 : 30}px "JetBrains Mono", Menlo, monospace`;
+  g.fillText("SKY130A · HD · 2645 · EDINBURGH", w / 2, h * (big ? 0.62 : 0.7));
+  if (big) { g.beginPath(); g.arc(80, 70, 22, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.55)"; g.fill(); g.strokeStyle = "rgba(150,158,170,.25)"; g.lineWidth = 3; g.stroke(); }
+}
+
+function initGL() {
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: false, powerPreference: "high-performance" });
+  } catch (e) {
+    viewport.insertAdjacentHTML("beforeend", `<div class="nogl">The 3D view needs WebGL, which this browser has turned off. The source, inspector, analysis, simulator and guide still work.</div>`);
+    return false;
+  }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  scene = new THREE.Scene();
+  const bg = new THREE.Color(css("--bg"));
+  scene.background = bg; scene.fog = new THREE.FogExp2(bg, 0.0098);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  camera = new THREE.PerspectiveCamera(36, 1, 0.1, 600);
+  camera.position.copy(intro.fromP);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.47; controls.minDistance = 3; controls.maxDistance = 140;
+  labelRenderer = new CSS2DRenderer({ element: $("#labels") });
+  composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4 }));
+  composer.addPass(new RenderPass(scene, camera));
+  bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.7, 0.45, 1.0);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+
+  scene.add(new THREE.AmbientLight(0x9fb2d6, 0.32));
+  const key = new THREE.DirectionalLight(0xfff1dc, 1.55); key.position.set(-24, 44, 30); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x6a8cff, 0.6); rim.position.set(30, 14, -36); scene.add(rim);
+
+  chip = new THREE.Group(); chip.position.set(-DIE_W / 2, 0, -DIE_H / 2); scene.add(chip);
+  for (const k of Object.keys(EXPLODE_IDX)) { L[k] = new THREE.Group(); chip.add(L[k]); }
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const std = (o = {}) => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.1, envMapIntensity: 0.55, ...o });
+  const glow = () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+  const add = (parent, geo, mat, sx, sy, sz, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); parent.add(m); return m; };
+
+  /* --- package: epoxy body, acid-etched cavity, lead frame, gull-wing legs, laser marking --- */
+  const epoxy = std({ color: 0x0b0e13, roughness: 0.86, metalness: 0, envMapIntensity: 0.25 });
+  const PW = DIE_W + 52, PD = DIE_H + 40;
+  add(L.pkg, box, epoxy, PW, 3, PD, DIE_W / 2, -1.9, DIE_H / 2);
+  const etch = canvasTex(512, 512, (g, w, h) => {
+    const gr = g.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w * 0.62);
+    gr.addColorStop(0, "#1d232d"); gr.addColorStop(0.7, "#141921"); gr.addColorStop(1, "#0d1016");
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 5000; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? "255,255,255" : "0,0,0"},${Math.random() * 0.06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+  });
+  const cav = new THREE.Mesh(new THREE.PlaneGeometry(DIE_W + 26, DIE_H + 18), std({ map: etch, roughness: 0.95, metalness: 0, envMapIntensity: 0.2 }));
+  cav.rotation.x = -Math.PI / 2; cav.position.set(DIE_W / 2, -0.395, DIE_H / 2); L.pkg.add(cav);
+  add(L.pkg, box, std({ color: 0x8b919b, metalness: 0.9, roughness: 0.35 }), DIE_W + 11, 0.06, DIE_H + 10, DIE_W / 2, -0.36, DIE_H / 2);
+  const mark = canvasTex(1024, 220, (g, w, h) => drawMarking(g, w, h, false));
+  const markPlane = new THREE.Mesh(new THREE.PlaneGeometry(34, 7.3), new THREE.MeshStandardMaterial({ map: mark, transparent: true, roughness: 0.9, depthWrite: false }));
+  markPlane.rotation.x = -Math.PI / 2; markPlane.position.set(DIE_W / 2, -0.39, DIE_H + 14.5); L.pkg.add(markPlane);
+  const dimple = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), std({ color: 0x050608, roughness: 1 }));
+  dimple.rotation.x = -Math.PI / 2; dimple.position.set(-21, -0.39, -15.5); L.pkg.add(dimple);
+  const leadMat = std({ color: 0xc2ab84, metalness: 0.9, roughness: 0.3 });
+  const goldMat = std({ color: 0xe0b45a, metalness: 0.95, roughness: 0.22, envMapIntensity: 0.9 });
+  const legs = (x, z, side) => {
+    add(L.pkg, box, leadMat, 2.6, 0.18, 0.8, x + side * 1.3, -1.2, z);
+    add(L.pkg, box, leadMat, 0.18, 1.6, 0.8, x + side * 2.6, -2.0, z);
+    add(L.pkg, box, leadMat, 1.4, 0.18, 0.8, x + side * 3.3, -2.8, z);
+  };
+  const pads = { ...IO, VPWR: { x: DIE_W * 0.32, z: -2.9, side: 0, dir: "pwr", vz: -1 }, VGND: { x: DIE_W * 0.68, z: DIE_H + 2.9, side: 0, dir: "pwr", vz: 1 } };
+  for (const [name, p] of Object.entries(pads)) {
+    const isPwr = p.dir === "pwr";
+    add(L.pkg, box, goldMat, isPwr ? 1.2 : 1.5, 0.14, isPwr ? 1.5 : 1.1, p.x, 0.07, p.z);
+    let lead, legAt;
+    if (!isPwr) {
+      const zl = DIE_H / 2 + (p.z - DIE_H / 2) * 1.7, xin = p.side < 0 ? -8 : DIE_W + 8, xcav = p.side < 0 ? -13 : DIE_W + 13;
+      add(L.pkg, box, leadMat, Math.abs(xcav - xin), 0.07, 0.85, (xin + xcav) / 2, -0.35, zl);
+      lead = new THREE.Vector3(xin + p.side * 0.4, -0.31, zl);
+      legAt = [p.side < 0 ? -26 : DIE_W + 26, zl, p.side];
+      legs(...legAt);
+    } else {
+      const zin = p.vz < 0 ? -6.5 : DIE_H + 6.5, zcav = p.vz < 0 ? -9 : DIE_H + 9;
+      add(L.pkg, box, leadMat, 0.85, 0.07, Math.abs(zcav - zin), p.x, -0.35, (zin + zcav) / 2);
+      lead = new THREE.Vector3(p.x, -0.31, zin + p.vz * 0.4);
+    }
+    const a = new THREE.Vector3(p.x, 0.16, p.z);
+    const out = lead.clone().sub(a).setY(0).normalize();
+    const curve = new THREE.CubicBezierCurve3(a, a.clone().add(out.clone().multiplyScalar(0.6)).setY(3.4), lead.clone().sub(out.clone().multiplyScalar(1.4)).setY(1.8), lead);
+    const wm = std({ color: 0xe6b95c, metalness: 0.95, roughness: 0.2, envMapIntensity: 1, emissive: new THREE.Color(css("--high")), emissiveIntensity: 0 });
+    const wire = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.05, 6, false), wm);
+    L.pkg.add(wire);
+    if (!isPwr) bondWires.push({ net: portNet(name), mat: wm });
+    const el = document.createElement("div"); el.className = "pinlabel" + (isPwr ? " pwr" : ""); el.textContent = name;
+    if (!isPwr) { el.title = p.dir === "out" ? `Output ${name}: click for its fan-in cone` : `Input ${name}: click for its fan-out cone`; el.addEventListener("click", () => selectPort(name)); pinEls[name] = el; }
+    const o = new CSS2DObject(el);
+    o.position.set(isPwr ? p.x : p.x + p.side * 2.4, 0.7, isPwr ? p.z + p.vz * 1.6 : p.z);
+    L.pkg.add(o);
+  }
+  /* lid used by the decap intro */
+  lidMat = new THREE.MeshStandardMaterial({ color: 0x0b0e13, roughness: 0.8, transparent: true, opacity: 1, envMapIntensity: 0.3 });
+  const lidTop = new THREE.MeshStandardMaterial({ map: canvasTex(1024, 512, (g, w, h) => drawMarking(g, w, h, true)), roughness: 0.8, transparent: true, opacity: 1, envMapIntensity: 0.3 });
+  lid = new THREE.Mesh(box, [lidMat, lidMat, lidTop, lidMat, lidMat, lidMat]);
+  lid.scale.set(DIE_W + 26, 3.2, DIE_H + 18); lid.position.set(DIE_W / 2, 1.2, DIE_H / 2); lid.visible = false; chip.add(lid);
+  document.fonts?.ready.then(() => { mark.userData.redraw(); lidTop.map.userData.redraw(); });
+
+  /* --- die: substrate, seal ring, core, wells, rails, power ring --- */
+  add(L.sub, box, std({ color: 0x1a2330, roughness: 0.45, metalness: 0.45 }), DIE_W + 9, 0.3, DIE_H + 8, DIE_W / 2, -0.15, DIE_H / 2);
+  const seal = std({ color: 0x8590a2, metalness: 0.85, roughness: 0.3 });
+  add(L.sub, box, seal, DIE_W + 8, 0.08, 0.25, DIE_W / 2, 0.04, -3.6); add(L.sub, box, seal, DIE_W + 8, 0.08, 0.25, DIE_W / 2, 0.04, DIE_H + 3.6);
+  add(L.sub, box, seal, 0.25, 0.08, DIE_H + 7.2, -4.1, 0.04, DIE_H / 2); add(L.sub, box, seal, 0.25, 0.08, DIE_H + 7.2, DIE_W + 4.1, 0.04, DIE_H / 2);
+  add(L.sub, box, std({ color: 0x1d2837, roughness: 0.75 }), DIE_W, 0.04, DIE_H, DIE_W / 2, 0.02, DIE_H / 2);
+  const well = std({ color: 0x22314a, roughness: 0.8 });
+  for (let r = 0; r < ROWS; r++) add(L.sub, box, well, DIE_W, 0.02, ROW_H / 2 - 0.1, DIE_W / 2, 0.045, r * ROW_H + (r % 2 ? ROW_H * 0.75 : ROW_H * 0.25));
+  for (let r = 0; r <= ROWS; r++) add(L.m1, box, std({ color: r % 2 ? 0x3d5f9c : 0x324c80, metalness: 0.7, roughness: 0.3 }), DIE_W, 0.05, 0.26, DIE_W / 2, 0.42, r * ROW_H);
+  const ring = std({ color: 0x6d5a92, metalness: 0.75, roughness: 0.3 });
+  add(L.m2, box, ring, DIE_W + 3.4, 0.05, 0.6, DIE_W / 2, Y.m2, -1.4); add(L.m2, box, ring, DIE_W + 3.4, 0.05, 0.6, DIE_W / 2, Y.m2, DIE_H + 1.4);
+  add(L.m2, box, ring, 0.6, 0.05, DIE_H + 3.4, -1.4, Y.m2, DIE_H / 2); add(L.m2, box, ring, 0.6, 0.05, DIE_H + 3.4, DIE_W + 1.4, Y.m2, DIE_H / 2);
+
+  /* --- instanced layers --- */
+  const inst = (geo, mat, n, parent) => { const m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; m.setColorAt(0, new THREE.Color(1, 1, 1)); m.count = 0; parent.add(m); return m; };
+  mLogic = inst(box, std({ roughness: 0.36, metalness: 0.18 }), 96, L.cell);
+  mTop = inst(box, glow(), 96, L.cell);
+  mPhys = inst(box, std({ roughness: 0.8 }), 400, L.cell);
+  mGhost = inst(box, new THREE.MeshStandardMaterial({ color: 0xef6b73, transparent: true, opacity: 0.3, depthWrite: false, emissive: 0x5a1218 }), 48, L.cell);
+  mPoly = inst(box, std({ roughness: 0.35, metalness: 0.2 }), 1200, L.poly);
+  mMet1 = inst(box, std({ metalness: 0.8, roughness: 0.26 }), 1000, L.m1);
+  gM1 = inst(box, glow(), 1000, L.m1);
+  mVia = inst(box, std({ color: 0xc9d3e3, metalness: 0.9, roughness: 0.2 }), 1000, L.via);
+  gVia = inst(box, glow(), 1000, L.via);
+  mMet2 = inst(box, std({ metalness: 0.8, roughness: 0.26 }), 1000, L.m2);
+  gM2 = inst(box, glow(), 1000, L.m2);
+  mPulse = inst(new THREE.SphereGeometry(1, 12, 8), glow(), 2000, chip);
+  const edges = new THREE.EdgesGeometry(box);
+  selBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: new THREE.Color(css("--accent")).multiplyScalar(2.4), toneMapped: false })); selBox.visible = false; L.cell.add(selBox);
+  hovBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(0.8), toneMapped: false })); hovBox.visible = false; L.cell.add(hovBox);
+  faultRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 8, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(css("--del")).multiplyScalar(2.6), toneMapped: false }));
+  faultRing.rotation.x = -Math.PI / 2; faultRing.visible = false; chip.add(faultRing);
+
+  const tagEl = document.createElement("div"); tagEl.className = "celltag"; tagEl.hidden = true;
+  tagObj = new CSS2DObject(tagEl); L.cell.add(tagObj);
+  for (const [k, text] of [["cell", "cells · transistors in diffusion"], ["poly", "poly · transistor gates"], ["m1", "met1 · horizontal wires"], ["via", "via1 · vertical links"], ["m2", "met2 · vertical wires"]]) {
+    const el = document.createElement("div"); el.className = "layerlabel"; el.textContent = text; el.style.opacity = 0;
+    const o = new CSS2DObject(el); o.position.set(-5.2, Y[k === "cell" ? "cellTop" : k], -1.6); L[k].add(o); layerLabels.push(el);
+  }
+
+  new ResizeObserver(resize).observe(viewport); resize();
+  bindPointer();
+  renderer.setAnimationLoop(tick);
+  return true;
+}
+
+function resize() {
+  if (!renderer) return;
+  const w = viewport.clientWidth, h = viewport.clientHeight;
+  renderer.setSize(w, h, false); composer.setSize(w, h); labelRenderer.setSize(w, h);
+  bloom.resolution.set(w, h);
+  camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix();
+}
+
+const M4 = new THREE.Matrix4(), V3 = new THREE.Vector3(), S3 = new THREE.Vector3(), Q4 = new THREE.Quaternion();
+function setBox(mesh, i, x, y, z, sx, sy, sz) { V3.set(x, y, z); S3.set(sx, sy, sz); M4.compose(V3, Q4, S3); mesh.setMatrixAt(i, M4); }
+
+function pinPos(id, pin) {
+  const c = state.d.byId[id], p = state.placed.P[id];
+  const x0 = p.x * SITE, w = p.w * SITE, zc = (p.row + 0.5) * ROW_H;
+  if (pin === "OUT") return { x: x0 + w - 0.4, z: zc - 0.25 };
+  const ins = LIB[c.type].ins, k = ins.indexOf(pin);
+  const span = Math.max(w * 0.55, 0.6);
+  return { x: x0 + 0.4 + (ins.length > 1 ? (k * span) / (ins.length - 1) : 0), z: zc + (k % 2 ? 0.55 : -0.55) + (k > 1 ? 0.25 : 0) };
+}
+
+function buildRoutes() {
+  segs = []; routes = {};
+  for (const net of state.d.nets) {
+    let D;
+    if (PORT_NETS.includes(net)) D = { x: IO[net].x + 0.75, z: IO[net].z };
+    else if (state.d.drv[net]) D = pinPos(state.d.drv[net], "OUT");
+    else continue;
+    const targets = (state.d.sinks[net] ?? []).map(([id, pin]) => ({ ...pinPos(id, pin), sink: id }));
+    if (/^q\d$/.test(net)) { const io = IO[`count[${net.slice(1)}]`]; targets.push({ x: io.x - 0.75, z: io.z, sink: "pad" }); }
+    if (net === "tc") targets.push({ x: IO.tc.x - 0.75, z: IO.tc.z, sink: "pad" });
+    routes[net] = [];
+    for (const T of targets) {
+      routes[net].push({ D, T, sink: T.sink, len: Math.abs(T.z - D.z) + Math.abs(T.x - D.x) });
+      if (Math.abs(T.z - D.z) > 0.01) segs.push({ net, layer: 2, x1: D.x, z1: D.z, x2: D.x, z2: T.z });
+      if (Math.abs(T.x - D.x) > 0.01) segs.push({ net, layer: 1, x1: D.x, z1: T.z, x2: T.x, z2: T.z });
+      segs.push({ net, layer: 0, x1: D.x, z1: T.z, x2: D.x, z2: T.z });
+    }
+  }
+}
+
+function growFactor(id, now) {
+  if (!grow || !grow.ids.has(id)) return 1;
+  const t = Math.min(1, Math.max(0, (now - grow.t0 - grow.order.get(id) * 45) / 650));
+  const c1 = 1.70158, c3 = c1 + 1;
+  return t >= 1 ? 1 : 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+function layoutLogic(now = performance.now()) {
+  const P = state.placed.P; let pi = 0;
+  logicList.forEach((id, i) => {
+    const p = P[id], g = Math.max(0.001, growFactor(id, now));
+    const cx = (p.x + p.w / 2) * SITE, cz = (p.row + 0.5) * ROW_H, w = p.w * SITE - 0.1, dz = ROW_H - 0.62, h = 0.36 * g;
+    setBox(mLogic, i, cx, 0.06 + h / 2, cz, w, h, dz);
+    const on = shown[state.d.byId[id].out] === 1 && g > 0.98;
+    if (on) setBox(mTop, i, cx, 0.06 + h + 0.015, cz - dz / 2 + 0.24, w - 0.2, 0.03, 0.26);
+    else setBox(mTop, i, cx, -9, cz, 0.0001, 0.0001, 0.0001);
+    const n = Math.max(2, Math.round(p.w / 2.2));
+    for (let k = 0; k < n; k++) { setBox(mPoly, pi, (p.x + (k + 0.5) * (p.w / n)) * SITE, 0.06 + h + 0.03, cz, 0.09, 0.04 * g, ROW_H - 1.0); polyOwner[pi++] = id; }
+  });
+  mLogic.count = logicList.length; mTop.count = logicList.length; mPoly.count = pi;
+  mLogic.instanceMatrix.needsUpdate = mTop.instanceMatrix.needsUpdate = mPoly.instanceMatrix.needsUpdate = true;
+}
+
+function rebuildScene() {
+  if (!renderer) return;
+  const { phys } = state.placed;
+  logicList = state.d.cells.map((c) => c.id);
+  polyOwner = [];
+  layoutLogic();
+  physList = phys;
+  phys.forEach((p, i) => setBox(mPhys, i, (p.x + p.w / 2) * SITE, 0.1, (p.row + 0.5) * ROW_H, p.w * SITE - 0.06, p.type.startsWith("tap") ? 0.2 : 0.12, ROW_H - 0.62));
+  mPhys.count = phys.length;
+  const { removed } = diffInfo();
+  const ghosts = state.diffOn ? removed.filter((c) => BASE_PLACE[c.id]) : [];
+  ghosts.forEach((c, i) => { const p = BASE_PLACE[c.id]; setBox(mGhost, i, (p.x + p.w / 2) * SITE, 0.62, (p.row + 0.5) * ROW_H, p.w * SITE - 0.1, 0.5, ROW_H - 0.5); });
+  mGhost.count = ghosts.length;
+  buildRoutes();
+  let a = 0, b = 0, v = 0; m1Segs = []; m2Segs = [];
+  for (const s of segs) {
+    if (s.layer === 1) { setBox(mMet1, a++, (s.x1 + s.x2) / 2, Y.m1, s.z1, Math.abs(s.x2 - s.x1) + 0.12, 0.05, 0.12); m1Segs.push(s); }
+    else if (s.layer === 2) { setBox(mMet2, b++, s.x1, Y.m2, (s.z1 + s.z2) / 2, 0.12, 0.05, Math.abs(s.z2 - s.z1) + 0.12); m2Segs.push(s); }
+    else setBox(mVia, v++, s.x1, Y.via, s.z1, 0.16, 0.2, 0.16);
+  }
+  mMet1.count = a; mMet2.count = b; mVia.count = v;
+  [mPhys, mGhost, mMet1, mMet2, mVia].forEach((m) => { m.instanceMatrix.needsUpdate = true; });
+  dirty = true;
+}
+
+const C = {};
+function palette() {
+  for (const k of ["reg", "adder", "detect", "clock", "met1", "met2", "high", "fall", "add", "del", "poly", "accent"]) C[k] = new THREE.Color(css("--" + k));
+  C.white = new THREE.Color(0xffffff); C.decap = new THREE.Color(0x253141); C.fill = new THREE.Color(0x1c2532); C.tap = new THREE.Color(0x3a4c66);
+  C.ramp = RAMP.map((h) => new THREE.Color(h));
+}
+const RAMP = ["#123257", "#16707e", "#2fb3a6", "#e2b04e", "#f0703a", "#ffe1bd"];
+const RAMP_CSS = `linear-gradient(90deg, ${RAMP.join(", ")})`;
+function ramp(t, out) {
+  t = Math.min(1, Math.max(0, t)) * (C.ramp.length - 1);
+  const i = Math.min(C.ramp.length - 2, Math.floor(t));
+  return out.copy(C.ramp[i]).lerp(C.ramp[i + 1], t - i);
+}
+const GROUPC = { register: "reg", adder: "adder", detect: "detect", clock: "clock" };
+
+function hlNets() {
+  if (state.selNet) return new Set([state.selNet]);
+  if (!state.highlight) return null;
+  const s = new Set();
+  for (const id of state.highlight) { const c = state.d.byId[id]; if (!c) continue; Object.values(c.ins).forEach((n) => s.add(n)); s.add(c.out); }
+  return s;
+}
+const critSet = () => new Set(state.d.t.path);
+
+function refreshColors() {
+  if (!renderer) return;
+  const { added } = diffInfo();
+  const hl = state.highlight, nets = hlNets(), view = state.view, t = state.d.t;
+  const maxArr = Math.max(t.delay, 0.01), crit = view === "timing" ? critSet() : null;
+  const rate = (n) => (state.cycles ? (state.toggles[n] ?? 0) / state.cycles : 0);
+  const maxRate = Math.max(0.01, ...state.d.nets.filter((n) => n !== "clk" && n !== "clk_buf").map(rate));
+  const col = new THREE.Color(), gcol = new THREE.Color();
+  layoutLogic();
+  logicList.forEach((id, i) => {
+    const c = state.d.byId[id];
+    if (view === "timing") {
+      if (LIB[c.type].seq) col.copy(C.reg).multiplyScalar(0.45);
+      else if (c.type.startsWith("clkbuf")) col.copy(C.clock).multiplyScalar(0.45);
+      else ramp((t.arr[c.out] ?? 0) / maxArr, col);
+      if (crit && (crit.has(id) || state.d.drv[t.startNet] === id)) col.lerp(C.white, 0.3);
+    } else if (view === "activity") {
+      if (state.cycles) ramp(c.type.startsWith("clkbuf") ? 1 : rate(c.out) / maxRate, col); else col.copy(C.ramp[0]);
+    } else {
+      col.copy(C[GROUPC[c.group]]);
+      if (state.diffOn && added.has(id)) col.copy(C.add);
+      if (shown[c.out] === 1) col.lerp(C.high, 0.38);
+    }
+    if (hl && !hl.has(id)) col.multiplyScalar(0.22);
+    if (id === state.selected) col.lerp(C.white, 0.3);
+    else if (id === state.hover) col.lerp(C.white, 0.16);
+    mLogic.setColorAt(i, col);
+    gcol.copy(c.type.startsWith("clkbuf") ? C.clock : C.high).multiplyScalar(hl && !hl.has(id) ? 0.35 : 1.6);
+    mTop.setColorAt(i, gcol);
+  });
+  for (let i = 0; i < mPoly.count; i++) { col.copy(C.poly); if (hl && !hl.has(polyOwner[i])) col.multiplyScalar(0.3); mPoly.setColorAt(i, col); }
+  physList.forEach((p, i) => { col.copy(p.type.startsWith("tap") ? C.tap : p.type.startsWith("decap") ? C.decap : C.fill); if (hl) col.multiplyScalar(0.6); mPhys.setColorAt(i, col); });
+  let a = 0, b = 0, v = 0, ga = 0, gb = 0, gv = 0;
+  for (const s of segs) {
+    const clockNet = s.net === "clk" || s.net === "clk_buf";
+    if (view === "timing") ramp((t.arr[s.net] ?? 0) / maxArr, col).multiplyScalar(clockNet ? 0.5 : 0.85);
+    else if (view === "activity") { if (state.cycles) ramp(clockNet ? 1 : rate(s.net) / maxRate, col); else col.copy(C.ramp[0]); }
+    else col.copy(clockNet ? C.clock : s.layer === 2 ? C.met2 : C.met1);
+    const dim = nets && !nets.has(s.net);
+    if (dim) col.multiplyScalar(0.16); else if (nets) col.lerp(C.white, 0.25);
+    if (s.layer === 1) mMet1.setColorAt(a++, col); else if (s.layer === 2) mMet2.setColorAt(b++, col); else { col.lerp(C.white, 0.3); mVia.setColorAt(v++, col); }
+    if (shown[s.net] === 1 && view === "logic" && s.net !== "rst_n") {
+      gcol.copy(clockNet ? C.clock : C.high).multiplyScalar(dim ? 0.3 : 1.45);
+      if (s.layer === 1) { setBox(gM1, ga, (s.x1 + s.x2) / 2, Y.m1 + 0.01, s.z1, Math.abs(s.x2 - s.x1) + 0.16, 0.06, 0.16); gM1.setColorAt(ga++, gcol); }
+      else if (s.layer === 2) { setBox(gM2, gb, s.x1, Y.m2 + 0.01, (s.z1 + s.z2) / 2, 0.16, 0.06, Math.abs(s.z2 - s.z1) + 0.16); gM2.setColorAt(gb++, gcol); }
+      else { setBox(gVia, gv, s.x1, Y.via, s.z1, 0.2, 0.22, 0.2); gVia.setColorAt(gv++, gcol); }
+    }
+  }
+  gM1.count = ga; gM2.count = gb; gVia.count = gv;
+  [gM1, gM2, gVia].forEach((m) => { m.instanceMatrix.needsUpdate = true; });
+  [mLogic, mTop, mPoly, mPhys, mMet1, mMet2, mVia, gM1, gM2, gVia].forEach((m) => m.instanceColor && (m.instanceColor.needsUpdate = true));
+  for (const w of bondWires) w.mat.emissiveIntensity = shown[w.net] === 1 && view === "logic" && w.net !== "rst_n" ? 1.5 : 0;
+  for (const [name, el] of Object.entries(pinEls)) el.classList.toggle("on", shown[portNet(name)] === 1);
+  placeOutline(selBox, state.selected, 0.14);
+  placeOutline(hovBox, state.hover !== state.selected ? state.hover : null, 0.08);
+  const tag = tagObj.element;
+  if (state.selected && state.placed.P[state.selected]) {
+    const p = state.placed.P[state.selected];
+    tagObj.position.set((p.x + p.w / 2) * SITE, 1.0, (p.row + 0.5) * ROW_H);
+    tag.textContent = cellName(state.selected); tag.hidden = false;
+  } else tag.hidden = true;
+  placeFaultRing();
+}
+function placeOutline(obj, id, pad) {
+  const p = id && state.placed.P[id];
+  if (!p) { obj.visible = false; return; }
+  obj.visible = true;
+  obj.position.set((p.x + p.w / 2) * SITE, 0.24, (p.row + 0.5) * ROW_H);
+  obj.scale.set(p.w * SITE - 0.1 + pad, 0.36 + pad, ROW_H - 0.62 + pad);
+}
+function placeFaultRing() {
+  if (!faultRing) return;
+  const f = state.fault;
+  if (!f) { faultRing.visible = false; return; }
+  const id = state.d.drv[f.net];
+  let x, z, y;
+  if (id && state.placed.P[id]) { const p = state.placed.P[id]; x = (p.x + p.w / 2) * SITE; z = (p.row + 0.5) * ROW_H; y = 0.9 + L.cell.position.y; }
+  else if (IO[f.net]) { x = IO[f.net].x; z = IO[f.net].z; y = 0.6; }
+  else { faultRing.visible = false; return; }
+  faultRing.visible = true; faultRing.position.set(x, y, z);
+}
+
+/* --- signal animation: transitions land at their estimated arrival times and pulses travel the wires --- */
+function flushEvents() {
+  if (!events.length) return;
+  for (const e of events) shown[e.net] = e.v;
+  events = []; dirty = true;
+}
+function scheduleTransitions(newVals, t0 = performance.now()) {
+  const sc = motionScale();
+  for (const n of Object.keys(newVals)) {
+    if (n === "clk" || n === "clk_buf") continue;
+    if (shown[n] === newVals[n]) continue;
+    events.push({ t: t0 + (state.d.t.arr[n] ?? 0) * sc, net: n, v: newVals[n], pulse: true });
+  }
+  events.sort((a, b) => a.t - b.t);
+}
+function clockPulse(t0) {
+  const sc = motionScale(), hold = Math.max(120, 0.5 * sc);
+  events.push({ t: t0, net: "clk", v: 1, pulse: true }, { t: t0 + LIB.clkbuf_4.delay * sc, net: "clk_buf", v: 1, pulse: true },
+    { t: t0 + hold, net: "clk", v: 0 }, { t: t0 + hold + LIB.clkbuf_4.delay * sc, net: "clk_buf", v: 0 });
+}
+function spawnNetPulses(net, v, onlySink = null, delay = 0) {
+  const list = routes[net]; if (!list || reduceMotion) return;
+  const kind = net === "clk" || net === "clk_buf" ? "clock" : v ? "high" : "fall";
+  const sc = Math.max(motionScale(), 140), now = performance.now();
+  for (const r of list) {
+    if (onlySink && r.sink !== onlySink) continue;
+    if (r.len < 0.05) continue;
+    pulses.push({ r, t0: now + delay, dur: Math.max(24, (0.07 + r.len * 0.0018) * sc), kind });
+  }
+  if (pulses.length > 600) pulses.splice(0, pulses.length - 600);
+}
+const PV = new THREE.Vector3();
+function routePoint(r, u) {
+  const dz = r.T.z - r.D.z, dx = r.T.x - r.D.x, adz = Math.abs(dz), dist = u * r.len;
+  if (dist <= adz) return PV.set(r.D.x, Y.m2 + 0.08 + L.m2.position.y, r.D.z + Math.sign(dz) * dist);
+  return PV.set(r.D.x + Math.sign(dx) * (dist - adz), Y.m1 + 0.08 + L.m1.position.y, r.T.z);
+}
+const TRAIL = [[0, 0.2, 1], [0.07, 0.15, 0.7], [0.14, 0.1, 0.45], [0.21, 0.07, 0.25]];
+function updatePulses(now) {
+  if (!pulses.length && !mPulse.count) return;
+  pulses = pulses.filter((p) => now < p.t0 + p.dur * 1.3);
+  let n = 0;
+  const pc = new THREE.Color();
+  for (const p of pulses) {
+    const u = (now - p.t0) / p.dur;
+    if (u < 0) continue;
+    for (const [lag, size, k] of TRAIL) {
+      const uu = u - lag;
+      if (uu < 0 || uu > 1 || n >= 2000) continue;
+      const pos = routePoint(p.r, uu);
+      setBox(mPulse, n, pos.x, pos.y, pos.z, size, size, size);
+      pc.copy(C[p.kind]).multiplyScalar((p.kind === "fall" ? 1.3 : 3.2) * k);
+      mPulse.setColorAt(n++, pc);
+    }
+  }
+  mPulse.count = n; mPulse.instanceMatrix.needsUpdate = true; if (mPulse.instanceColor) mPulse.instanceColor.needsUpdate = true;
+}
+function pulseCriticalPath() {
+  const t = state.d.t, sc = Math.max(motionScale(), 420);
+  const chain = [t.startNet, ...t.path.map((id) => state.d.byId[id].out)];
+  chain.forEach((net, k) => {
+    const sinkId = k < t.path.length ? t.path[k] : (t.end === "tc" ? "pad" : state.d.sinks[t.end]?.[0]?.[0]);
+    spawnNetPulses(net, 1, sinkId, (t.arr[net] ?? 0) * sc);
+  });
+}
+
+function flyTo(ids, opts = {}) {
+  if (!renderer) return;
+  const box = new THREE.Box3();
+  const list = ids && ids.length ? ids : null;
+  if (!list) box.set(new THREE.Vector3(-8, 0, -3), new THREE.Vector3(DIE_W + 8, 1, DIE_H + 3));
+  else for (const id of list) {
+    const p = state.placed.P[id]; if (!p) continue;
+    box.expandByPoint(new THREE.Vector3(p.x * SITE, 0, p.row * ROW_H));
+    box.expandByPoint(new THREE.Vector3((p.x + p.w) * SITE, 1, (p.row + 1) * ROW_H));
+  }
+  if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3()).add(chip.position);
+  c.y += state.explodeCur * 5;
+  const size = box.getSize(new THREE.Vector3());
+  const vt = Math.tan((camera.fov * Math.PI) / 360), ht = vt * camera.aspect;
+  const fit = Math.max(size.x / (2 * ht), (size.z * 0.8) / (2 * vt), 5);
+  const dist = fit * (list ? 1.25 : 1.02) + 3 + state.explodeCur * 12;
+  const dir = opts.dir ?? camera.position.clone().sub(controls.target).normalize();
+  if (dir.y < 0.45) { dir.y = 0.75; dir.normalize(); }
+  fly.fromP.copy(camera.position); fly.fromT.copy(controls.target);
+  fly.toT.copy(c); fly.toP.copy(c).addScaledVector(dir, dist);
+  fly.t = reduceMotion ? 1 : 0;
+  if (reduceMotion) { camera.position.copy(fly.toP); controls.target.copy(fly.toT); }
+}
+
+function startIntro() {
+  if (!renderer) return;
+  flyTo(null, { dir: new THREE.Vector3(0, 0.72, 0.69).normalize() });
+  intro.toP.copy(fly.toP); intro.toT.copy(fly.toT); fly.t = 1;
+  intro.fromP.copy(intro.toT).add(new THREE.Vector3(0.12, 1, 0.42).normalize().multiplyScalar(intro.toP.distanceTo(intro.toT) * 1.18));
+  if (reduceMotion) { camera.position.copy(intro.toP); controls.target.copy(intro.toT); return; }
+  camera.position.copy(intro.fromP); controls.target.set(0, 0, 0);
+  lid.visible = true; lid.position.y = 1.2; lid.rotation.set(0, 0, 0); lidMat.opacity = 1; lid.material[2].opacity = 1;
+  intro.on = true; intro.t0 = performance.now() + 500;
+  $("#skipIntro").hidden = false;
+}
+function endIntro() {
+  intro.on = false; lid.visible = false; $("#skipIntro").hidden = true;
+  camera.position.copy(intro.toP); controls.target.copy(intro.toT);
+}
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+let lastCrit = 0;
+function tick(now) {
+  now = performance.now();
+  if (intro.on) {
+    const u = Math.min(1, Math.max(0, (now - intro.t0) / intro.dur));
+    const lu = ease(Math.min(1, u * 1.35));
+    lid.position.y = 1.2 + lu * 18; lid.rotation.x = -lu * 0.22; lid.rotation.z = lu * 0.08;
+    const op = 1 - Math.max(0, (lu - 0.35) / 0.65);
+    lidMat.opacity = op; lid.material[2].opacity = op;
+    camera.position.lerpVectors(intro.fromP, intro.toP, ease(u));
+    controls.target.lerpVectors(new THREE.Vector3(0, 0, 0), intro.toT, ease(u));
+    if (u >= 1) endIntro();
+  } else if (fly.t < 1) {
+    fly.t = Math.min(1, fly.t + 0.03);
+    const e = ease(fly.t);
+    camera.position.lerpVectors(fly.fromP, fly.toP, e); controls.target.lerpVectors(fly.fromT, fly.toT, e);
+  }
+  if (Math.abs(state.explode - state.explodeCur) > 0.001) {
+    state.explodeCur += (state.explode - state.explodeCur) * (reduceMotion ? 1 : 0.12);
+    for (const [k, i] of Object.entries(EXPLODE_IDX)) L[k].position.y = state.explodeCur * i * 2.4;
+    layerLabels.forEach((el) => (el.style.opacity = Math.min(1, state.explodeCur * 3)));
+    placeFaultRing();
+  }
+  if (events.length) {
+    let i = 0;
+    while (i < events.length && events[i].t <= now) {
+      const e = events[i++];
+      if (shown[e.net] !== e.v) { shown[e.net] = e.v; dirty = true; if (e.pulse && state.view === "logic") spawnNetPulses(e.net, e.v); }
+    }
+    if (i) events.splice(0, i);
+  }
+  if (grow) { layoutLogic(now); if (now > grow.t0 + 650 + grow.ids.size * 45) { grow = null; dirty = true; } }
+  if (state.view === "timing" && state.critShow && now - lastCrit > 1700 && !reduceMotion) { lastCrit = now; pulseCriticalPath(); }
+  if (dirty) { dirty = false; refreshColors(); }
+  updatePulses(now);
+  if (faultRing.visible) { const s = 1.1 + Math.sin(now / 180) * 0.18; faultRing.scale.set(s, s, s); }
+  if (selBox.visible) selBox.material.color.copy(C.accent).multiplyScalar(1.8 + Math.sin(now / 260) * 0.6);
+  controls.update();
+  composer.render(); labelRenderer.render(scene, camera);
+}
+
+function bindPointer() {
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const el = renderer.domElement, tip = $("#tip");
+  let down = null, pending = false, last = null;
+  const pick = (ev) => {
+    const r = el.getBoundingClientRect();
+    ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const targets = [];
+    if (state.layers.cell) targets.push(mLogic, mPhys);
+    if (state.layers.m1) targets.push(mMet1);
+    if (state.layers.m2) targets.push(mMet2);
+    const hit = ray.intersectObjects(targets, false)[0];
+    if (!hit) return null;
+    if (hit.object === mLogic) return { kind: "logic", id: logicList[hit.instanceId] };
+    if (hit.object === mPhys) return { kind: "phys", p: physList[hit.instanceId] };
+    return { kind: "net", net: (hit.object === mMet1 ? m1Segs : m2Segs)[hit.instanceId]?.net };
+  };
+  el.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; if (intro.on) endIntro(); });
+  el.addEventListener("pointerup", (e) => {
+    if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+    const h = pick(e);
+    if (!h) { selectCell(null); return; }
+    if (h.kind === "logic") selectCell(h.id, { fly: false });
+    else if (h.kind === "net" && h.net) selectNet(h.net);
+    else if (h.kind === "phys") { clearSel(); renderPhys(h.p); showTab("inspect"); dirty = true; }
+  });
+  el.addEventListener("pointerleave", () => { tip.hidden = true; if (state.hover) { state.hover = null; dirty = true; } });
+  el.addEventListener("pointermove", (e) => {
+    last = e; if (pending) return; pending = true;
+    requestAnimationFrame(() => {
+      pending = false; const h = pick(last);
+      const id = h && h.kind === "logic" ? h.id : null;
+      el.style.cursor = h ? "pointer" : "grab";
+      if (id !== state.hover) { state.hover = id; dirty = true; }
+      const r = viewport.getBoundingClientRect();
+      if (h) {
+        let html = "";
+        if (h.kind === "logic") { const c = state.d.byId[id]; html = `${esc(cellName(id))} <small>${c.type}</small> · out <b>${values[c.out]}</b>`; }
+        else if (h.kind === "net") html = `net ${esc(netName(h.net))} · <b>${values[h.net] ?? 0}</b>`;
+        else html = `${h.p.type} <small>physical only</small>`;
+        tip.innerHTML = html; tip.hidden = false;
+        tip.style.left = `${last.clientX - r.left}px`; tip.style.top = `${last.clientY - r.top}px`;
+      } else tip.hidden = true;
+    });
+  });
+}
+
+/* ================= Source pane ================= */
+function hiVerilog(line) {
+  const i = line.indexOf("//");
+  const code = i >= 0 ? line.slice(0, i) : line, com = i >= 0 ? line.slice(i) : "";
+  const h = esc(code)
+    .replace(/\b(\d+'[dbh][0-9a-fA-F_]+|\d+)\b/g, '<span class="num">$1</span>')
+    .replace(/\b(module|endmodule|input|output|wire|reg|always|posedge|negedge|if|else|assign|genvar|for|begin|end)\b/g, '<span class="k">$1</span>')
+    .replace(/(&lt;=|&amp;|[\^+\-~!])/g, '<span class="op">$1</span>');
+  return h + (com ? `<span class="c">${esc(com)}</span>` : "");
+}
+function lineDiff(a, b) {
+  const n = a.length, m = b.length, T = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) T[i][j] = a[i] === b[j] ? T[i + 1][j + 1] + 1 : Math.max(T[i + 1][j], T[i][j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) { out.push({ t: b[j], k: "same", ln: j + 1 }); i++; j++; }
+    else if (j < m && (i >= n || T[i][j + 1] >= T[i + 1][j])) { out.push({ t: b[j], k: "add", ln: j + 1 }); j++; }
+    else { out.push({ t: a[i], k: "del", ln: null }); i++; }
+  }
+  return out;
+}
+function renderCode() {
+  const rev = state.reverse;
+  $("#code").hidden = rev; $("#recovered").hidden = !rev;
+  $("#codeHead").innerHTML = rev ? `<b>Recovered structure</b><span>source hidden</span>`
+    : `<b>counter.v</b>${state.variant === "base" ? "" : `<span class="pill ${state.variant === "la_bug" ? "bad" : "gold"}">${esc(state.d.label)}</span>`}`;
+  $("#codeHint").innerHTML = rev ? "Decap rebuilt these blocks from the wiring alone. Click one to see it."
+    : `Click a line to light up the gates it became. <kbd>F12</kbd> on a cell jumps back here.`;
+  if (rev) return renderRecovered();
+  const items = state.variant !== "base" && state.diffOn ? lineDiff(BASE.verilog, state.d.verilog) : state.d.verilog.map((t, i) => ({ t, k: "same", ln: i + 1 }));
+  const count = {}; for (const c of state.d.cells) count[c.src] = (count[c.src] ?? 0) + 1;
+  $("#code").innerHTML = items.map((it) => {
+    const n = it.ln ? count[it.ln] : 0;
+    const sus = it.ln && state.suspect.has(it.ln);
+    return `<li class="${it.k}${it.ln && it.ln === state.line ? " active" : ""}${sus ? " suspect" : ""}" data-ln="${it.ln ?? ""}" tabindex="${it.ln ? 0 : -1}">` +
+      `<span class="n">${it.ln ?? ""}</span><span class="m">${it.k === "add" ? "+" : it.k === "del" ? "−" : ""}</span>` +
+      `<span class="t">${hiVerilog(it.t) || " "}</span>${n ? `<span class="badge">${sus ? "suspect · " : ""}${n} cell${n > 1 ? "s" : ""}</span>` : "<span></span>"}</li>`;
+  }).join("");
+  $("#code .active")?.scrollIntoView({ block: "nearest" });
+}
+function renderRecovered() {
+  const sc = state.rec.score;
+  $("#recovered").innerHTML = `<p class="lead">No source, no names. Decap grouped the ${state.d.cells.length} cells by how they are wired, then tested each group against all 512 register and input patterns.</p>
+    <div class="score"><span>Scored against the hidden names</span><b>${sc.correct}/${sc.total} cells</b><span>Precision</span><b>${Math.round((100 * sc.correct) / Math.max(1, sc.assigned))}%</b><span>Recall</span><b>${Math.round((100 * sc.correct) / sc.total)}%</b></div>` +
+    state.rec.blocks.map((b, i) => `<button type="button" class="block${state.block === i ? " on" : ""}" data-b="${i}"><b>${esc(b.name)}</b><span>${esc(b.evidence)}</span><i>${b.cells.length} cell${b.cells.length > 1 ? "s" : ""}</i></button>`).join("");
+}
+$("#code").addEventListener("click", (e) => { const li = e.target.closest("li"); if (li && li.dataset.ln) selectLine(+li.dataset.ln); });
+$("#code").addEventListener("keydown", (e) => { if (e.key === "Enter") { const li = e.target.closest("li"); if (li && li.dataset.ln) selectLine(+li.dataset.ln); } });
+$("#recovered").addEventListener("click", (e) => { const b = e.target.closest(".block"); if (b) selectBlock(+b.dataset.b); });
+
+/* ================= Selection ================= */
+function clearSel() { state.selected = null; state.selNet = null; state.line = null; state.block = null; state.port = null; state.highlight = null; }
+function selectLine(ln) {
+  const ids = state.d.cells.filter((c) => c.src === ln).map((c) => c.id);
+  clearSel(); state.line = ln;
+  state.highlight = ids.length ? new Set(ids) : null;
+  renderCode(); renderInspectorLine(ln, ids); showTab("inspect"); dirty = true; if (ids.length) flyTo(ids);
+}
+function selectBlock(i) {
+  const b = state.rec.blocks[i]; clearSel(); state.block = i;
+  state.highlight = new Set(b.cells);
+  renderRecovered(); renderInspectorBlock(b); showTab("inspect"); dirty = true; flyTo(b.cells);
+}
+function selectCell(id, { fly = true } = {}) {
+  clearSel();
+  if (!id) { renderInspector(); renderCode(); dirty = true; return; }
+  state.selected = id;
+  const c = state.d.byId[id], nb = new Set([id]);
+  for (const n of Object.values(c.ins)) if (state.d.drv[n]) nb.add(state.d.drv[n]);
+  for (const [s] of state.d.sinks[c.out] ?? []) nb.add(s);
+  state.highlight = nb;
+  if (!state.reverse) state.line = c.src;
+  renderInspector(); renderCode(); showTab("inspect"); dirty = true;
+  if (fly) flyTo([id]);
+}
+function selectNet(net) {
+  clearSel(); state.selNet = net;
+  const ids = new Set(); if (state.d.drv[net]) ids.add(state.d.drv[net]);
+  for (const [s] of state.d.sinks[net] ?? []) ids.add(s);
+  state.highlight = ids;
+  renderNetInspector(net); renderCode(); showTab("inspect"); dirty = true;
+}
+function coneIds(net, dir) {
+  if (dir === "out") return fanout(state.d, net);
+  const id = state.d.drv[net];
+  if (id && LIB[state.d.byId[id].type].seq) { const s = cone(state.d, state.d.byId[id].ins.D, true); s.add(id); return s; }
+  return cone(state.d, net, true);
+}
+function showCone(net, dir, label) {
+  const ids = coneIds(net, dir);
+  clearSel(); state.highlight = ids.size ? ids : null;
+  const list = [...ids];
+  $("#inspector").innerHTML = `<div class="insp-title"><div><b>${dir === "out" ? "Fan-out" : "Fan-in"} cone of ${esc(label ?? netName(net))}</b><small>${dir === "out" ? "everything this signal can change before the next clock edge" : "everything that can change this signal"}</small></div><span class="pill gold">${list.length} cells</span></div>
+    <p class="insp-role">${dir === "out" ? "Think of it as “find usages” for silicon." : "Think of it as “go to definition”, all the way down."} The rest of the chip is dimmed.</p>
+    <dl class="kv"><dt>Cells</dt><dd>${list.map((id) => `<button type="button" class="linkbtn" data-cell="${esc(id)}">${esc(cellName(id))}</button>`).join(" ")}</dd>
+    <dt>Area</dt><dd>${list.reduce((s, i) => s + area(state.d.byId[i].type), 0).toFixed(1)} µm²</dd></dl>`;
+  bindCellLinks($("#inspector"));
+  showTab("inspect"); renderCode(); dirty = true; if (list.length) flyTo(list);
+  return list;
+}
+function selectPort(name) {
+  const p = IO[name], net = portNet(name);
+  state.port = name;
+  showCone(net, p.dir === "out" ? "in" : "out", name);
+}
+
+/* ================= Inspector ================= */
+function bindCellLinks(root) {
+  root.querySelectorAll("[data-cell]").forEach((b) => b.addEventListener("click", () => selectCell(b.dataset.cell)));
+  root.querySelectorAll("[data-net]").forEach((b) => b.addEventListener("click", () => selectNet(b.dataset.net)));
+  root.querySelectorAll("[data-ln]").forEach((b) => b.addEventListener("click", () => selectLine(+b.dataset.ln)));
+}
+function truthTable(c) {
+  const Lb = LIB[c.type]; if (!Lb.ev || Lb.ins.length > 3) return "";
+  const rows = [];
+  for (let s = 0; s < 1 << Lb.ins.length; s++) { const b = Lb.ins.map((_, i) => (s >> (Lb.ins.length - 1 - i)) & 1); rows.push(`<tr>${b.map((x) => `<td>${x}</td>`).join("")}<td class="out">${Lb.ev(...b)}</td></tr>`); }
+  return `<table class="tt"><tr>${Lb.ins.map((p) => `<th>${p}</th>`).join("")}<th>${Lb.out}</th></tr>${rows.join("")}</table>`;
+}
+function schematic(c) {
+  const Lb = LIB[c.type], ins = Lb.ins, n = ins.length;
+  const W = 300, H = Math.max(76, n * 22 + 24), gx = 112, gy = 12, gh = H - 24, cy = H / 2;
+  const wire = (net) => (values[net] ? "var(--high)" : "var(--line-2)");
+  const yi = (k) => gy + ((k + 1) * gh) / (n + 1);
+  let shape = "", outX = gx + 70;
+  const st = `fill="var(--panel-3)" stroke="var(--muted)" stroke-width="1.4"`;
+  if (Lb.sym === "and" || Lb.sym === "andb") { const w = 34; shape = `<path ${st} d="M${gx} ${gy} H${gx + w} A${gh / 2} ${gh / 2} 0 0 1 ${gx + w} ${gy + gh} H${gx} Z"/>`; outX = gx + w + gh / 2; }
+  else if (Lb.sym === "xor") { const w = 66; shape = `<path fill="none" stroke="var(--muted)" stroke-width="1.4" d="M${gx - 7} ${gy} Q${gx + 16} ${cy} ${gx - 7} ${gy + gh}"/><path ${st} d="M${gx} ${gy} Q${gx + 23} ${cy} ${gx} ${gy + gh} Q${gx + w * 0.7} ${gy + gh} ${gx + w} ${cy} Q${gx + w * 0.7} ${gy} ${gx} ${gy} Z"/>`; outX = gx + w; }
+  else if (Lb.sym === "buf") { shape = `<path ${st} d="M${gx} ${gy} L${gx + 56} ${cy} L${gx} ${gy + gh} Z"/>`; outX = gx + 56; }
+  else { shape = `<rect ${st} x="${gx}" y="${gy}" width="70" height="${gh}" rx="3"/><path fill="none" stroke="var(--muted)" stroke-width="1.4" d="M${gx} ${yi(0) - 6} l9 6 l-9 6"/>`; outX = gx + 70; }
+  const inLines = ins.map((p, k) => {
+    const net = c.ins[p], y = yi(k), bubble = p === "A_N" || p === "RESET_B";
+    return `<line x1="4" y1="${y}" x2="${gx - (bubble ? 8 : 0)}" y2="${y}" stroke="${wire(net)}" stroke-width="2"/>` +
+      (bubble ? `<circle cx="${gx - 4}" cy="${y}" r="4" fill="var(--bg)" stroke="var(--muted)" stroke-width="1.4"/>` : "") +
+      `<text x="6" y="${y - 5}" font-size="10.5" fill="var(--muted)" font-family="var(--font-mono)">${esc(netName(net))}</text>` +
+      (Lb.sym !== "buf" ? `<text x="${gx + 6}" y="${y + 3.5}" font-size="9.5" fill="var(--faint)" font-family="var(--font-mono)">${p === "RESET_B" ? "R" : p === "CLK" ? "" : p}</text>` : "");
+  }).join("");
+  const on = values[c.out];
+  return `<svg class="schem" viewBox="0 0 ${W} ${H}" role="img" aria-label="Schematic symbol of ${c.type}">${inLines}${shape}
+    <line x1="${outX}" y1="${cy}" x2="${W - 12}" y2="${cy}" stroke="${wire(c.out)}" stroke-width="2"/>
+    <circle cx="${W - 10}" cy="${cy}" r="4.5" fill="${on ? "var(--high)" : "var(--panel-3)"}" stroke="${on ? "var(--high)" : "var(--line-2)"}"/>
+    <text x="${outX + 8}" y="${cy - 6}" font-size="10.5" fill="var(--muted)" font-family="var(--font-mono)">${Lb.out} → ${esc(netName(c.out))}</text></svg>`;
+}
+const faultable = (net) => !["clk", "clk_buf", "rst_n"].includes(net);
+function faultButtons(net) {
+  if (!faultable(net)) return "";
+  const f = state.fault;
+  return `<button type="button" class="btn sm danger" data-fault="0" data-fnet="${esc(net)}">Stuck at 0</button><button type="button" class="btn sm danger" data-fault="1" data-fnet="${esc(net)}">Stuck at 1</button>${f ? `<button type="button" class="btn sm" data-fault="clear">Clear fault</button>` : ""}`;
+}
+function bindActs(root) {
+  root.querySelectorAll("[data-cone]").forEach((b) => b.addEventListener("click", () => showCone(b.dataset.net2, b.dataset.cone)));
+  root.querySelectorAll("[data-fault]").forEach((b) => b.addEventListener("click", () => b.dataset.fault === "clear" ? setFault(null) : setFault({ net: b.dataset.fnet, v: +b.dataset.fault })));
+}
+function renderInspector() {
+  const el = $("#inspector"), id = state.selected;
+  if (!id) {
+    el.innerHTML = `<p class="insp-empty">Click any cell or wire in the chip, a pad label, or a line of code to see what it is and what it does.</p>
+      <div class="acts"><button type="button" class="btn sm" id="iTour">Take the guided tour</button><button type="button" class="btn sm" id="iPal">Open commands <kbd>⌘K</kbd></button></div>`;
+    $("#iTour").onclick = () => showTour(0); $("#iPal").onclick = openPalette;
+    return;
+  }
+  const c = state.d.byId[id], Lb = LIB[c.type], t = state.d.t;
+  const role = state.reverse ? state.rec.role[id] ?? "Not yet identified." : c.role;
+  const pins = [...Lb.ins.map((p) => [p, c.ins[p]]), [Lb.out, c.out]].map(([p, n], k) =>
+    `<tr><td>${p}${k === Lb.ins.length ? " →" : ""}</td><td><button type="button" class="linkbtn" data-net="${esc(n)}">${esc(netName(n))}</button></td><td><span class="bit${values[n] ? " on" : ""}">${values[n] ?? 0}</span></td></tr>`).join("");
+  const onCrit = t.path.includes(id) || state.d.drv[t.startNet] === id;
+  el.innerHTML = `
+    <div class="insp-title"><div><b>${esc(cellName(id))}</b><small>${full(c.type)}</small></div>${state.reverse ? "" : `<span class="pill">${c.group}</span>`}</div>
+    ${schematic(c)}
+    <p class="insp-role">${esc(role)}</p>
+    <dl class="kv"><dt>Function</dt><dd>${Lb.fn}</dd>
+      ${state.reverse ? "" : `<dt>Source</dt><dd><button type="button" class="linkbtn" data-ln="${c.src}">counter.v:${c.src}</button> <kbd>F12</kbd></dd>`}
+      <dt>Size</dt><dd>${(Lb.sites * SITE).toFixed(2)} × ${ROW_H} µm · ~${Lb.tr} transistors</dd>
+      <dt>Arrival</dt><dd>${Lb.seq ? `clock → Q ${CLK_Q.toFixed(2)} ns` : `${(t.arr[c.out] ?? 0).toFixed(2)} ns after the clock edge`}${onCrit ? ` <span class="pill gold">critical path</span>` : ""}</dd>
+      <dt>Toggles</dt><dd>${state.toggles[c.out] ?? 0} in ${state.cycles} cycle${state.cycles === 1 ? "" : "s"}</dd></dl>
+    <table class="pins">${pins}</table>
+    ${truthTable(c)}
+    <div class="acts">
+      <button type="button" class="btn sm" data-cone="in" data-net2="${esc(c.out)}">Fan-in cone</button>
+      <button type="button" class="btn sm" data-cone="out" data-net2="${esc(c.out)}">Fan-out cone</button>
+      ${faultButtons(c.out)}
+      <button type="button" class="btn sm" id="explainBtn">Explain with the guide</button>
+    </div>`;
+  bindCellLinks(el); bindActs(el);
+  $("#explainBtn").addEventListener("click", () => { showTab("guide"); ask(`Explain the selected cell ${cellName(id)} in simple terms: what it does and why the chip needs it.`); });
+}
+function renderNetInspector(net) {
+  const d = state.d, drv = d.drv[net], sinks = d.sinks[net] ?? [];
+  const r = routes[net] ?? [], len = r.reduce((s, x) => s + x.len, 0);
+  $("#inspector").innerHTML = `
+    <div class="insp-title"><div><b>${esc(netName(net))}</b><small>net · ${sinks.length} load${sinks.length === 1 ? "" : "s"}</small></div><span class="bit${values[net] ? " on" : ""}">${values[net] ?? 0}</span></div>
+    <dl class="kv"><dt>Driver</dt><dd>${drv ? `<button type="button" class="linkbtn" data-cell="${esc(drv)}">${esc(cellName(drv))}</button>` : "input pad"}</dd>
+      <dt>Loads</dt><dd>${sinks.map(([id, p]) => `<button type="button" class="linkbtn" data-cell="${esc(id)}">${esc(cellName(id))}</button>.${p}`).join(" ") || "output pad only"}</dd>
+      <dt>Wire</dt><dd>~${len.toFixed(1)} µm of met1/met2</dd>
+      <dt>Arrival</dt><dd>${(d.t.arr[net] ?? 0).toFixed(2)} ns</dd>
+      <dt>Toggles</dt><dd>${state.toggles[net] ?? 0} in ${state.cycles} cycles</dd></dl>
+    <div class="acts"><button type="button" class="btn sm" data-cone="in" data-net2="${esc(net)}">Fan-in cone</button><button type="button" class="btn sm" data-cone="out" data-net2="${esc(net)}">Fan-out cone</button>${faultButtons(net)}</div>`;
+  bindCellLinks($("#inspector")); bindActs($("#inspector"));
+}
+function renderPhys(p) {
+  $("#inspector").innerHTML = `<div class="insp-title"><div><b>${p.id}</b><small>${full(p.type)}</small></div><span class="pill">physical</span></div>
+    <p class="insp-role">${LIB[p.type].fn}</p><dl class="kv"><dt>Logic</dt><dd>none (physical-only cell)</dd><dt>Size</dt><dd>${(p.w * SITE).toFixed(2)} × ${ROW_H} µm</dd></dl>`;
+}
+function renderInspectorLine(ln, ids) {
+  const text = state.d.verilog[ln - 1]?.trim() ?? "";
+  $("#inspector").innerHTML = `<div class="insp-title"><div><b>counter.v:${ln}</b><small>${esc(text)}</small></div></div>
+    <p class="insp-role">${ids.length ? `This line became <b>${ids.length}</b> standard cell${ids.length > 1 ? "s" : ""}, lit up in the chip. Click one to inspect it.` : "This line did not create any cells on its own."}</p>
+    ${ids.length ? `<dl class="kv"><dt>Cells</dt><dd>${ids.map((id) => `<button type="button" class="linkbtn" data-cell="${esc(id)}">${esc(id)}</button>`).join(" ")}</dd><dt>Area</dt><dd>${ids.reduce((s, i) => s + area(state.d.byId[i].type), 0).toFixed(1)} µm²</dd><dt>Cell types</dt><dd>${[...new Set(ids.map((i) => state.d.byId[i].type))].join(", ")}</dd></dl>` : ""}`;
+  bindCellLinks($("#inspector"));
+}
+function renderInspectorBlock(b) {
+  $("#inspector").innerHTML = `<div class="insp-title"><div><b>${esc(b.name)}</b><small>recovered without source</small></div></div><p class="insp-role">${esc(b.evidence)}</p>
+    ${b.secret != null ? `<div><div class="muted" style="font-size:12px;margin-bottom:4px">Bits the detector needs (count[7] … count[0])</div><div class="bits">${bitsOf(b.secret).reverse().map((x) => `<span class="bit${x ? " on" : ""}">${x}</span>`).join("")}</div></div>` : ""}
+    <dl class="kv"><dt>Cells</dt><dd>${b.cells.map((id) => `<button type="button" class="linkbtn" data-cell="${esc(id)}">${esc(cellName(id))}</button>`).join(" ")}</dd></dl>`;
+  bindCellLinks($("#inspector"));
+}
+
+/* ================= Analyse tab ================= */
+function stageList() {
+  const d = state.d, t = d.t, st = [];
+  const startCell = d.drv[t.startNet];
+  if (startCell) st.push({ id: startCell, name: cellName(startCell), what: "clock → Q", t0: 0, dt: CLK_Q });
+  else st.push({ id: null, name: t.startNet, what: "input", t0: 0, dt: 0 });
+  for (const id of t.path) { const c = d.byId[id]; const t1 = t.arr[c.out]; st.push({ id, name: cellName(id), what: c.type, t0: t1 - LIB[c.type].delay, dt: LIB[c.type].delay }); }
+  if (t.end !== "tc") { const ff = d.sinks[t.end]?.[0]?.[0]; st.push({ id: ff, name: ff ? cellName(ff) : t.end, what: "setup", t0: t.delay, dt: SETUP }); }
+  return st;
+}
+function renderTiming() {
+  const t = state.d.t, b = BASE.t, st = stageList(), total = t.period;
+  const col = (k) => (k === 0 || k === st.length - 1 ? "var(--reg)" : "var(--adder)");
+  $("#anTiming").innerHTML = `<h4>Static timing <span class="pill gold">estimate</span></h4>
+    <div class="metric"><div><small>Critical path</small><b>${t.delay.toFixed(2)} ns</b></div><div><small>Logic depth</small><b>${t.depth} gates</b></div><div><small>Max clock</small><b>${Math.round(t.fmax)} MHz</b></div></div>
+    ${state.variant !== "base" ? `<p class="muted">Original: ${b.delay.toFixed(2)} ns, ${b.depth} gates, ${Math.round(b.fmax)} MHz.</p>` : ""}
+    <p class="muted">The slowest route a signal takes between two clock edges, stage by stage. Click a stage to inspect it.</p>
+    <div class="wf">${st.map((s, k) => `<div class="r" data-wf="${esc(s.id ?? "")}"><span class="nm" title="${esc(s.name)} · ${esc(s.what)}">${esc(s.name)}</span><span class="tr"><span class="bar" style="left:${(100 * s.t0) / total}%;width:${Math.max(1.5, (100 * s.dt) / total)}%;background:${col(k)}"></span></span><span class="ns">${s.dt.toFixed(2)}</span></div>`).join("")}</div>
+    <div class="acts"><button type="button" class="btn sm" id="critBtn">${state.critShow && state.view === "timing" ? "Showing in chip" : "Show path in chip"}</button></div>`;
+  $$("#anTiming [data-wf]").forEach((r) => r.addEventListener("click", () => r.dataset.wf && selectCell(r.dataset.wf)));
+  $("#critBtn").onclick = showCriticalPath;
+}
+function showCriticalPath() {
+  setView("timing"); state.critShow = true; lastCrit = 0;
+  const t = state.d.t, ids = [...t.path]; const s = state.d.drv[t.startNet]; if (s) ids.unshift(s);
+  if (t.end !== "tc") { const ff = state.d.sinks[t.end]?.[0]?.[0]; if (ff) ids.push(ff); }
+  clearSel(); state.highlight = new Set(ids); dirty = true; flyTo(ids); renderTiming();
+  return { delay_ns: +t.delay.toFixed(2), gates: t.path.length, path: ids.map(cellName), fmax_mhz: Math.round(t.fmax) };
+}
+function renderFaults() {
+  const F = state.faults, pct = Math.round((100 * F.detected) / F.total);
+  const af = state.fault, entry = af && F.faults.find((f) => f.net === af.net && f.v === af.v);
+  let active = "";
+  if (af) {
+    const p = entry?.det[0];
+    active = `<div class="callout bad"><b>Fault injected: ${esc(netName(af.net))} stuck at ${af.v}</b>
+      <span>${entry ? `Visible in ${entry.det.length} of 512 one-cycle tests.${p != null ? ` For example: load ${p >> 1}, en = ${p & 1}, clock once: the good chip goes to ${toNum(nextQ(state.d, bitsOf(p >> 1), p & 1))}, the faulty one to ${toNum(nextQ(state.d, bitsOf(p >> 1), p & 1, af))}.` : " No one-cycle test can see it."}` : ""} The simulator is running the faulty chip.</span>
+      <div class="acts"><button type="button" class="btn sm" id="faultClear">Clear fault</button></div></div>`;
+  }
+  $("#anFaults").innerHTML = `<h4>Manufacturing test <span class="pill ${F.undetected.length ? "bad" : "ok"}">${pct}% coverage</span></h4>
+    <p>Every wire on a real chip can come out of the factory stuck at 0 or 1. Decap tried all <b>${F.total}</b> single stuck-at faults on ${F.nets} nets against all 512 one-cycle tests: <b>${F.detected}</b> are detectable${F.undetected.length ? `, ${F.undetected.length} are not` : ""}.</p>
+    <p>A compact test set of <b>${F.tests.length} vectors</b> catches every detectable fault. Click one to load it into the simulator.</p>
+    <div class="vecs">${F.tests.map((v) => `<button type="button" class="vec" data-vec="${v.s}" data-en="${v.en}" title="Catches ${v.covers} remaining faults">q=0x${hex2(v.s)} en=${v.en}</button>`).join("")}</div>
+    ${F.undetected.length ? `<p class="muted">Undetectable (redundant logic): ${F.undetected.map((f) => `${esc(netName(f.net))}/${f.v}`).join(", ")}</p>` : ""}
+    ${active}
+    <p class="fine">Clock and reset nets need multi-cycle tests and are left out. To try one, pick a cell and press “Stuck at 0”.</p>`;
+  $$("#anFaults [data-vec]").forEach((b) => b.addEventListener("click", () => { stopRun(); setRegister(+b.dataset.vec, +b.dataset.en); }));
+  $("#faultClear")?.addEventListener("click", () => setFault(null));
+}
+function renderPower() {
+  const cyc = state.cycles;
+  if (!cyc) { $("#anPower").innerHTML = `<h4>Power <span class="pill gold">estimate</span></h4><p class="muted">Run the simulator for a few cycles. Decap counts how often every wire switches and turns that into dynamic power.</p><div class="acts"><button type="button" class="btn sm" id="pwRun">Run 64 cycles</button></div>`; $("#pwRun").onclick = () => runCycles(64); return; }
+  const V = 1.8, f = 50e6, rows = [];
+  let total = 0, clockP = 0;
+  for (const net of state.d.nets) {
+    const loads = (state.d.sinks[net] ?? []).length + (/^q\d$|^tc$/.test(net) ? 1 : 0);
+    const len = (routes[net] ?? []).reduce((s, r) => s + r.len, 0);
+    const cap = (loads * 1.8 + len * 0.12 + 1.2) * 1e-15;
+    const alpha = net === "clk" || net === "clk_buf" ? 1 : (state.toggles[net] ?? 0) / cyc / 2;
+    const p = alpha * cap * V * V * f;
+    total += p; if (net === "clk" || net === "clk_buf") clockP += p;
+    rows.push([net, p]);
+  }
+  rows.sort((a, b) => b[1] - a[1]);
+  $("#anPower").innerHTML = `<h4>Power <span class="pill gold">estimate</span></h4>
+    <div class="metric"><div><small>Dynamic</small><b>${(total * 1e6).toFixed(1)} µW</b></div><div><small>Clock share</small><b>${Math.round((100 * clockP) / total)}%</b></div><div><small>Cycles</small><b>${cyc}</b></div></div>
+    <p class="muted">At 50 MHz and 1.8 V, from how often each wire switched in your simulation (P = α·C·V²·f). Hottest wires: ${rows.slice(0, 4).map(([n, p]) => `<button type="button" class="linkbtn" data-net="${esc(n)}">${esc(netName(n))}</button> ${(p * 1e6).toFixed(2)} µW`).join(", ")}.</p>
+    <div class="acts"><button type="button" class="btn sm" id="pwView">Show activity heat map</button><button type="button" class="btn sm" id="pwRun">Run 64 more</button></div>`;
+  bindCellLinks($("#anPower"));
+  $("#pwView").onclick = () => setView("activity"); $("#pwRun").onclick = () => runCycles(64);
+}
+function renderAnalysis() { renderTiming(); renderFaults(); renderPower(); renderGoal(); }
+function renderGoal() {
+  const g = state.lastGoal, out = $("#goalOut");
+  if (!g) { out.innerHTML = ""; return; }
+  if (!g.res.ok) { out.innerHTML = `<div class="callout bad"><b>Unreachable</b><span>Searched all ${g.res.explored} reachable states in ${g.res.ms.toFixed(1)} ms. No input sequence gets there${state.fault ? " while the injected fault is active" : ""}.</span></div>`; return; }
+  const p = g.res.path, resets = p.filter((a) => a === 2).length, ups = p.filter((a) => a === 1).length, holds = p.filter((a) => a === 0).length;
+  const words = [resets && `${resets} reset`, ups && `${ups} × en = 1`, holds && `${holds} × en = 0`].filter(Boolean).join(", ") || "nothing: it is already there";
+  out.innerHTML = `<div class="callout good"><b>Found: ${p.length} clock cycle${p.length === 1 ? "" : "s"} from count ${g.from}</b>
+    <span>${words}. Searched ${g.res.explored} states in ${g.res.ms.toFixed(1)} ms; no shorter sequence exists.</span>
+    <div class="acts"><button type="button" class="btn sm primary" id="goalPlay" ${p.length ? "" : "disabled"}>Play it on the chip</button></div></div>`;
+  $("#goalPlay").onclick = () => playPath(p);
+}
+function seek(goal) {
+  const from = toNum(state.q);
+  const res = goalSeek(state.d, from, goal, state.fault);
+  state.lastGoal = { goal, res, from }; renderGoal(); showTab("analyse");
+  return res;
+}
+$("#goalGo").addEventListener("click", () => { const n = Math.max(0, Math.min(255, Math.round(+$("#goalN").value || 0))); $("#goalN").value = n; seek({ count: n }); });
+$("#goalTc").addEventListener("click", () => seek({ tc: true }));
+
+function setFault(f) {
+  state.fault = f && faultable(f.net) ? f : null;
+  values = evaluate(state.d, state.q, state.en, state.fault);
+  flushEvents(); Object.assign(shown, values); dirty = true;
+  renderFaults(); renderSim(); renderStats();
+  if (state.selected) renderInspector(); else if (state.selNet) renderNetInspector(state.selNet);
+  if (state.fault) { const e = state.faults.faults.find((x) => x.net === f.net && x.v === f.v); return { net: netName(f.net), stuck_at: f.v, detectable_in: `${e?.det.length ?? 0}/512 tests` }; }
+  return { cleared: true };
+}
+
+/* ================= Stats, legend, banner ================= */
+function renderStats() {
+  const s = summary(state.d), b = summary(BASE), changed = state.variant !== "base";
+  const delta = (v, base, fmt, lowerIsBetter = true) => {
+    if (!changed || Math.abs(v - base) < 1e-9) return "";
+    const better = lowerIsBetter ? v < base : v > base;
+    return ` <span class="${better ? "d-add" : "d-del"}">${v > base ? "+" : "−"}${fmt(Math.abs(v - base))}</span>`;
+  };
+  $("#stats").innerHTML = `
+    <dt>Logic cells</dt><dd>${s.cells}${delta(s.cells, b.cells, (x) => x)}</dd>
+    <dt>Area</dt><dd>${s.area.toFixed(0)} µm²${delta(s.area, b.area, (x) => x.toFixed(0))}</dd>
+    <dt>Critical path</dt><dd>${s.delay.toFixed(2)} ns${delta(s.delay, b.delay, (x) => x.toFixed(2))}</dd>
+    <dt>Max clock</dt><dd>${Math.round(s.fmax)} MHz${delta(s.fmax, b.fmax, (x) => Math.round(x), false)}</dd>
+    ${state.fault ? `<dt class="d-del">Fault</dt><dd class="d-del">${esc(netName(state.fault.net))} = ${state.fault.v}</dd>` : ""}`;
+}
+function renderLegend() {
+  let html;
+  if (state.view === "timing") html = `<span>Arrival after clock edge</span><span>0 ns</span><i class="ramp" style="background:${RAMP_CSS}"></i><span>${state.d.t.delay.toFixed(2)} ns</span>`;
+  else if (state.view === "activity") html = state.cycles ? `<span>Switching activity</span><span>quiet</span><i class="ramp" style="background:${RAMP_CSS}"></i><span>busiest</span>` : `<span>Run the simulator to collect switching activity.</span>`;
+  else {
+    const items = [["Flip-flops", "--reg"], ["Adder logic", "--adder"], ["Detector", "--detect"], ["Clock", "--clock"], ["met1", "--met1"], ["met2", "--met2"], ["Signal = 1", "--high"]];
+    if (state.variant !== "base" && state.diffOn) items.push(["Added", "--add"], ["Removed", "--del"]);
+    html = items.map(([t, v]) => `<span><i class="sw" style="background:var(${v})"></i>${t}</span>`).join("");
+  }
+  $("#legend").innerHTML = html;
+}
+function setBanner(kind, html) {
+  const b = $("#banner");
+  if (!kind) { b.hidden = true; return; }
+  b.className = `overlay banner ${kind}`; b.innerHTML = html; b.hidden = false;
+}
+function renderPill() {
+  const p = $("#variantPill"), v = state.variant;
+  p.textContent = v === "base" ? "Original" : v === "la_bug" ? "Lookahead · failed check" : v === "lookahead" ? "Lookahead · proven" : "Count down · spec verified";
+  p.className = "pill " + (v === "base" ? "" : v === "la_bug" ? "bad" : "ok");
+}
+
+function setView(v) {
+  state.view = v; if (v !== "timing") state.critShow = false;
+  $$(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === v)));
+  if (v !== "logic") pulses = [];
+  renderLegend(); renderTiming(); dirty = true;
+}
+$$(".seg button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+function setExplode(x) { state.explode = Math.max(0, Math.min(1, x)); $("#explode").value = Math.round(state.explode * 100); }
+$("#explode").addEventListener("input", (e) => setExplode(+e.target.value / 100));
+$$("#layers [data-layer]").forEach((cb) => cb.addEventListener("change", () => { state.layers[cb.dataset.layer] = cb.checked; if (L[cb.dataset.layer]) L[cb.dataset.layer].visible = cb.checked; }));
+$("#layersToggle").addEventListener("click", () => { const b = $("#layersBody"); b.hidden = !b.hidden; $("#layersToggle").setAttribute("aria-expanded", String(!b.hidden)); });
+if (matchMedia("(max-width: 900px)").matches) { $("#layersBody").hidden = true; $("#layersToggle").setAttribute("aria-expanded", "false"); }
+
+/* ================= Chip surgery ================= */
+const CHANGES = {
+  lookahead: { title: "Make it faster", attempts: ["la_bug", "lookahead"], mode: "equiv" },
+  count_down: { title: "Make it count down", attempts: ["down"], mode: "down" },
+  original: { title: "Revert to the original", attempts: ["base"], mode: "equiv" },
+};
+function setVariant(key) {
+  const d = analyse(key);
+  state.variant = key; state.d = d; state.placed = place(d); state.rec = recover(d); state.faults = faultScan(d);
+  state.toggles = {}; state.cycles = 0; state.fault = null; state.lastGoal = null;
+  buildAnon(); clearSel(); flushEvents(); pulses = [];
+  values = evaluate(state.d, state.q, state.en); Object.assign(shown, values);
+  const { added } = diffInfo();
+  if (state.diffOn && added.size) state.highlight = new Set(added);
+  rebuildScene();
+  if (added.size && !reduceMotion) grow = { ids: added, t0: performance.now(), order: new Map([...added].map((id, i) => [id, i])) };
+  renderAll();
+  return added;
+}
+async function applyChange(name) {
+  const ch = CHANGES[name]; if (!ch || state.busy) return { error: state.busy ? "a change is already running" : "unknown change" };
+  state.busy = true; stopRun(); state.playing = false; showTab("surgery"); setBanner(null);
+  $$("#chFast, #chDown, #chRevert").forEach((b) => (b.disabled = true));
+  const out = $("#surgeryOut"), log = [];
+  const wait = (ms) => sleep(reduceMotion ? 0 : ms);
+  const draw = (extra = "") => { out.innerHTML = `<ol class="pipe">${log.map((s) => `<li class="${s.k}">${esc(s.t)}</li>`).join("")}</ol>${extra}`; };
+  const stepRun = async (text, ms = 420) => { log.push({ t: text, k: "run" }); draw(); await wait(ms); log[log.length - 1].k = "done"; draw(); };
+  let attemptsUsed = 0, firstFail = null, v = null, key = null;
+  state.suspect = new Set();
+  if (name === "original") {
+    await stepRun("Restore the original netlist", 260); await stepRun("Restore the original placement", 260);
+    setVariant("base"); key = "base";
+  } else for (let i = 0; i < ch.attempts.length; i++) {
+    key = ch.attempts[i]; attemptsUsed++;
+    if (ch.attempts.length > 1) { log.push({ t: `Attempt ${i + 1}`, k: "attempt" }); draw(); }
+    await stepRun(i ? "Feed the counterexample back to the AI and rewrite the Verilog" : "AI rewrites the Verilog");
+    await stepRun("Synthesise to SKY130 standard cells (pre-computed netlist in this prototype)");
+    const added = setVariant(key);
+    await stepRun(`Place ${added.size} new cells next to the cells they connect to`);
+    log.push({ t: ch.mode === "down" ? "Check the new spec on all 512 register and input patterns" : "Prove equivalence on all 512 register and input patterns", k: "run" }); draw();
+    await wait(520);
+    v = verify(state.d, ch.mode, BASE);
+    if (v.pass === v.total) { log[log.length - 1].k = "done"; draw(); break; }
+    log[log.length - 1].k = "fail";
+    const cx = v.cex; firstFail = cx;
+    const wrongBit = cx.bits[cx.bits.length - 1] ?? 0;
+    const suspects = [...cone(state.d, "d" + wrongBit)];
+    state.suspect = new Set(suspects.map((id) => state.d.byId[id].src).filter((ln) => ln >= 15));
+    setRegister(cx.s, cx.en, false);
+    clearSel(); state.highlight = new Set(suspects); renderCode(); dirty = true; flyTo(suspects);
+    setBanner("bad", `<span class="no">Not equivalent</span><span>At count ${cx.s} with en = ${cx.en}, the new logic goes to <b>${cx.got}</b> (0b${bin8(cx.got)}); the original goes to <b>${cx.want}</b>. Bit ${wrongBit} is wrong.</span>`);
+    draw(`<div class="callout bad"><b>Counterexample found</b><span>Register = ${cx.s} (0b${bin8(cx.s)}), en = ${cx.en}. Expected next value ${cx.want}, got ${cx.got}. ${v.pass} of ${v.total} patterns match.</span><span>The wrong bit's fan-in cone is lit in the chip, and the suspect lines are marked in the source.</span></div>`);
+    if (i === ch.attempts.length - 1) break;
+    await wait(3200);
+  }
+  const s = summary(state.d), b = summary(BASE), { added, removed } = diffInfo();
+  const ok = key === "base" || (v && v.pass === v.total);
+  if (key !== "base" && ok) {
+    state.suspect = new Set(); renderCode();
+    const verdict = ch.mode === "down" ? `Meets the new spec on ${v.pass}/${v.total} patterns. It differs from the original in ${v.total - v.same} patterns: exactly the cases where en = 1, as intended.`
+      : `Proven equivalent: ${v.same}/${v.total} patterns behave exactly like the original.`;
+    setBanner("good", `<span class="ok">${ch.mode === "down" ? "Spec verified" : "Proven equivalent"}</span><span>+${added.size} / −${removed.length} cells. Green cells are new; red ghosts were removed.${firstFail ? " Fixed on the second attempt." : ""}</span>`);
+    const row = (label, x, y, fmt, lower = true) => { const d = y - x, good = lower ? d < 0 : d > 0; return `<tr><td>${label}</td><td>${fmt(x)}</td><td>${fmt(y)}</td><td class="${Math.abs(d) < 1e-9 ? "" : good ? "d-add" : "d-del"}">${Math.abs(d) < 1e-9 ? "·" : (d > 0 ? "+" : "−") + fmt(Math.abs(d))}</td></tr>`; };
+    draw(`<div class="callout good"><b>${esc(state.d.label)}</b><span>${verdict}</span></div>
+      <table class="deltas"><tr><th>Metric</th><th>Before</th><th>After</th><th>Change</th></tr>
+      ${row("Logic cells", b.cells, s.cells, (x) => x)}${row("Area (µm²)", b.area, s.area, (x) => x.toFixed(0))}${row("Critical path (ns)", b.delay, s.delay, (x) => x.toFixed(2))}${row("Logic depth", b.depth, s.depth, (x) => x)}${row("Max clock (MHz)", b.fmax, s.fmax, (x) => Math.round(x), false)}</table>`);
+    flyTo(added.size ? [...added] : null);
+  } else if (key === "base") { draw(`<p class="muted">Back to the original design.</p>`); }
+  $("#chFast").disabled = $("#chDown").disabled = false;
+  $("#chRevert").disabled = state.variant === "base"; $("#diffToggle").disabled = state.variant === "base";
+  renderPill(); renderStats(); renderAnalysis();
+  state.busy = false;
+  return { change: ch.title, result: ok ? (key === "base" ? "reverted" : ch.mode === "down" ? "spec verified" : "proven equivalent") : "verification failed",
+    attempts: attemptsUsed, first_attempt_counterexample: firstFail ? `register ${firstFail.s}, en ${firstFail.en}: expected ${firstFail.want}, got ${firstFail.got}` : null,
+    patterns_passing: v ? `${v.pass}/${v.total}` : null, cells_added: added.size, cells_removed: removed.length,
+    critical_path_ns: `${b.delay.toFixed(2)} -> ${s.delay.toFixed(2)}`, max_clock_mhz: `${Math.round(b.fmax)} -> ${Math.round(s.fmax)}` };
+}
+$("#chFast").addEventListener("click", () => applyChange("lookahead"));
+$("#chDown").addEventListener("click", () => applyChange("count_down"));
+$("#chRevert").addEventListener("click", () => applyChange("original"));
+$("#diffToggle").addEventListener("change", (e) => { state.diffOn = e.target.checked; if (!state.diffOn) state.highlight = null; rebuildScene(); renderAll(); });
+
+/* ================= Simulator ================= */
+function step({ action = null, animate = true } = {}) {
+  flushEvents();
+  const a = action ?? state.en;
+  if (action === 0 || action === 1) { state.en = action; $("#enToggle").checked = !!action; }
+  const prev = values;
+  state.history.push({ en: a === 2 ? state.en : a, q: state.q.slice(), tc: prev.tc, rst: a === 2 });
+  if (state.history.length > 64) state.history.shift();
+  state.q = a === 2 ? Array(8).fill(0) : nextQ(state.d, state.q, state.en, state.fault);
+  state.cycle++; state.cycles++;
+  values = evaluate(state.d, state.q, state.en, state.fault);
+  for (const n in values) if (values[n] !== prev[n]) state.toggles[n] = (state.toggles[n] ?? 0) + 1;
+  state.toggles.clk = (state.toggles.clk ?? 0) + 2; state.toggles.clk_buf = (state.toggles.clk_buf ?? 0) + 2;
+  if (animate && motionScale() > 0 && renderer) { const t0 = performance.now(); if (a !== 2) clockPulse(t0); scheduleTransitions(values, t0); }
+  else { Object.assign(shown, values); dirty = true; }
+  renderSim();
+  if (state.selected) renderInspector();
+  if (state.view === "activity") { dirty = true; if (state.cycles === 1) renderLegend(); }
+  if (state.tab === "analyse" && state.cycles % 8 === 1) renderPower();
+}
+function setRegister(n, en = state.en, announce = true) {
+  flushEvents();
+  state.q = bitsOf(n); state.en = en; $("#enToggle").checked = !!en;
+  values = evaluate(state.d, state.q, state.en, state.fault); Object.assign(shown, values); dirty = true;
+  renderSim(); if (state.selected && announce) renderInspector();
+}
+function loop() { if (!state.running) return; step(); state.timer = setTimeout(loop, periodMs()); }
+function startRun() { if (state.running) return; state.running = true; $("#simRun").textContent = "Pause"; loop(); }
+function stopRun() { state.running = false; $("#simRun").textContent = "Run"; clearTimeout(state.timer); }
+async function runCycles(n) { stopRun(); for (let i = 0; i < n; i++) { step({ animate: i >= n - 2 }); if (i % 4 === 3) await sleep(16); } renderPower(); dirty = true; }
+async function playPath(path) {
+  stopRun(); state.playing = true;
+  const n = path.length, slow = n <= 12;
+  for (let i = 0; i < n && state.playing; i++) {
+    const last = i >= n - 2;
+    step({ action: path[i], animate: slow || last });
+    await sleep(slow || last ? periodMs() : 28);
+  }
+  state.playing = false; renderPower();
+}
+$("#simStep").addEventListener("click", () => { stopRun(); step(); });
+$("#simReset").addEventListener("click", () => { stopRun(); state.playing = false; step({ action: 2 }); });
+$("#simRun").addEventListener("click", () => (state.running ? stopRun() : startRun()));
+$("#enToggle").addEventListener("change", (e) => {
+  state.en = e.target.checked ? 1 : 0;
+  flushEvents(); values = evaluate(state.d, state.q, state.en, state.fault);
+  if (motionScale() > 0 && renderer) scheduleTransitions(values); else { Object.assign(shown, values); dirty = true; }
+  renderSim();
+});
+$("#speed").addEventListener("change", (e) => { state.speed = +e.target.value; });
+
+$("#leds").innerHTML = Array.from({ length: 8 }, (_, k) => `<i data-b="${7 - k}" title="count[${7 - k}]"></i>${k === 3 ? '<span class="gap"></span>' : ""}`).join("") + `<span class="tc"><i id="tcLed"></i>tc</span>`;
+function renderSim() {
+  const n = toNum(state.q);
+  $("#countDec").textContent = n;
+  $$("#leds [data-b]").forEach((el) => el.classList.toggle("on", state.q[+el.dataset.b] === 1));
+  $("#tcLed").classList.toggle("on", values.tc === 1);
+  $("#cycleRead").textContent = `cycle ${state.cycle} · 0x${hex2(n)}${state.fault ? " · faulty" : ""}`;
+  drawWave();
+}
+function drawWave() {
+  const cv = $("#wave"), dpr = Math.min(devicePixelRatio, 2);
+  const w = cv.clientWidth, h = cv.clientHeight; if (!w) return;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const hist = [...state.history, { en: state.en, q: state.q, tc: values.tc, rst: false }];
+  const rows = [["clk", "clk"], ["rst_n", (s) => (s.rst ? 0 : 1)], ["en", (s) => s.en], ["count", "bus"], ["q0", (s) => s.q[0]], ["q1", (s) => s.q[1]], ["q2", (s) => s.q[2]], ["q7", (s) => s.q[7]], ["tc", (s) => s.tc]];
+  const lw = 40, rh = h / rows.length, cols = 40, cw = (w - lw) / cols;
+  const start = Math.max(0, hist.length - cols), vis = hist.slice(start);
+  g.font = `10px ${css("--font-mono")}`; g.textBaseline = "middle";
+  g.strokeStyle = css("--line"); g.lineWidth = 1;
+  for (let k = 0; k <= cols; k += 4) { g.beginPath(); g.moveTo(lw + k * cw + 0.5, 0); g.lineTo(lw + k * cw + 0.5, h); g.stroke(); }
+  rows.forEach(([name, f], r) => {
+    const y0 = r * rh, hi = y0 + rh * 0.22, lo = y0 + rh * 0.78;
+    g.fillStyle = css("--muted"); g.fillText(name, 0, y0 + rh / 2);
+    if (f === "bus") {
+      let runStart = 0;
+      g.strokeStyle = css("--accent"); g.lineWidth = 1.2;
+      for (let k = 0; k <= vis.length; k++) {
+        const val = k < vis.length ? toNum(vis[k].q) : null, prevVal = k > 0 ? toNum(vis[k - 1].q) : null;
+        if (k === 0 || val !== prevVal) {
+          if (k > 0) {
+            const x1 = lw + runStart * cw, x2 = lw + k * cw;
+            g.beginPath(); g.moveTo(x1 + 2, hi); g.lineTo(x2 - 2, hi); g.lineTo(x2, y0 + rh / 2); g.lineTo(x2 - 2, lo); g.lineTo(x1 + 2, lo); g.lineTo(x1, y0 + rh / 2); g.closePath(); g.stroke();
+            if (x2 - x1 > 18) { g.fillStyle = css("--fg"); g.fillText(hex2(prevVal), x1 + 4, y0 + rh / 2 + 0.5); }
+          }
+          runStart = k;
+        }
+      }
+      return;
+    }
+    g.strokeStyle = name === "clk" ? css("--clock") : name === "tc" ? css("--accent") : name === "rst_n" ? css("--del") : css("--high");
+    g.lineWidth = 1.4; g.beginPath();
+    vis.forEach((s, k) => {
+      const x = lw + k * cw;
+      if (name === "clk") { if (k === 0) g.moveTo(x, lo); g.lineTo(x, hi); g.lineTo(x + cw / 2, hi); g.lineTo(x + cw / 2, lo); g.lineTo(x + cw, lo); return; }
+      const y = f(s) ? hi : lo;
+      if (k === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      g.lineTo(x + cw, y);
+    });
+    g.stroke();
+  });
+}
+
+/* ================= Tabs ================= */
+function showTab(t) {
+  state.tab = t;
+  $$(".tabs [data-tab]").forEach((b) => { const on = b.dataset.tab === t; b.setAttribute("aria-selected", String(on)); if (on) b.querySelector(".dot")?.remove(); });
+  for (const k of ["inspect", "analyse", "surgery", "guide"]) $(`#p-${k}`).hidden = k !== t;
+  if (t === "analyse") renderAnalysis();
+  if (t === "guide") $("#msgs").scrollTop = $("#msgs").scrollHeight;
+}
+$$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+$(".tabs").addEventListener("keydown", (e) => {
+  const tabs = $$(".tabs [data-tab]"), i = tabs.findIndex((b) => b.dataset.tab === state.tab);
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") { const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]; showTab(n.dataset.tab); n.focus(); }
+});
+
+/* ================= Guided tour ================= */
+const TOUR = [
+  { h: "A chip with its lid off", p: "This is an 8-bit counter in SkyWater 130 nm standard cells, shown the way it looks once the black epoxy is etched away: gold bond wires run from the die's pads to the lead frame. Drag to orbit, scroll to zoom.", go: () => { setView("logic"); setExplode(0); selectCell(null); flyTo(null); } },
+  { h: "Peel it apart", p: "A chip is a stack of layers: transistors at the bottom, then poly gates, then metal wiring. The exploded view separates them. Press X any time to toggle it.", go: () => { setExplode(0.85); setTimeout(() => flyTo(null), 350); } },
+  { h: "Memory: 8 flip-flops", p: "The large copper cells are flip-flops. Each one stores a single bit. Together they hold the current count.", go: () => { setExplode(0); hlGroup("register"); } },
+  { h: "Your code, as gates", p: "Line 12 says q <= q + 1. Synthesis turned it into these teal cells. XOR gates flip bits; the small AND gates pass a carry from bit to bit, like dominoes.", go: () => (state.reverse ? hlGroup("adder") : selectLine(12)) },
+  { h: "Watch a carry ripple", p: "The register now holds 127. On the next clock edge every bit flips. Watch the gold pulses race along the wires: each gate waits for the one before it, so the carry ripples from bit 0 up to bit 7.", go: () => { stopRun(); selectCell(null); setView("logic"); state.speed = 1200; $("#speed").value = "1200"; setRegister(127, 1); flyTo(null); setTimeout(() => step(), reduceMotion ? 0 : 900); } },
+  { h: "Where the time goes", p: "Timing view colours every gate by when its output settles after the clock edge. The critical path, the slowest chain, sets the top clock speed. The Analyse tab breaks it down stage by stage.", go: () => { state.speed = 420; $("#speed").value = "420"; showCriticalPath(); showTab("analyse"); } },
+  { h: "Every fault, one small test set", p: "Factories test chips by assuming any wire might be stuck at 0 or 1. Decap tried every one of those faults and found a handful of test vectors that catch them all.", go: () => { setView("logic"); clearSel(); dirty = true; showTab("analyse"); $("#anFaults").scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" }); } },
+  { h: "Change the silicon", p: "Press “Make it faster”. The AI's first attempt has a subtle bug; the equivalence check catches it with a concrete counterexample, and the second attempt is proven correct.", go: () => { showTab("surgery"); $("#chFast").focus(); } },
+  { h: "No source? Still readable", p: "Tick “Hide source”. Every name disappears, yet Decap rebuilds the register, the counter logic and the detector from the wiring alone, reads the secret constant off the gates, and scores itself against the hidden truth.", go: () => { $("#revMode").focus(); } },
+];
+let tourAt = -1;
+function hlGroup(g) {
+  const ids = state.d.cells.filter((c) => c.group === g).map((c) => c.id);
+  clearSel(); state.highlight = new Set(ids); renderCode(); dirty = true; flyTo(ids);
+  $("#inspector").innerHTML = `<p class="insp-role">${ids.length} ${g === "register" ? "flip-flop" : "cell"}${ids.length > 1 ? "s" : ""} highlighted. Click one to inspect it.</p>`;
+  showTab("inspect");
+}
+function showTour(i) {
+  tourAt = i; const t = $("#tour");
+  if (i < 0 || i >= TOUR.length) { t.hidden = true; tourAt = -1; return; }
+  const s = TOUR[i];
+  t.hidden = false;
+  t.innerHTML = `<h3>${s.h}</h3><p>${s.p}</p><div class="row"><small>${i + 1} / ${TOUR.length}</small>
+    <button class="btn" type="button" id="tBack" ${i === 0 ? "disabled" : ""}>Back</button>
+    <button class="btn primary" type="button" id="tNext">${i === TOUR.length - 1 ? "Done" : "Next"}</button>
+    <button class="btn" type="button" id="tClose" aria-label="Close tour">✕</button></div>`;
+  $("#tBack").onclick = () => showTour(i - 1); $("#tNext").onclick = () => showTour(i + 1); $("#tClose").onclick = () => showTour(-1);
+  if (intro.on) endIntro();
+  s.go();
+}
+$("#btnTour").addEventListener("click", () => showTour(0));
+
+/* ================= Reverse mode ================= */
+function setReverse(on) {
+  state.reverse = on; $("#revMode").checked = on; buildAnon(); clearSel(); renderAll(); dirty = true;
+}
+$("#revMode").addEventListener("change", (e) => setReverse(e.target.checked));
+
+/* ================= AI guide (window.claude sample) ================= */
+let sample = null, turns = [], ctl = null, cur = null;
+const msgs = $("#msgs");
+function bubble(who, text) {
+  const d = document.createElement("div"); d.className = `msg ${who}`;
+  const t = document.createElement("span"); t.textContent = text; d.append(t);
+  msgs.append(d); msgs.scrollTop = msgs.scrollHeight;
+  if (who === "ai" && state.tab !== "guide" && !$("#tab-guide .dot")) $("#tab-guide").insertAdjacentHTML("beforeend", '<span class="dot" aria-label="new message"></span>');
+  return { el: d, text: t };
+}
+function toolNote(b, s) { if (!b) return; const n = document.createElement("span"); n.className = "tool"; n.textContent = "▸ " + s; b.el.append(n); msgs.scrollTop = msgs.scrollHeight; }
+
+function context() {
+  const d = state.d, rev = state.reverse, s = summary(d);
+  return JSON.stringify({
+    mode: rev ? "reverse engineering: source code and internal names are hidden; infer from structure" : "source shown",
+    design: rev ? undefined : "tt_um_counter: 8-bit counter with enable (en), async active-low reset (rst_n) and terminal-count output (tc). SkyWater 130nm HD standard cells.",
+    verilog: rev ? undefined : d.verilog.join("\n"),
+    version: d.label,
+    cells: d.cells.map((c) => ({ id: cellName(c.id), type: full(c.type), function: LIB[c.type].fn,
+      inputs: Object.fromEntries(Object.entries(c.ins).map(([p, n]) => [p, netName(n)])), output: netName(c.out),
+      ...(rev ? { recovered_role: state.rec.role[c.id] } : { role: c.role, source_line: c.src }) })),
+    recovered_blocks: rev ? state.rec.blocks.map((b) => ({ name: b.name, evidence: b.evidence, cells: b.cells.map(cellName) })) : undefined,
+    stats: { logic_cells: s.cells, area_um2: +s.area.toFixed(1), critical_path_ns: +s.delay.toFixed(2), logic_depth: s.depth, est_max_clock_mhz: Math.round(s.fmax), critical_path: d.t.path.map(cellName) },
+    fault_scan: { faults: state.faults.total, detectable: state.faults.detected, test_vectors: state.faults.tests.length },
+    simulation: { count: toNum(state.q), en: state.en, tc: values.tc, cycles_run: state.cycles, injected_fault: state.fault ? `${netName(state.fault.net)} stuck at ${state.fault.v}` : null },
+    view: state.view, selected_cell: state.selected ? cellName(state.selected) : null,
+  });
+}
+const RULES = () => `You are the guide inside Decap, an IDE for exploring a chip's silicon. The person may know nothing about chips.
+Answer in at most 110 words of plain language. One short everyday analogy is welcome. No markdown headings or bullet symbols.
+Use the tools to show what you talk about: call highlight_cells or select_cell whenever you mention specific cells (use the exact ids from the context). Use cone_of_influence for "what affects X" or "what does X affect", show_critical_path for speed questions, find_input for "how do I get the chip to ...", inject_fault for "what if this wire breaks", set_view to switch colouring.
+Changes: only "lookahead" (faster carry logic, same behaviour), "count_down" and "original" (revert) are pre-built in this prototype; use apply_change for them and report the verification result it returns, including any failed first attempt. For any other change, describe the Verilog edit you would make and say the prototype cannot synthesise it yet.
+Never invent cell ids, numbers or results; report tool results as returned.
+
+Context (JSON):
+${context()}`;
+
+const TOOLS = [
+  { name: "highlight_cells", description: "Light up a set of cells in the 3D chip and fly the camera to them. Returns how many were found.",
+    inputSchema: { type: "object", properties: { cells: { type: "array", items: { type: "string" } } }, required: ["cells"] },
+    execute: ({ cells }) => {
+      const ids = (Array.isArray(cells) ? cells : []).map(resolveCell).filter(Boolean);
+      if (!ids.length) return { found: 0 };
+      clearSel(); state.highlight = new Set(ids); dirty = true; flyTo(ids);
+      toolNote(cur, `highlighted ${ids.length} cell${ids.length > 1 ? "s" : ""}`); return { found: ids.length };
+    } },
+  { name: "select_cell", description: "Select one cell: opens it in the inspector and flies the camera to it.",
+    inputSchema: { type: "object", properties: { cell: { type: "string" } }, required: ["cell"] },
+    execute: ({ cell }) => { const id = resolveCell(cell); if (!id) return { error: "no such cell" }; selectCell(id); showTab("guide"); toolNote(cur, `selected ${cellName(id)}`); return { ok: true }; } },
+  { name: "cone_of_influence", description: "Light up the fan-in cone (direction 'in': everything that can affect the target) or fan-out cone ('out': everything the target can affect within one clock cycle). target is a cell id, a net, or a pin such as tc, en or count[3]. Returns the cells in the cone.",
+    inputSchema: { type: "object", properties: { target: { type: "string" }, direction: { type: "string", enum: ["in", "out"] } }, required: ["target"] },
+    execute: ({ target, direction }) => {
+      const net = resolveNet(target); if (!net) return { error: "no such cell, net or pin" };
+      const list = showCone(net, direction === "out" ? "out" : "in", String(target)); showTab("guide");
+      toolNote(cur, `${direction === "out" ? "fan-out" : "fan-in"} cone of ${target}: ${list.length} cells`); return { cells: list.map(cellName) };
+    } },
+  { name: "show_critical_path", description: "Switch to the timing view and light up the slowest path between two clock edges. Returns its delay, the cells on it and the estimated max clock.",
+    execute: () => { const r = showCriticalPath(); showTab("guide"); toolNote(cur, `critical path ${r.delay_ns} ns`); return r; } },
+  { name: "find_input", description: "Search all reachable states for the shortest input sequence (en=1, en=0, reset per cycle) from the current count to a goal: either count (0-255) or tc=true. Returns the sequence summary and plays it on the chip.",
+    inputSchema: { type: "object", properties: { count: { type: "integer" }, tc: { type: "boolean" } } },
+    execute: ({ count, tc }) => {
+      const goal = tc ? { tc: true } : { count: Math.max(0, Math.min(255, Number(count) || 0)) };
+      const res = seek(goal); showTab("guide");
+      if (!res.ok) { toolNote(cur, "goal unreachable"); return { reachable: false, states_explored: res.explored }; }
+      playPath(res.path); toolNote(cur, `found ${res.path.length}-cycle input sequence`);
+      return { reachable: true, cycles: res.path.length, resets: res.path.filter((a) => a === 2).length, en_high_cycles: res.path.filter((a) => a === 1).length, en_low_cycles: res.path.filter((a) => a === 0).length, states_explored: res.explored };
+    } },
+  { name: "inject_fault", description: "Force a net (or a cell's output, by cell id) stuck at 0 or 1 in the simulator, as a manufacturing defect would. value null clears the fault. Returns how many of the 512 one-cycle tests reveal it.",
+    inputSchema: { type: "object", properties: { target: { type: "string" }, value: { type: ["integer", "null"] } }, required: ["target"] },
+    execute: ({ target, value }) => {
+      if (value === null || value === undefined) { toolNote(cur, "cleared fault"); return setFault(null); }
+      const net = resolveNet(target); if (!net || !faultable(net)) return { error: "cannot fault that net" };
+      const r = setFault({ net, v: Number(value) ? 1 : 0 }); toolNote(cur, `injected ${netName(net)} stuck at ${Number(value) ? 1 : 0}`); return r;
+    } },
+  { name: "set_view", description: "Colour the chip by 'logic' (function, live values), 'timing' (arrival time) or 'activity' (switching). explode 0-1 separates the layers.",
+    inputSchema: { type: "object", properties: { mode: { type: "string", enum: ["logic", "timing", "activity"] }, explode: { type: "number" } } },
+    execute: ({ mode, explode }) => { if (mode) setView(String(mode)); if (typeof explode === "number") setExplode(explode); toolNote(cur, `view ${mode ?? state.view}`); return { ok: true }; } },
+  { name: "run_simulation", description: "Reset (optional), set the enable input, and clock the chip a number of cycles (1-40). Returns the count after each cycle and the current tc.",
+    inputSchema: { type: "object", properties: { cycles: { type: "integer" }, en: { type: "boolean" }, reset: { type: "boolean" } }, required: ["cycles"] },
+    execute: ({ cycles, en, reset }) => {
+      stopRun(); if (reset) step({ action: 2, animate: false });
+      if (typeof en === "boolean") { state.en = en ? 1 : 0; $("#enToggle").checked = en; }
+      const n = Math.max(1, Math.min(40, Number(cycles) || 1)), seen = [];
+      for (let i = 0; i < n; i++) { step({ animate: i === n - 1 }); seen.push(toNum(state.q)); }
+      toolNote(cur, `ran ${n} clock cycle${n > 1 ? "s" : ""}`); return { counts: seen, tc_now: values.tc };
+    } },
+  { name: "apply_change", description: "Apply a pre-built change and verify it against all 512 register/input patterns. change is one of: lookahead, count_down, original. Returns the verification result, including a failed first attempt and its counterexample.",
+    inputSchema: { type: "object", properties: { change: { type: "string", enum: ["lookahead", "count_down", "original"] } }, required: ["change"] },
+    execute: async ({ change }) => { const r = await applyChange(String(change)); toolNote(cur, `applied ${change}`); return r; } },
+];
+const ERR = { not_granted: "The guide needs your OK to use Claude. The tour, analysis, surgery and simulator all work without it.", rate_limited: "Too many questions at once. Wait a moment and ask again.", cancelled: "" };
+
+async function ask(text) {
+  if (!text.trim()) return;
+  if (!sample) { offlineAnswer(text); return; }
+  bubble("me", text); turns.push({ role: "user", content: text });
+  cur = bubble("ai", "Thinking…");
+  $("#askBtn").disabled = true; $("#stopBtn").hidden = false;
+  ctl = new AbortController();
+  try {
+    const { text: answer } = await sample([{ role: "user", content: RULES() }, { role: "assistant", content: "Understood. I'll keep it short, plain and grounded in the tools." }, ...turns.slice(-10)], {
+      cache: false, modelTier: "quick", signal: ctl.signal, tools: TOOLS,
+      onText: ({ text: t }) => { cur.text.textContent = t; msgs.scrollTop = msgs.scrollHeight; },
+    });
+    cur.text.textContent = answer; turns.push({ role: "assistant", content: answer });
+  } catch (e) {
+    cur.text.textContent = e?.text ?? "";
+    const note = ERR[e?.code] ?? `The guide couldn't answer (${e?.code ?? "error"}). Try again in a moment.`;
+    if (note) toolNote(cur, note);
+    turns.pop();
+    if (e?.code === "not_granted") { sample = null; setAiNote(false); }
+  } finally { $("#askBtn").disabled = false; $("#stopBtn").hidden = true; }
+}
+function offlineAnswer(text) {
+  bubble("me", text);
+  const t = text.toLowerCase(); cur = bubble("ai", "");
+  const say = (s) => { cur.text.textContent = s; };
+  if (t.includes("faster")) { say("I'll swap the domino-style carry chain for lookahead logic, where every bit checks all lower bits at once, then prove it behaves exactly like the original."); applyChange("lookahead"); }
+  else if (t.includes("down")) { say("I'll swap the carry chain for a borrow chain so the counter counts down, then check it against the new spec."); applyChange("count_down"); }
+  else if (t.includes("slow") || t.includes("critical") || t.includes("timing")) { const r = showCriticalPath(); say(`The slowest route is ${r.delay_ns} ns long through ${r.gates} gates: a carry has to ripple from bit 0 all the way to bit 7, one gate at a time. That caps the clock near ${r.fmax_mhz} MHz. It's lit in the chip now.`); }
+  else if (t.includes("fault") || t.includes("test") || t.includes("broken")) { const F = state.faults; showTab("analyse"); say(`I tried all ${F.total} ways a single wire could be stuck at 0 or 1. ${F.detected} of them show up within one clock cycle, and just ${F.tests.length} test vectors catch every one. They're in the Analyse tab.`); }
+  else if (t.includes("tc") || t.includes("255") || t.includes("reach")) { const r = seek({ tc: true }); if (r.ok) { say(`To make tc go high the register must reach 255. From here that takes ${r.path.length} clock cycles. Playing it now.`); playPath(r.path); } else say("tc can't be reached from here."); }
+  else if (t.includes("affect") || t.includes("cone")) { showCone("tc", "in", "tc"); say("These cells are everything that can change the tc output: the three AND gates of the detector and the eight flip-flops they watch."); }
+  else if (t.includes("selected") && state.selected) say(state.reverse ? state.rec.role[state.selected] ?? "" : state.d.byId[state.selected].role);
+  else { say("This chip counts. Eight flip-flops remember a number from 0 to 255, and adder gates add 1 on every clock tick while en is on. When it reaches 255, the tc output goes high, then it wraps to 0."); flyTo(null); }
+}
+function setAiNote(on) {
+  $("#aiNote").textContent = on ? "Answers come from Claude on your account. The guide can highlight cells, trace cones, find inputs, inject faults and apply changes." : "Live AI isn't available in this view, so the suggestions below use built-in answers.";
+  $("#askInput").disabled = !on; $("#askInput").placeholder = on ? "Ask about this chip…" : "Use the suggestions below";
+}
+$("#askForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#askInput").value; $("#askInput").value = ""; ask(v); });
+$("#stopBtn").addEventListener("click", () => ctl?.abort());
+const CHIPS = ["What does this chip do?", "Why is it slow?", "What can affect tc?", "How do I make tc go high?", "Which faults can we test for?", "Make it faster", "Make it count down"];
+$("#chips").innerHTML = CHIPS.map((c) => `<button type="button" class="chip">${c}</button>`).join("");
+$("#chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (c) ask(c.textContent); });
+
+/* ================= Command palette and shortcuts ================= */
+function commands() {
+  const list = [
+    ["Run or pause the simulation", "Space", () => (state.running ? stopRun() : startRun())],
+    ["Step one clock edge", ".", () => { stopRun(); step(); }],
+    ["Reset the chip (rst_n)", "", () => { stopRun(); step({ action: 2 }); }],
+    ["View: logic", "1", () => setView("logic")], ["View: timing", "2", () => setView("timing")], ["View: switching activity", "3", () => setView("activity")],
+    ["Toggle exploded layer view", "X", () => setExplode(state.explode > 0.5 ? 0 : 0.85)],
+    ["Show the critical path", "", showCriticalPath],
+    ["Fan-in cone of tc", "", () => selectPort("tc")],
+    ["Run 64 cycles and estimate power", "", () => { showTab("analyse"); runCycles(64); }],
+    ["Find inputs that make tc = 1", "", () => seek({ tc: true })],
+    ["Show the manufacturing test set", "", () => showTab("analyse")],
+    ["Surgery: make it faster", "", () => applyChange("lookahead")],
+    ["Surgery: make it count down", "", () => applyChange("count_down")],
+    ["Surgery: revert", "", () => applyChange("original")],
+    [state.reverse ? "Show the source again" : "Hide the source (reverse mode)", "", () => setReverse(!state.reverse)],
+    ["Start the guided tour", "", () => showTour(0)],
+    ["Replay the decap intro", "", startIntro],
+    ["Clear fault", "", () => setFault(null)],
+  ].map(([label, key, run]) => ({ label, key, run, kind: "command" }));
+  for (const c of state.d.cells) list.push({ label: `Go to cell ${cellName(c.id)}`, key: c.type, run: () => selectCell(c.id), kind: "cell" });
+  if (!state.reverse) state.d.verilog.forEach((t, i) => t.trim() && list.push({ label: `Go to line ${i + 1}: ${t.trim()}`, key: "", run: () => selectLine(i + 1), kind: "line" }));
+  return list;
+}
+let palItems = [], palAt = 0;
+function score(label, q) {
+  if (!q) return 1;
+  const l = label.toLowerCase(); q = q.toLowerCase();
+  if (l.includes(q)) return 100 - l.indexOf(q);
+  let i = 0; for (const ch of l) if (ch === q[i]) i++;
+  return i === q.length ? 10 : 0;
+}
+function renderPalette() {
+  const q = $("#palInput").value.trim();
+  palItems = commands().map((c) => ({ ...c, s: score(c.label, q) })).filter((c) => c.s > 0 && (q || c.kind === "command")).sort((a, b) => b.s - a.s).slice(0, 40);
+  palAt = Math.min(palAt, Math.max(0, palItems.length - 1));
+  $("#palList").innerHTML = palItems.map((c, i) => `<li role="option" aria-selected="${i === palAt}" class="${i === palAt ? "on" : ""}" data-i="${i}">${esc(c.label)}${c.key ? `<small>${esc(c.key)}</small>` : ""}</li>`).join("") || `<li>No match</li>`;
+  $("#palList .on")?.scrollIntoView({ block: "nearest" });
+}
+function openPalette() { $("#palette").hidden = false; $("#palInput").value = ""; palAt = 0; renderPalette(); $("#palInput").focus(); }
+function closePalette() { $("#palette").hidden = true; }
+function runPal(i) { const c = palItems[i]; closePalette(); c?.run(); }
+$("#btnPalette").addEventListener("click", openPalette);
+$("#palInput").addEventListener("input", () => { palAt = 0; renderPalette(); });
+$("#palInput").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); palAt = Math.min(palItems.length - 1, palAt + 1); renderPalette(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); palAt = Math.max(0, palAt - 1); renderPalette(); }
+  else if (e.key === "Enter") { e.preventDefault(); runPal(palAt); }
+  else if (e.key === "Escape") closePalette();
+});
+$("#palList").addEventListener("click", (e) => { const li = e.target.closest("[data-i]"); if (li) runPal(+li.dataset.i); });
+$("#palette").addEventListener("click", (e) => { if (e.target.id === "palette") closePalette(); });
+$("#skipIntro").addEventListener("click", endIntro);
+
+addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("#palette").hidden ? openPalette() : closePalette(); return; }
+  if (!$("#palette").hidden) return;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && document.activeElement.type !== "checkbox" && document.activeElement.type !== "range";
+  if (e.key === "Escape") { if (intro.on) endIntro(); if (tourAt >= 0) showTour(-1); else { selectCell(null); setBanner(null); } return; }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === " " && !/^(BUTTON|LI)$/.test(document.activeElement?.tagName)) { e.preventDefault(); state.running ? stopRun() : startRun(); }
+  else if (e.key === ".") { stopRun(); step(); }
+  else if (e.key === "1") setView("logic"); else if (e.key === "2") setView("timing"); else if (e.key === "3") setView("activity");
+  else if (e.key.toLowerCase() === "x") setExplode(state.explode > 0.5 ? 0 : 0.85);
+  else if (e.key === "F12") { e.preventDefault(); if (state.selected && !state.reverse) selectLine(state.d.byId[state.selected].src); }
+});
+
+/* ================= Boot ================= */
+function renderAll() { renderCode(); renderInspector(); renderStats(); renderLegend(); renderSim(); renderPill(); renderAnalysis(); }
+buildAnon(); palette();
+bubble("ai", "Hi, I'm your guide to this chip. Click any cell, take the guided tour, or ask me something like “why is it slow?”");
+$("#tab-guide .dot")?.remove();
+if (initGL()) { rebuildScene(); startIntro(); }
+renderAll();
+addEventListener("resize", drawWave);
+(async () => {
+  try { sample = window.claude ? await window.claude.use("sample") : null; } catch { sample = null; }
+  setAiNote(!!sample);
+})();
+</script>
