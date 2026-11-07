@@ -22,7 +22,7 @@ export class Guide {
     this.el.className = "drawer";
     this.el.setAttribute("aria-label", "AI guide");
     this.el.innerHTML = `
-      <div class="pane-h">${icon.sparkle}Ask Decap<span class="grow"></span><button class="btn plain icon" type="button" id="gdClose" aria-label="Close" title="Close (Esc)">${icon.close}</button></div>
+      <div class="pane-h">${icon.sparkle}Ask bASIC<span class="grow"></span><button class="btn plain icon" type="button" id="gdClose" aria-label="Close" title="Close (Esc)">${icon.close}</button></div>
       <div class="msgs" id="gdMsgs" aria-live="polite"></div>
       <div class="chipsugg" id="gdSugg"></div>
       <form class="askform" id="gdForm"><input class="text" id="gdIn" autocomplete="off" placeholder="Ask about this chip" aria-label="Ask the guide"><button class="btn primary" type="submit">Send</button></form>`;
@@ -72,7 +72,7 @@ export class Guide {
       wait.textContent = st === 503
         ? "The guide is off on this server. Everything else works without it."
         : st === 404 || st === 0 || st >= 500
-          ? "The guide needs the Decap API, which is offline. Everything else still works."
+          ? "The guide needs the bASIC API, which is offline. Everything else still works."
           : `The guide couldn't answer: ${(e as Error).message}`;
     }
   }

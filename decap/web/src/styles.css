@@ -73,7 +73,9 @@ code { font-family: var(--font-mono); font-size: .95em; }
   border-bottom: 1px solid var(--line); background: rgba(20, 20, 22, .82); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); position: relative; z-index: 10; }
 .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--fg); justify-self: start; }
 .brand:hover { text-decoration: none; }
-.brand b { font-family: var(--font-display); font-weight: 600; font-size: 16px; letter-spacing: -.02em; }
+.brand b { font-family: var(--font-display); font-weight: 800; font-size: 17px; letter-spacing: -.01em; color: #f2efe8; }
+.brand b .b { color: #c6ff3d; }
+.brand .logo { border-radius: 6px; }
 .top .actions { justify-self: end; display: flex; align-items: center; gap: 6px; }
 nav.main { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: rgba(118, 118, 128, .2); }
 nav.main a { color: var(--fg); padding: 4px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; opacity: .78; transition: opacity .15s, background .15s; }
