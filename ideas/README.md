@@ -12,10 +12,10 @@ Scored by a 3-model council (Claude Sonnet 5.5, Claude Opus 5.5, Grok 4.7) on on
 | 5 | **Who Knew?**: informed-money clusters on Polymarket vs the market price | G-R × HRT | 85.0 → **82.7** | [05-who-knew.md](05-who-knew.md) |
 | T | **Decap "Silicon, live"** (Yuyao, #4): real chip in 3D with live gate-level simulation | G-Research (+MetaView) | 81.0 → **85.3** | [06-decap.md](06-decap.md) |
 | T | **Sea-Route "Channel Window"** (Ian, #6): learned crossing window → rescue pre-positioning | G-R × HRT | 71.0 → **79.0** | [07-sea-route-nowcast.md](07-sea-route-nowcast.md) |
-| T | **Sweep** (Ian, #12): browser agent answers a bank customer query across internal systems, plus a GDPR subject-access pack | Wordsmith | **84.5** (Sonnet + Opus, quick) | [#12](https://github.com/yuyaox122/hacktheburgh/issues/12) |
+| T | **Sweep** (Ian, #12): browser agent answers a bank customer query across internal systems, plus a GDPR subject-access pack | Wordsmith | **84.5** (Sonnet + Opus, quick) | [09-sweep.md](09-sweep.md) · [#12](https://github.com/yuyaox122/hacktheburgh/issues/12) |
 | T | **Ghost Ships** (Ian, #11): dark-fleet AIS gaps + sanctions reconciliation | G-R × HRT | **74.5** (quick) | [#11](https://github.com/yuyaox122/hacktheburgh/issues/11) |
 | T | **Shockwave** (Ian, #11) | G-R × HRT | **67.0** (quick) | [#11](https://github.com/yuyaox122/hacktheburgh/issues/11) |
-| T | **Statute to Street** (Ian, #13): bill clause → PolicyEngine reform → your household impact | W / G-R / HRT | not yet scored | [#13](https://github.com/yuyaox122/hacktheburgh/issues/13) |
+| T | **Statute to Street** (Ian, #13): bill clause → PolicyEngine reform → your household impact | Wordsmith | **74.5** (Sonnet 74 · Opus 75, quick; every pairing lower, HRT ~41) | [#13](https://github.com/yuyaox122/hacktheburgh/issues/13) |
 
 **GlassDie is the only idea to clear the bar** (mean ≥90 and no judge below 85): Sonnet 89 · Opus 92 · Grok 91. Fault Lines is the best combined G-R × HRT entry (89.3).
 
