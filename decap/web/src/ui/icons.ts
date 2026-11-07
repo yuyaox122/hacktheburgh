@@ -23,6 +23,7 @@ export const icon = {
   arrowOut: svg(`<path d="M3 8h10M9 4l4 4-4 4"/>`),
   present: svg(`<rect x="1.8" y="2.5" width="12.4" height="8.5" rx="1.5"/><path d="M8 11v2.5M5.5 13.5h5"/>`),
   textSize: svg(`<path d="M2 12.5 5 4.5l3 8M3.1 10h3.8M9.5 12.5l2.25-6 2.25 6M10.3 10.5h2.9"/>`),
+  wrap: svg(`<path d="M2.5 4h11M2.5 8h9a2 2 0 0 1 0 4H8.5M2.5 12h3"/><path d="m10 10.5-1.5 1.5 1.5 1.5"/>`),
   upload: svg(`<path d="M8 10.5V2.8M4.8 6 8 2.8 11.2 6"/><path d="M2.5 10.5v1.7a1.3 1.3 0 0 0 1.3 1.3h8.4a1.3 1.3 0 0 0 1.3-1.3v-1.7"/>`),
   logo: `<svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9a9aa2"/></linearGradient></defs><rect x="3" y="3" width="18" height="18" rx="5" fill="url(#lg)"/><path d="M8.5 7.5v9M12 7.5v9M15.5 7.5v9" stroke="#0b0b0d" stroke-width="1.8" stroke-linecap="round"/></svg>`,
 };

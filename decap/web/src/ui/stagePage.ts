@@ -8,11 +8,10 @@ import { Stage3D, LAYERS, type LayerKey } from "../view/stage3d";
 import { usedArea } from "../view/geometry";
 import { category, CATEGORY_LABEL, CATEGORY_VAR, describe, fullName, toWordsSafe } from "../view/describe";
 import { parse, evalExpr, vars } from "../sim/expr";
-import { $, $$, css, esc, hiVerilog } from "./dom";
+import { $, $$, codeText, css, esc, wrapOn } from "./dom";
 import { icon } from "./icons";
 import { app } from "./state";
 
-const NBSP = " ";
 const SPEEDS: [number, string][] = [[900, "0.5×"], [450, "1×"], [120, "4×"]];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -88,10 +87,12 @@ export class StagePage {
             : `<h3>${esc(design.title ?? design.name)}</h3>`}
           <div class="meta">${icon.code}<span class="file" title="${esc(this.srcFile)}">${esc(this.srcFile || "No source")}</span>
             ${design.source.mapping ? `<span title="${esc(design.source.mapping)}">${icon.info}</span>` : ""}
+            <button class="btn plain icon" type="button" data-wrap aria-pressed="${wrapOn()}" title="Wrap long lines (W)" aria-label="Wrap long lines">${icon.wrap}</button>
             ${many ? `<a class="btn sm" href="#/chip/${encodeURIComponent(design.name)}" title="Read this chip back as Verilog, with its proof">Decompile</a>` : ""}</div>
         </div>
         <div class="pane-b"><ol class="code click" id="stSrc"></ol></div>
         <div class="hint">Click a line to light its cells.</div>
+        <div class="resizer" id="stResize" title="Drag to resize, double-click to reset" aria-hidden="true"></div>
       </aside>
       <main class="viewport" id="stView" aria-label="3D chip view">
         <div class="overlay legend" id="stLegend"></div>
@@ -212,6 +213,28 @@ export class StagePage {
       this.after();
     });
     new ResizeObserver(() => this.drawWave()).observe($("#stWave", el));
+    this.bindResizer();
+  }
+  /** Drag the code pane's right edge to resize it (remembered per browser; double-click resets). */
+  private bindResizer() {
+    const KEY = "decap.codeW", bar = $("#stResize", this.el);
+    const apply = (w: number | null) => {
+      if (w == null) this.el.style.removeProperty("--code-w");
+      else this.el.style.setProperty("--code-w", `${Math.round(Math.max(220, Math.min(w, innerWidth * 0.55)))}px`);
+    };
+    try { const w = Number(localStorage.getItem(KEY)); if (w) apply(w); } catch { /* storage blocked */ }
+    bar.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); bar.setPointerCapture(e.pointerId); bar.classList.add("drag");
+      const left = this.el.getBoundingClientRect().left;
+      const move = (ev: PointerEvent) => apply(ev.clientX - left);
+      const up = () => {
+        bar.classList.remove("drag"); bar.removeEventListener("pointermove", move); bar.removeEventListener("pointerup", up);
+        const w = parseFloat(this.el.style.getPropertyValue("--code-w"));
+        try { if (w) localStorage.setItem(KEY, String(w)); } catch { /* storage blocked */ }
+      };
+      bar.addEventListener("pointermove", move); bar.addEventListener("pointerup", up);
+    });
+    bar.addEventListener("dblclick", () => { apply(null); try { localStorage.removeItem(KEY); } catch { /* storage blocked */ } });
   }
 
   // ---------- simulation ----------
@@ -410,7 +433,7 @@ export class StagePage {
       const ln = i + 1;
       const cls = [this.selLines.has(ln) ? "active" : "", mod && ln >= mod.line && ln <= modEnd ? "mod" : ""].join(" ");
       const count = this.design.cells.filter((c) => c.src === ln).length;
-      return `<li data-ln="${ln}" class="${cls}"><span class="n">${ln}</span><span class="bk"></span><span class="t">${hiVerilog(t) || NBSP}</span>${count ? `<span class="badge" title="${count} cell${count === 1 ? "" : "s"}">${count}</span>` : "<span></span>"}</li>`;
+      return `<li data-ln="${ln}" class="${cls}"><span class="n">${ln}</span><span class="bk"></span>${codeText(t)}${count ? `<span class="badge" title="${count} cell${count === 1 ? "" : "s"}">${count}</span>` : "<span></span>"}</li>`;
     }).join("");
     if (scroll) $("#stSrc li.active", this.el)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }
@@ -421,13 +444,15 @@ export class StagePage {
       this.head(null);
       const d = this.design;
       el.innerHTML = `
-        <div class="insp-title"><div><b>${esc(d.title ?? d.name)}</b><small>${esc(d.name)}</small></div></div>
-        <p class="insp-role">${esc(d.intro ?? "A real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell, a tiny pre-made circuit.")}</p>
+        <div class="insp-title"><div><b>${esc(d.title ?? d.name)}</b><small>${d.author ? `By ${esc(d.author)}. ` : ""}Tiny Tapeout 8, SkyWater 130 nm</small></div></div>
+        ${d.how ? `<div class="group"><span class="eyebrow">How it works</span><p class="insp-role" style="color:var(--fg)">${esc(d.how)}</p></div>`
+          : `<p class="insp-role">${esc(d.intro ?? "A real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell, a tiny pre-made circuit.")}</p>`}
+        ${d.try ? `<div class="callout"><b>Try it</b><span>${esc(d.try)}</span></div>` : ""}
         <div class="statgrid">
           <div class="stat"><b>${this.logicCount}</b><span>Logic cells</span></div>
           <div class="stat"><b>${this.sim.flops.length}</b><span>Flip-flops</span></div>
           <div class="stat"><b>${this.design.counts?.nets ?? this.design.counts?.nets_on_wires ?? "?"}</b><span>Wires</span></div>
-          <div class="stat"><b>${this.usedSize}<small>µm</small></b><span>Logic area</span></div>
+          <div class="stat"><b class="area">${this.usedSize}<small>µm</small></b><span>Logic area</span></div>
         </div>
         <dl class="kv">
           <dt>Process</dt><dd>${esc(d.pdk)}</dd>
@@ -436,7 +461,8 @@ export class StagePage {
           <dt>Filler and taps</dt><dd>${d.phys.length} cells</dd>
           <dt>Routing</dt><dd>${d.counts?.route_segments ?? "?"} segments, ${d.counts?.vias ?? "?"} vias</dd>
         </dl>
-        <p class="fine">${d.hint ? esc(d.hint) : "Select a cell, wire or pin to inspect it. Press Run to clock the chip; wires carrying a 1 glow."}</p>
+        <p class="fine">${d.how ? "Every coloured block in the view is a standard cell, a tiny pre-made circuit, and the metal above it is the real wiring. Select a cell, wire or pin to inspect it." : d.hint ? esc(d.hint) : "Select a cell, wire or pin to inspect it. Press Run to clock the chip; wires carrying a 1 glow."}</p>
+        <p class="fine mono">${esc(d.name)}</p>
         ${d.credit ? `<p class="fine">${esc(d.credit)}</p>` : ""}`;
       return;
     }

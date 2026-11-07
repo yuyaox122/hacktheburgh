@@ -56,6 +56,10 @@ export interface Design {
   title?: string;
   intro?: string;
   hint?: string;
+  /** Plain-English notes from ingest/chip_notes.json: how the chip works, and one thing to try in the simulator. */
+  author?: string | null;
+  how?: string;
+  try?: string;
   io?: { in: IoField[]; out: IoField[] };
 }
 export interface IoField { name: string; bits: string[] }

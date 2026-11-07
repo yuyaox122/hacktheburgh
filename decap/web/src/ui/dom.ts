@@ -37,3 +37,20 @@ export function toast(text: string, kind: "good" | "bad" | "" = "") {
   document.body.append(t);
   setTimeout(() => t.remove(), 4200);
 }
+
+/** One code line's text cell. Leading indent becomes a CSS variable so wrapped lines hang under their own indent. */
+export function codeText(line: string): string {
+  const lead = /^[ \t]*/.exec(line)![0];
+  const ind = [...lead].reduce((n, ch) => n + (ch === "\t" ? 4 : 1), 0);
+  const body = line.slice(lead.length);
+  return `<span class="t" style="--i:${ind}">${hiVerilog(body) || "\u00a0"}</span>`;
+}
+
+const WRAP_KEY = "decap.wrap";
+/** Soft wrap for every code view (on by default, remembered per browser). */
+export function wrapOn(): boolean { try { return localStorage.getItem(WRAP_KEY) !== "0"; } catch { return true; } }
+export function setWrap(on: boolean) {
+  document.body.classList.toggle("nowrap", !on);
+  try { localStorage.setItem(WRAP_KEY, on ? "1" : "0"); } catch { /* private mode */ }
+  document.querySelectorAll<HTMLElement>("[data-wrap]").forEach((b) => b.setAttribute("aria-pressed", String(on)));
+}
