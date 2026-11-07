@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 
 import anthropic
 
@@ -25,8 +28,32 @@ Rules:
 - Reply with JSON only: {"reply": "<text>", "lines": [<decompiled line numbers you mention>], "cells": [<cell ids you mention>]}"""
 
 
-def available() -> bool:
+def _has_key() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+
+
+def available() -> bool:
+    # No API key: fall back to the local `claude` CLI (Claude Code login), unless DECAP_GUIDE_CLI=0.
+    return _has_key() or (os.environ.get("DECAP_GUIDE_CLI", "1") != "0" and shutil.which("claude") is not None)
+
+
+def _ask_cli(system: str, msgs: list[dict]) -> tuple[str, str]:
+    """One-shot `claude -p` with no tools; the conversation is passed as a transcript."""
+    convo = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in msgs)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE_CODE") and k != "CLAUDECODE"}
+    out = subprocess.run(
+        ["claude", "-p", "--output-format", "json", "--model", os.environ.get("DECAP_GUIDE_CLI_MODEL", "sonnet"),
+         "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
+         "--system-prompt", system],
+        input=f"{convo}\n\nReply to the last USER message, as JSON only.", capture_output=True, text=True,
+        timeout=120, env=env, cwd=tempfile.gettempdir(),
+    )
+    if out.returncode != 0:
+        raise RuntimeError(f"claude CLI failed: {(out.stderr or out.stdout)[-400:]}")
+    data = json.loads(out.stdout)
+    if data.get("is_error"):
+        raise RuntimeError(f"claude CLI error: {str(data.get('result'))[:400]}")
+    return str(data.get("result", "")), "claude-cli:" + os.environ.get("DECAP_GUIDE_CLI_MODEL", "sonnet")
 
 
 def context_text(result: dict, selection: dict | None) -> str:
@@ -44,10 +71,18 @@ def context_text(result: dict, selection: dict | None) -> str:
 
 
 def ask(result: dict, messages: list[dict], selection: dict | None = None) -> dict:
-    client = anthropic.Anthropic()
     msgs = [{"role": m["role"], "content": str(m["content"])} for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
     if not msgs or msgs[-1]["role"] != "user":
         raise ValueError("the last message must be from the user")
+    if _has_key():
+        text, model = _ask_api(result, msgs, selection)
+    else:
+        text, model = _ask_cli(RULES + "\n\n" + context_text(result, selection), msgs)
+    return _parse(result, text, model)
+
+
+def _ask_api(result: dict, msgs: list[dict], selection: dict | None) -> tuple[str, str]:
+    client = anthropic.Anthropic()
     resp = client.beta.messages.create(
         model=MODEL,
         max_tokens=2000,
@@ -58,8 +93,12 @@ def ask(result: dict, messages: list[dict], selection: dict | None = None) -> di
         fallbacks="default",
     )
     if resp.stop_reason == "refusal":
-        return {"reply": "The guide declined to answer that one.", "highlights": {"cells": [], "lines": []}}
-    text = "".join(b.text for b in resp.content if b.type == "text").strip()
+        return '{"reply": "The guide declined to answer that one."}', resp.model
+    return "".join(b.text for b in resp.content if b.type == "text").strip(), resp.model
+
+
+def _parse(result: dict, text: str, model: str) -> dict:
+    text = text.strip()
     m = re.search(r"\{.*\}", text, re.S)
     try:
         data = json.loads(m.group(0)) if m else {"reply": text}
@@ -69,4 +108,4 @@ def ask(result: dict, messages: list[dict], selection: dict | None = None) -> di
     n_lines = result["decompiled"]["verilog"].count("\n") + 1
     cells = [c for c in data.get("cells", []) if c in known_cells]
     lines = [int(l) for l in data.get("lines", []) if str(l).isdigit() and 1 <= int(l) <= n_lines]
-    return {"reply": str(data.get("reply", text))[:1500], "highlights": {"cells": cells, "lines": lines}, "model": resp.model}
+    return {"reply": str(data.get("reply", text))[:1500], "highlights": {"cells": cells, "lines": lines}, "model": model}
