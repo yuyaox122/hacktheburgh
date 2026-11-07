@@ -141,6 +141,10 @@ Code changes:
 - Verilog designs (no `y`) still get the one-row layout with pitch 6.
 
 ### Next ideas
+- **Tiny FPGA** (done, see README "A tiny FPGA"):
+  - `examples/fpga.v` (2 CLBs, LUT3 + flop, 30-bit bitstream as levers) and `fpga.py` (bitstreams, checks, demo load functions).
+  - It sits in the demo world at x 0..980, z 1201..1462.
+  - To grow it: give Verilog designs a tiled 2-D placement (one CLB per tile). The one-row layout reaches 2.2M blocks at 8 CLBs.
 - **Speed and size:** z is mostly channels. Fewer tracks would come from better spine column choice (today: the shortest total trunks, then the nearest to the median pin). Pads facing south into row 1's channel would save one channel per IO net.
 - The display idea below (signs per cell) is **done**: each cell's group has a sign at `zt + 4` (south of its tiles).
 - A picture for the pitch: `python3 mapview.py <chip> 2`.

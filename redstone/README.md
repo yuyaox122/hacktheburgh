@@ -49,6 +49,34 @@ python3 demo.py chip counter                          # playable, with a CLOCK b
 
 Memories become flops. Keep designs small: about 100 primitives makes a build of roughly 600 × 100 blocks.
 
+## A tiny FPGA, in redstone
+
+`examples/fpga.v` is a small FPGA:
+- 2 logic blocks (CLBs). Each one is a 3-input lookup table plus an optional flip-flop.
+- Each LUT input picks one of 4 signals: a data pin, its own flop, or its neighbour's flop.
+- Feedback only goes through flops, so no bitstream can make a combinational loop.
+
+Its 30-bit **bitstream is a bank of levers**. It goes through the normal Verilog path, so the FPGA itself becomes redstone: 126 primitives, 981 × 262 blocks, 149k blocks, settling in 317 redstone ticks.
+
+| Check (vanilla 1.21.11) | Result |
+|---|---|
+| Random bitstream + random data every cycle, vs iverilog on `fpga.v` | **30/30** |
+| Programmed as a full adder / 2-bit counter with enable / 2-bit shift register, vs a Python model | **16/16 each** |
+| Live: adder loaded by `/function redstone:tiny_fpga/load_adder`, then pins flipped | 3/3 |
+
+```sh
+python3 verilog.py examples/fpga.v --z 1200 && python3 check.py vchip examples/fpga.v 30
+python3 fpga.py bits counter                # the bitstream
+python3 fpga.py check counter 16 --nobuild  # program the levers, compare with the model
+python3 demo.py chip tiny_fpga && python3 fpga.py demo   # playable: /function redstone:tiny_fpga/load_<adder|counter|shift>
+```
+
+**Scaling:** the one-row layout grows quickly, because wire tracks grow with the logic.
+- 4 CLBs would be 252 primitives and 568k blocks, settling in 558 rt.
+- 8 CLBs would be 504 primitives and 2.2M blocks, settling in 1128 rt (about 56 s).
+
+An FPGA is a regular grid, so a tiled layout (one CLB per tile, with short local wires) is the way to go bigger.
+
 ## Run it
 
 ```sh
