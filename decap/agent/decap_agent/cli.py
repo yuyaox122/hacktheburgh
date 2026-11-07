@@ -6,6 +6,7 @@
   decap ask "question"                 ask the guide agent (needs a model key; DECAP_GUIDE_MODEL)
   decap explain CHIP --cone-of X       Witness: a region agent looks, claims, gets checked, refines (LLM)
   decap claim CHIP "expr" --cone-of X  Witness: send one claim straight to the checker (no LLM)
+  decap formalise "sentence" [CHIP]    the judge's sentence -> a formal line + the checker's English (--check: verdict)
   decap mcp [--http PORT]              serve the tools over MCP (stdio by default)
   decap replay FILE [--check]          step through a recorded run; --check re-runs and compares
   decap stream FILE [--port 8790]      serve a transcript to the UI (SSE /events)
@@ -97,11 +98,10 @@ async def _demo(server, n: int, chip: str | None = None) -> dict:
     async with Client(server) as c:
         async def call(tool, **a):
             return result_payload(await c.call_tool(tool, a))
-        names = {t.name for t in await c.list_tools()}
-        if "resolve_scope" not in names:
+        rows = await call("list_chips")
+        if not (isinstance(rows, list) and rows and rows[0].get("source") == "stub"):  # the real core
             return await _demo_real(call, n, chip)
-        base = "stub_counter8"
-        await call("list_chips")
+        base = "stub_counter8"   # list_chips above was the demo's first step
         planted = (await call("plant_trigger", chip=base, n=n))["chip"]
         await call("strip_names", chip=planted)
         # The user points at the output logic in the 3D view; the agent works only inside that region.
@@ -167,6 +167,12 @@ def main(argv: list[str] | None = None) -> int:
     _scope_args(k)
     k.add_argument("--label", default="")
     k.add_argument("--dry", action="store_true", help="parse and render the English only (the confirm step)")
+    f = sub.add_parser("formalise", help="a person's sentence -> one checkable claim")
+    f.add_argument("sentence")
+    f.add_argument("chip", nargs="?", help="chip to take names from (default: the Tiny Tapeout pinout)")
+    _scope_args(f)
+    f.add_argument("--model", help="default: $DECAP_FORMALISE_MODEL or anthropic:claude-sonnet-5-5")
+    f.add_argument("--check", action="store_true", help="also send it to the checker (after the person confirms)")
     m = sub.add_parser("mcp", help="serve tools over MCP")
     m.add_argument("--http", type=int, metavar="PORT", help="streamable HTTP on this port instead of stdio")
     r = sub.add_parser("replay", help="step through a recorded run")
@@ -225,6 +231,10 @@ def main(argv: list[str] | None = None) -> int:
         _print({k: run[k] for k in ("chip", "scope", "model", "first_draft", "final", "explained", "cached")}
                | {"claim": run["attempts"][-1]["claim"], "english": run["attempts"][-1]["english"],
                   "credit": run["attempts"][-1]["credit"]})
+    elif args.cmd == "formalise":
+        from .formalise import formalise
+        _print(asyncio.run(formalise(args.sentence, server=server if args.chip else None, chip=args.chip,
+                                     scope=_scope(args), model=args.model, transcript=transcript, check=args.check)))
     elif args.cmd == "claim":
         out = asyncio.run(_call(server, "propose_claim", {"chip": args.chip, "scope": _scope(args), "claim": args.claim,
                                                           "label": args.label, "check": not args.dry}))
