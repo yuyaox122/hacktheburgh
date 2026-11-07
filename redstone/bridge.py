@@ -178,8 +178,13 @@ def sim_state(e: dict) -> dict:
     return _sims[bid]
 
 
-def software_check(pn: tm.PrimNetlist, src: Path) -> dict:
-    """Redstone netlist (PrimSim) vs iverilog running the ORIGINAL source, on random vectors."""
+def software_check(pn: tm.PrimNetlist, src: Path) -> dict | None:
+    """Redstone netlist (PrimSim) vs iverilog running the ORIGINAL source, on random vectors.
+    None when iverilog is not installed (the build still works; the page then shows no check badge)."""
+    import shutil
+    if not shutil.which("iverilog"):
+        print("[bridge] iverilog not found: skipping the software check", file=sys.stderr)
+        return None
     ins = [b for b in pn.inputs if b not in (tm.HOLD_M, tm.HOLD_S)]
     outs = list(pn.outputs)
     vecs = verilog.vectors(ins, CHECK_VECTORS)
