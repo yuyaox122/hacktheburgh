@@ -1,10 +1,76 @@
 # Decap: View Source for silicon
 
-> **Status (Sat 7 Nov 2026, evening, v3):** Rebuilt around the council's combined pick: a **proven silicon decompiler, scored on held-out Tiny Tapeout chips, with the judge's hidden number as the finale** (§1–3, §5, §6.7–6.8, §9–13). Council results are in §13. It has not been rescored yet. The previous find-and-fix plan is now Plan B (§5.1). Yuyao's proposal for HackTheBurgh 2026. The **team direction is NOT decided yet**: Alex and Ian lean towards Fault Lines (see `ideas/README.md`). Confirm direction on the board (issue #1) before assigning work. Original idea: issue #4. Council variant: `ideas/08-glassdie.md`.
+> **Status (Sat 7 Nov 2026, late evening, v4):** §0 distils the plan to one product, one pain point and three numbers, with a pitch per track, and records a passing Yosys smoke test on a real TT08 chip (§0.7). The v3 status follows.
 >
-> **Reading order for a new session:** §1–3 (what and why), §8 (verified facts), §6 (architecture), §10 (build order), then the rest as needed. A clickable prototype lives at `docs/decap/prototype.html`, also published at https://claude.ai/artifact/E6mMDJXF6mY6uG5arCRHNb (private to Yuyao).
+> **v3 status:** Rebuilt around the council's combined pick: a **proven silicon decompiler, scored on held-out Tiny Tapeout chips, with the judge's hidden number as the finale** (§1–3, §5, §6.7–6.8, §9–13). Council results are in §13. It has not been rescored yet. The previous find-and-fix plan is now Plan B (§5.1). Yuyao's proposal for HackTheBurgh 2026. The **team direction is NOT decided yet**: Alex and Ian lean towards Fault Lines (see `ideas/README.md`). Confirm direction on the board (issue #1) before assigning work. Original idea: issue #4. Council variant: `ideas/08-glassdie.md`.
+>
+> **Reading order for a new session:** §0 (the distilled version, read this first), §8 (verified facts), §6 (architecture), §10 (build order), then the rest as needed. §1–3 are the longer v3 framing; where they disagree with §0, §0 wins. A clickable prototype lives at `docs/decap/prototype.html`, also published at https://claude.ai/artifact/E6mMDJXF6mY6uG5arCRHNb (private to Yuyao).
 
 ---
+
+## 0. The distilled version (v4, Sat 7 Nov late evening)
+
+v3 had one good product buried under four pitches and nineteen features. This section is the version to pitch and build. Everything not named here is optional.
+
+### 0.1 The product (one sentence)
+**Decap turns the file a chip is actually made from (the gate-level netlist) back into short Verilog a person can review, and proves that Verilog is exactly the same circuit.**
+
+### 0.2 The pain point (one sentence)
+**The source code isn't what gets manufactured. The netlist is, and nobody can read it, so nobody can check it does only what the source says.**
+
+- **The software parallel is the xz backdoor (2024):** the code that switched it on was in the release tarball, not in the git repo people had reviewed. Chips have the same gap between what was reviewed and what was shipped, and no way to read what was shipped.
+- **Third-party chip parts are often delivered as netlists only** (to protect the vendor's secrets). The research literature calls trojan detection in them hard because there is no trusted version to compare against.
+- **AI now writes chip code, and AI can hide things in it.** GHOST (arXiv 2412.02816, 2024) used LLMs to insert hardware trojans that its authors report all evaded an ML detector. CSAW 2025 ran an "AI Hardware Attack Challenge". Cadence, Synopsys and Siemens all sell agentic RTL tools (2026).
+- **Today's tools give a verdict, not something to read.** An equivalence checker says "N points don't match"; a trojan detector names a wire. Decap's answer is **a line of code**.
+
+**User:** a security reviewer handed a chip block they didn't write. One persona. (The student and "AI touched my chip" personas are out of the pitch.)
+
+### 0.3 The claim, and the three numbers that back it
+On N real Tiny Tapeout chips Decap has never seen (names stripped):
+1. **Proven:** X of N decompiles proven equivalent by Yosys.
+2. **Readable:** Y% of logic cells explained by recognised blocks (counters, adders, comparators, muxes, registers), and the decompile's line count vs the author's. *This is the hard part.* A gate-by-gate transliteration passes the proof trivially, so "proven" alone proves nothing about readability. Block coverage is the field's own measure (Subramanyan et al., IEEE TETC 2014: 68% of a 375k-gate SoC).
+3. **Finds what doesn't belong:** planted-trigger catch rate, and false alarms on clean copies.
+
+**The moment:** the judge picks a number; it comes back as a line of recovered code nobody wrote, and as the counterexample input from the formal checker.
+
+### 0.4 The pitch per track (one build; only the first 15 s and the headline number change)
+| Track | Opening line | Headline number | First moment |
+|---|---|---|---|
+| **G-Research** (security angle) | "The netlist is where tampering hides, and nobody can read it." | Trigger catch rate / false alarms, then X/N proven | The judge's number |
+| **MetaView** (best overall) | "Software has View Source. Silicon doesn't." | X/N real chips read back, beside each author's code | Reading a chip, then the judge's number |
+| JetBrains | "What did my Verilog turn into?" | n/a | Only if we ship a plugin. Default: skip. |
+| HRT | n/a | n/a | Skip: no real prediction driving a decision |
+
+Don't build features for a second track; the council penalises a forced second track.
+
+### 0.5 What stays and what goes
+- **Keep:** the decompile + proof engine, the proof wall (X/N), block coverage, the planted trigger + judge's number, the author's code side by side.
+- **Keep only if free from the prototype:** the 3D warm-up chip as a 10-second opener.
+- **Cut from the plan:** Compare / "chips like mine", the AI guide, Fix, the JetBrains plugin, HRT. (They can return as Q&A answers.)
+
+### 0.6 Prior art (say it plainly)
+HAL (github.com/emsec/hal, netlist RE framework), Subramanyan et al. 2014 and WordRev (block recovery), GenEDA (arXiv 2504.09485, ICCAD'25: netlist → RTL with LLMs), Gate-Breaker (IEEE IPCCC 2025: LLM netlist-to-RTL; only its record was found, read it before Q&A). None that we found proves each output and scores it against real authors' code on held-out chips. **That combination is the edge, not the idea of decompiling.**
+
+### 0.7 Smoke test, done (Sat 7 Nov, ~18:30): the proof step works
+On `tt_um_Electom_cla_4bits` (TT08, 59 logic cells, 5 flip-flops; author's source is a hand-written 4-bit carry-lookahead adder with registered outputs):
+
+| Check | Result |
+|---|---|
+| Author source ≡ shipped netlist (`equiv_make` / `equiv_simple` / `equiv_induct`) | **Proven**, 24/24 points, ~1 s |
+| Control: one gate swapped (xnor → xor) in the netlist | **Fails**, 1 unproven point |
+| Control: trigger planted (`uo_out[4] |= (ui_in == 137)`) | **Fails**; `miter` + `sat -seq 3` counterexample gives **`ui_in = 137`** |
+| **Blind:** all internal names stripped; hand-written 5-line decompile (`r <= a + b + cin`, 5 flops) ≡ netlist (`sat -tempinduct`) | **Proven** (induction). The decompile is shorter than the author's source. |
+| Blind control: same decompile vs the planted netlist | **Fails** (base case) |
+
+- **Cell models:** generated from per-cell Liberty JSON in `google/skywater-pdk-libs-sky130_fd_sc_hd` (`cells/<c>/sky130_fd_sc_hd__<c>_<n>__tt_025C_1v80.lib.json`). There is **no merged `.lib` at `timing/`** in that repo. Fill/tap/decap become empty modules. Script: `docs/decap/smoke/`.
+- **Trap found:** `miter -ignore_gold_x` made the planted-trigger check pass silently. Never use it, and run a planted control alongside every proof.
+- **Leak found:** TT08 netlists keep the author's internal wire names (`co`, `co_w`, `s_w[0]`). Strip them (`rename -hide w:* c:*; opt_clean -purge`) before anything "blind".
+- **Still untested:** a chip with counters/FSMs where the decompile's state doesn't map 1:1, and an automatic (not hand-written) decompile. That's the next gate.
+
+### 0.8 What to do next
+1. **Settle the direction with Alex and Ian** (Decap, possibly merged with GlassDie, vs Fault Lines). The lead's call.
+2. If Decap: **automatic decompile on 3 dev chips** (adder/comparator/register templates + functional probes), proven with the §0.7 scripts. That's the hour-6 gate.
+3. **Rescore §0 with the council** under both lenses (G-R security, MetaView) to choose which to lead with.
 
 ## 1. The pitch
 
@@ -297,7 +363,8 @@ TT08 netlist (.v) ──► Yosys read + SKY130 functional models ──► stri
 | The prototype logic is correct: base counts up; lookahead equivalent on 512/512; count-down correct; placement legal | Node test of the prototype's pure functions |
 | **TT08 sizes (logic cells, excluding fill/tap/decap/diode/conb):** 121 netlists fetched (14 failed, mostly analog/ROM projects); median 819; **20 Verilog/SystemVerilog chips with 20–300 logic cells** (e.g. obstacle detection 27, 4-bit CLA 59, signed add/sub 65, 4-bit ALU 91, 7-seg decode 94, clock divider 106, MAC 118, alarm clock 119, I2C peripheral 190, I2S→PWM 231, 4-bit ALU 260), plus **6 Wokwi** chips (28–168). Some may be near-duplicates (`dpmu`/`dpmunit`, two micro-tile containers). Counts include buffers. | Downloaded all netlists with `gh api`; regex count; `info.yaml` for language and title |
 | A TT08 `commit_id.json` points to the author's repo + commit, and the source exists there (`tt_um_Electom_cla_4bits` → `Electom/tt08_CSA_4bits@213ea90`, `src/project.v`) | `gh api` (checked on 1 chip; check all candidates at setup) |
-| **Not verified:** KLayout geometric connectivity extraction on SKY130; the exact Liberty/LEF paths; Yosys `equiv`/`sat` behaviour on these cells; whether JetBrains accepts a JCEF-wrapped web app | |
+| Yosys proves a TT08 netlist equal to its author's source and to a hand-written blind decompile, and catches a swapped gate and a planted trigger (counterexample = the trigger value) | §0.7; scripts in `docs/decap/smoke/` |
+| **Not verified:** KLayout geometric connectivity extraction on SKY130; the LEF paths; Yosys proofs on chips with counters/FSMs; whether JetBrains accepts a JCEF-wrapped web app | |
 
 ## 9. Demo script (90 s) and judging moments
 
