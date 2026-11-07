@@ -361,8 +361,9 @@ def save(lay: Layout, out: Path) -> None:
 
 if __name__ == "__main__":
     import sys
+    z = int(sys.argv[sys.argv.index("--z") + 1]) if "--z" in sys.argv else 200
     pn = tm.build(sys.argv[1])
     tm.prune(pn)
-    lay = route(pn)
+    lay = route(pn, z_min=z)
     print(lay.stats)
     save(lay, Path(__file__).resolve().parent / "out" / sys.argv[1])
