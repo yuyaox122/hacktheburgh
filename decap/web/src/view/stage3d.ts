@@ -179,8 +179,8 @@ export class Stage3D {
     const goldMat = std({ color: 0xe0b45a, metalness: 0.95, roughness: 0.22, envMapIntensity: 0.9 });
     const ports = this.design.ports;
     const pads = [
-      ...ports.map((p) => ({ name: p.name, dir: p.dir as string, x: p.x, y: p.y })),
-      { name: "VPWR", dir: "pwr", x: W * 0.35, y: H - 0.4 }, { name: "VGND", dir: "pwr", x: W * 0.65, y: 0.4 },
+      ...ports.map((p) => ({ name: p.name, label: p.label ?? p.name, dir: p.dir as string, x: p.x, y: p.y })),
+      { name: "VPWR", label: "VPWR", dir: "pwr", x: W * 0.35, y: H - 0.4 }, { name: "VGND", label: "VGND", dir: "pwr", x: W * 0.65, y: 0.4 },
     ];
     for (const p of pads) {
       const px = this.sx(p.x), pz = this.sz(p.y);
@@ -199,9 +199,9 @@ export class Stage3D {
       if (p.dir !== "pwr") this.bond.push({ net: p.name, mat: wm });
       const el = document.createElement("div");
       el.className = "pinlabel" + (p.dir === "pwr" ? " pwr" : "");
-      el.textContent = p.name;
+      el.textContent = p.label;
       if (p.dir !== "pwr") {
-        el.title = p.dir === "out" ? `Output ${p.name}: click to see everything that drives it` : `Input ${p.name}: click to see everything it reaches`;
+        el.title = p.dir === "out" ? `Output ${p.label !== p.name ? `${p.label} (${p.name})` : p.name}: click to see everything that drives it` : `Input ${p.label !== p.name ? `${p.label} (${p.name})` : p.name}: click to see everything it reaches`;
         el.addEventListener("click", () => this.cb.onPort(p.name));
         this.pinEls.set(p.name, el);
       } else el.style.pointerEvents = "none";
@@ -599,5 +599,22 @@ export class Stage3D {
 
   start() { if (this.ok && !this.running) { this.running = true; this.resize(); this.renderer.setAnimationLoop(this.tick); } }
   stop() { if (this.ok && this.running) { this.running = false; this.renderer.setAnimationLoop(null); } }
+  /** Free the WebGL context (browsers allow only a few at once): called when the Stage switches chips. */
+  dispose() {
+    this.stop();
+    this.ro?.disconnect();
+    if (this.ok) {
+      this.controls?.dispose();
+      this.chip?.traverse((o) => {
+        const m = o as THREE.Mesh;
+        m.geometry?.dispose?.();
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        (Array.isArray(mat) ? mat : mat ? [mat] : []).forEach((x) => x.dispose());
+      });
+      this.renderer.dispose();
+      this.renderer.forceContextLoss();
+    }
+    this.host.replaceChildren();
+  }
   noteInput() { this.lastInput = performance.now(); }
 }

@@ -100,6 +100,8 @@ input.num { width: 74px; font-family: var(--font-mono); }
 .pane-h { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); min-height: 36px; flex-wrap: wrap; }
 .pane-h b { color: var(--fg); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0; text-transform: none; font-weight: 500; }
 .pane-h .grow { flex: 1; }
+.pane-h.chippick { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.pane-h.chippick select { flex: 1; min-width: 0; font-size: 12.5px; }
 .pane-b { flex: 1; min-height: 0; overflow: auto; }
 .sect { padding: 12px 14px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
 .sect h4 { font-size: 14px; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }

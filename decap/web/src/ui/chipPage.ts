@@ -2,7 +2,7 @@
 // block coverage, and the stripped netlist as a 2D graph. Find (plant a trigger) and Fix (remove and prove) live here.
 
 import type { BenchChip, ChipResult, FixResult, Lib } from "../data/types";
-import { fix as apiFix, loadBench, loadChip, loadLib, plant as apiPlant, type Source } from "../data/load";
+import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plant as apiPlant, type Source } from "../data/load";
 import { NetGraph } from "./graph";
 import { $, $$, esc, hiVerilog, toast } from "./dom";
 import { app } from "./state";
@@ -61,10 +61,13 @@ export class ChipPage {
 
   private ready: Promise<void> | null = null;
   /** Idempotent: every caller awaits the same load. */
+  /** This chip has a 3D layout on the Stage (data/designs/<chip>.json). */
+  private in3d = false;
   load(): Promise<void> { return (this.ready ??= this.doLoad()); }
   private async doLoad() {
     try {
-      const [{ data, source }, lib, bench] = await Promise.all([loadChip(this.chip), loadLib(), loadBench().catch(() => null)]);
+      const [{ data, source }, lib, bench, stageIdx] = await Promise.all([loadChip(this.chip), loadLib(), loadBench().catch(() => null), loadStageIndex()]);
+      this.in3d = !!stageIdx?.chips.some((c) => c.chip === this.chip);
       this.clean = data; this.source = source; this.lib = lib;
       this.benchRow = bench?.data.chips.find((c) => c.chip === this.chip) ?? null;
       this.file = Object.keys(data.author_source?.files ?? {})[0] ?? null;
@@ -118,6 +121,7 @@ export class ChipPage {
         </div>
         <span class="grow" style="flex:1"></span>
         ${this.source === "fixture" ? `<span class="pill warn">fixture data</span>` : ""}
+        ${this.in3d ? `<a class="btn sm" href="#/stage/${encodeURIComponent(this.chip)}" title="This chip's real layout in 3D, with a live simulator">View in 3D</a>` : ""}
         <button class="btn sm" type="button" id="cpGuide">Ask the guide <kbd>G</kbd></button>
       </header>
       <div class="codes">

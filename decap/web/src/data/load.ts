@@ -42,12 +42,19 @@ async function firstOf<T>(tries: [Source, () => Promise<T>][]): Promise<{ data: 
   throw last;
 }
 
-export async function loadDesign(): Promise<{ design: Design; lib: Lib }> {
-  const [design, lib] = await Promise.all([getJson<Design>("/data/design.json"), getJson<Lib>("/data/lib.json")]);
+/** The Stage's chip: /data/designs/<chip>.json (from ingest_gds.py --all), else the single /data/design.json. */
+export async function loadDesign(chip?: string | null): Promise<{ design: Design; lib: Lib }> {
+  const one = chip ? getJson<Design>(`/data/designs/${encodeURIComponent(chip)}.json`).catch(() => getJson<Design>("/data/design.json"))
+    : getJson<Design>("/data/design.json");
+  const [design, lib] = await Promise.all([one, loadLib()]);
   return { design, lib };
 }
+export interface StageChip { chip: string; title: string; logic_cells: number; flops: number }
+let stageIndex: Promise<{ default: string; chips: StageChip[] } | null> | null = null;
+/** Chips the Stage can show (data/designs/index.json); null when only the single design.json exists. */
+export const loadStageIndex = () => (stageIndex ??= getJson<{ default: string; chips: StageChip[] }>("/data/designs/index.json").catch(() => null));
 let libCache: Promise<Lib> | null = null;
-export const loadLib = () => (libCache ??= getJson<Lib>("/data/lib.json").catch(() => ({}) as Lib));
+export const loadLib = () => (libCache ??= getJson<Lib>("/data/lib.json"));
 
 let benchCache: Promise<{ data: Bench; source: Source }> | null = null;
 export function loadBench(): Promise<{ data: Bench; source: Source }> {

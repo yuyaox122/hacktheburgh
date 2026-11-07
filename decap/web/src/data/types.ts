@@ -38,7 +38,7 @@ export interface Design {
   rowHeight: number;
   site: number;
   rows?: { y: number; orient: string }[];
-  ports: { name: string; dir: "in" | "out" | "inout"; x: number; y: number }[];
+  ports: { name: string; dir: "in" | "out" | "inout"; x: number; y: number; label?: string }[];
   cells: DesignCell[];
   phys: { type: string; x: number; y: number; w: number; orient?: string }[];
   routes: { net: string; layer: string; pts: number[][] }[];
@@ -51,8 +51,14 @@ export interface Design {
     mapping?: string;
   };
   credit?: string;
-  counts?: Record<string, number>;
+  counts?: Record<string, number | string[]>;
+  /** Tiny Tapeout chips (ingest_gds.py): display title, inspector text, and named numbers from the pinout. */
+  title?: string;
+  intro?: string;
+  hint?: string;
+  io?: { in: IoField[]; out: IoField[] };
 }
+export interface IoField { name: string; bits: string[] }
 
 // ---- §1 chip result ----
 export type Verdict = "proven" | "tested" | "failed";
