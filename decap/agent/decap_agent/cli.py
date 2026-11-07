@@ -65,12 +65,18 @@ async def _tools(server) -> list[dict]:
         return [{"name": t.name, "description": (t.description or "").strip().splitlines()[0]} for t in await c.list_tools()]
 
 
-async def _demo(server, n: int) -> dict:
-    """The 90-second 'judge picks a number' moment, scripted: no LLM, every step a real tool call."""
-    base = "stub_counter8"
+async def _demo(server, n: int, chip: str | None = None) -> dict:
+    """The 90-second 'judge picks a number' moment, scripted: no LLM, every step a real tool call.
+
+    Works on the stub (region-targeted) and on the real core (Yuyao's API: flags f0.., remove_trigger).
+    """
     async with Client(server) as c:
         async def call(tool, **a):
             return result_payload(await c.call_tool(tool, a))
+        names = {t.name for t in await c.list_tools()}
+        if "resolve_scope" not in names:
+            return await _demo_real(call, n, chip)
+        base = "stub_counter8"
         await call("list_chips")
         planted = (await call("plant_trigger", chip=base, n=n))["chip"]
         await call("strip_names", chip=planted)
@@ -91,6 +97,25 @@ async def _demo(server, n: int) -> dict:
             "trigger_reaches": reach["reaches"], "source": vs_source["source"]}
 
 
+async def _demo_real(call, n: int, chip: str | None) -> dict:
+    """The same story on a real Tiny Tapeout chip via the real core."""
+    if chip is None:
+        rows = await call("list_chips")
+        chip = next(r["chip"] for r in rows if r.get("split") == "dev")
+    planted = await call("plant_trigger", chip=chip, n=n)
+    pid = planted["chip"]
+    flags = (await call("find_rare_triggers", chip=pid)).get("flagged", [])
+    hit = next((f for f in flags if f"8'd{n}" in (f.get("condition") or "")), flags[0] if flags else None)
+    vs_source = await call("prove_equiv", chip=pid, against="author_source")
+    reach = await call("cone_of_influence", chip=pid, cone=hit["id"]) if hit else {}
+    fixed = await call("remove_trigger", chip=pid)
+    return {"chip": pid, "inserted_cells": planted.get("inserted_cells"), "plant_verdict": planted.get("verdict"),
+            "found": hit and hit.get("code_line"), "condition": hit and hit.get("condition"),
+            "flags": len(flags), "netlist_vs_author_source": vs_source.get("verdict"),
+            "counterexample": vs_source.get("counterexample"), "trigger_reaches": reach.get("reaches"),
+            "fix_verdict": fixed.get("verdict"), "fix_detail": fixed.get("detail"), "source": "core"}
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="decap", description="Drive Decap's tools (agent layer).")
     p.add_argument("--transcript", help="JSONL file to append events to (default: runs/<time>-<cmd>.jsonl)")
@@ -102,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("-a", "--arg", action="append", default=[], metavar="KEY=VALUE")
     d = sub.add_parser("demo", help="scripted judge moment (no LLM)")
     d.add_argument("--n", type=int, default=137)
+    d.add_argument("--chip", help="real core only: which chip (default: first dev chip)")
     a = sub.add_parser("ask", help="ask the guide agent")
     a.add_argument("question")
     a.add_argument("--model", help="e.g. anthropic:claude-haiku-5-5 (default: $DECAP_GUIDE_MODEL)")
@@ -148,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(out, dict) and out.get("is_error"):
             return 1
     elif args.cmd == "demo":
-        _print(asyncio.run(_demo(server, args.n)))
+        _print(asyncio.run(_demo(server, args.n, args.chip)))
     elif args.cmd == "ask":
         from .guide import ask
         print(asyncio.run(ask(args.question, server, transcript, model=args.model)))

@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastmcp import FastMCP
 
 from .stub_core import create_stub_app
-from .transcript import Transcript, TranscriptMiddleware
+from .transcript import StrictArgsMiddleware, Transcript, TranscriptMiddleware
 
 INSTRUCTIONS = (
     "Decap reads chips: it turns a gate-level netlist (names stripped) back into readable Verilog and "
@@ -37,5 +37,6 @@ def build_server(app: FastAPI | None = None, transcript: Transcript | None = Non
         app, _ = load_core_app()
     mcp = FastMCP.from_fastapi(app=app, name="decap", instructions=INSTRUCTIONS)
     if transcript is not None:
-        mcp.add_middleware(TranscriptMiddleware(transcript))
+        mcp.add_middleware(TranscriptMiddleware(transcript))  # outermost: also records rejected calls
+    mcp.add_middleware(StrictArgsMiddleware())
     return mcp
