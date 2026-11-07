@@ -26,6 +26,7 @@ class Transcript:
         self.path = Path(path) if path else None
         self.run_id = run_id or uuid.uuid4().hex[:12]
         self.events: list[dict[str, Any]] = []
+        self.listeners: list = []   # callables fed every event as it is recorded (live streams)
         if self.path:
             self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -36,6 +37,8 @@ class Transcript:
         if self.path:
             with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        for listen in self.listeners:
+            listen(event)
         return event
 
 

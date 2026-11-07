@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import pytest
 from fastmcp import Client
@@ -262,3 +263,29 @@ def test_timeline_renders_only_checked_runs(tmp_path):
     assert page.count('class="att focus"') == 1 and "uo_out[0] == (ui_in == 8&#x27;d137)" in page
     assert "Breaks at" in page and "10001001" in page and "+1 flip-flop bits" in page
     assert "tt_um_y" not in page and "<title>Witness</title>" in page
+
+
+def test_witness_api_streams_a_region_run(tmp_path):
+    from fastapi.testclient import TestClient
+    from decap_agent.witness_api import create_witness_app
+    app = create_witness_app(create_stub_app(), model=scripted([WRONG, RIGHT], {}), runs=tmp_path)
+    client = TestClient(app)
+    with client.stream("POST", "/witness/explain", json={"chip": CHIP, "scope": NEXT}) as r:
+        events = [json.loads(line[6:]) for line in r.iter_lines() if line.startswith("data: ")]
+    kinds = [e["kind"] for e in events]
+    assert kinds[-1] == "done" and kinds.count("claim") == 2 and "tool" in kinds
+    assert events[-1]["final"] == "proven" and events[-1]["first_draft"] == "refuted"
+    assert all("result" not in e for e in events if e["kind"] == "tool")           # slim stream
+    assert client.get("/witness/cache", params={"chip": CHIP}).json()[0]["final"] == "proven"
+
+
+def test_witness_api_formalise_confirm_step(tmp_path):
+    from fastapi.testclient import TestClient
+    from decap_agent.witness_api import create_witness_app
+
+    def fn(messages, info):
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"claim": "uo_out[1] == (count == 8'd200)"})])
+    client = TestClient(create_witness_app(create_stub_app(), model=FunctionModel(fn), runs=tmp_path))
+    out = client.post("/witness/formalise", json={"chip": CHIP, "sentence": "LED 1 is on exactly when the count is 200",
+                                                   "scope": HIT}).json()
+    assert out["claim"] == "uo_out[1] == (count == 8'd200)" and out["english"] and "verdict" not in out
