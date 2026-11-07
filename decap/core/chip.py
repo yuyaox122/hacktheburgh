@@ -66,12 +66,31 @@ def author_source(chip: str) -> dict:
             "files": files, "lines": sum(code_lines(t) for t in files.values())}
 
 
-def author_check(chip: str, src: dict, top: str, timeout: int = 90) -> tuple[str, str]:
-    """Is the shipped netlist the author's source? Equivalence first; else a bounded check from reset."""
+def author_check(chip: str, src: dict, top: str, timeout: int = 90, nl_text: str | None = None, want_cex: bool = False):
+    """Is the shipped netlist the author's source? Equivalence first; else a bounded check from reset.
+    Returns (check, detail) or, with want_cex, (check, detail, counterexample inputs or None)."""
+    r = _author_check(chip, src, top, timeout, nl_text)
+    return r if want_cex else r[:2]
+
+
+def _parse_cex(text: str):
+    """Input values from `sat -show-inputs` output, at the last time step (where the outputs differ)."""
+    rows = re.findall(r"^\s+(\d+)\s+\\in_(\w+)\s+(-?\d+|-+)\s", text, re.M)
+    if not rows:
+        return None
+    last = max(int(t) for t, _, _ in rows)
+    out = {"step": last}
+    for t, sig, val in rows:
+        if int(t) == last and val.lstrip("-").isdigit():
+            out[sig] = int(val)
+    return out
+
+
+def _author_check(chip, src, top, timeout, nl_text):
     files = {k: v for k, v in src.get("files", {}).items() if k.endswith((".v", ".sv"))}
     if not files:
-        return "unavailable", "no author source"
-    nl_text = netlist_path(chip).read_text(errors="replace")
+        return "unavailable", "no author source", None
+    nl_text = nl_text or netlist_path(chip).read_text(errors="replace")
     types = sorted(set(re.findall(r"\b" + lib.PREFIX + r"([a-z0-9_]+)\b", nl_text)))
     other = sorted(set(re.findall(r"\b(sky130_(?!fd_)[a-z]+_sc_hd__[a-z0-9_]+)\b", nl_text)))
     stubs = "".join(f"module {o}(input VGND, input VNB, input VPB, input VPWR);\nendmodule\n" for o in other)
@@ -86,7 +105,8 @@ def author_check(chip: str, src: dict, top: str, timeout: int = 90) -> tuple[str
         Path(td, "net.v").write_text(nl_text)
         ports = "input [7:0] ui_in, output [7:0] uo_out, input [7:0] uio_in, output [7:0] uio_out, output [7:0] uio_oe, input ena, input clk, input rst_n"
         conn = ".clk(clk),.ena(ena),.rst_n(rst_n),.ui_in(ui_in),.uio_in(uio_in),.uio_oe(uio_oe),.uio_out(uio_out),.uo_out(uo_out)"
-        if "VPWR" in nl_text.split(";", 30)[0] + nl_text[:3000]:
+        hdr = re.search(r"module\s+\S+\s*\(([^;]*)\)\s*;", nl_text)
+        if hdr and re.search(r"\bVPWR\b", hdr.group(1)):
             conn += ",.VPWR(1'b1),.VGND(1'b0)"
         Path(td, "wrap.v").write_text(f"module gate_top({ports}); {top} u({conn}); endmodule\n")
         srcs = " ".join(f"{td}/src/{k}" for k in files)
@@ -103,27 +123,28 @@ proc; opt_clean; async2sync
 """
         eq = head + "equiv_make gold gate equiv\nhierarchy -top equiv\nequiv_simple -seq 5\nequiv_induct -seq 5\nequiv_status -assert\n"
         bmc = head + ("miter -equiv -flatten -make_outputs gold gate miter\nhierarchy -top miter\n"
-                      "sat -verify -prove trigger 0 -set-init-zero -set-at 1 in_rst_n 0 -seq 20 -timeout 60 miter\n")
+                      "sat -verify -prove trigger 0 -set-init-zero -set-at 1 in_rst_n 0 -seq 20 -timeout 60 -show-inputs miter\n")
         Path(td, "eq.ys").write_text(eq)
         Path(td, "bmc.ys").write_text(bmc)
         try:
             r = subprocess.run(["yosys", "-q", f"{td}/eq.ys"], capture_output=True, text=True, timeout=timeout)
             if r.returncode == 0:
-                return "proven", "Yosys equivalence (equiv_make / equiv_simple / equiv_induct), author source vs shipped netlist"
+                return "proven", "Yosys equivalence (equiv_make / equiv_simple / equiv_induct), author source vs shipped netlist", None
             if "ERROR" in r.stderr + r.stdout and "unproven" not in (r.stderr + r.stdout):
                 err = [l for l in (r.stderr + r.stdout).splitlines() if "ERROR" in l]
-                return "unavailable", ("Yosys could not read the author source: " + (err[0] if err else ""))[:300]
+                return "unavailable", ("Yosys could not read the author source: " + (err[0] if err else ""))[:300], None
         except subprocess.TimeoutExpired:
             pass
         try:
-            r = subprocess.run(["yosys", "-q", f"{td}/bmc.ys"], capture_output=True, text=True, timeout=timeout)
+            r = subprocess.run(["yosys", f"{td}/bmc.ys"], capture_output=True, text=True, timeout=timeout)
             if r.returncode == 0:
-                return "bounded", "No difference in 20 clock cycles from reset (bounded check; not a full proof)"
-            if "failed" in (r.stderr + r.stdout).lower():
-                return "failed", "Bounded check found an input sequence where they differ"
-            return "unavailable", "bounded check did not finish"
+                return "bounded", "No difference in 20 clock cycles from reset (bounded check; not a full proof)", None
+            if re.search(r"proof did fail|failed", r.stderr + r.stdout, re.I):
+                cex = _parse_cex(r.stdout)
+                return "failed", "Bounded check found an input sequence where the netlist and the author's source differ", cex
+            return "unavailable", "bounded check did not finish", None
         except subprocess.TimeoutExpired:
-            return "unavailable", f"timed out after {timeout}s"
+            return "unavailable", f"timed out after {timeout}s", None
 
 
 def decompile_chip(chip: str, split: str, nl: netlist.Netlist | None = None, author: bool = True) -> tuple[dict, object]:

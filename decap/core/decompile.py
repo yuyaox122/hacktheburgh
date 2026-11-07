@@ -574,7 +574,11 @@ class Decompiler:
             if best and (best[3] >= 2 or cs[best[1]].kind in ("copy", "comparator", "reduce")):
                 _, ci, i, L = best
                 c = cs[ci]
-                pieces.append(self._cand_piece(c, k, k + L - 1, i))
+                if k == 0 and L == n and i == 0 and c.kind != "copy":
+                    # the whole word: write the operation inline (Verilog truncates to the left-hand width)
+                    pieces.append(Piece(0, n - 1, c.text, c.kind))
+                else:
+                    pieces.append(self._cand_piece(c, k, k + L - 1, i))
                 k += L
                 continue
             # 1-bit comparator against a constant
