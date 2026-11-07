@@ -25,4 +25,4 @@ $bmp = New-Object System.Drawing.Bitmap $w, $h
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
 $bmp.Save((Join-Path (Get-Location) $Out), [System.Drawing.Imaging.ImageFormat]::Png)
-Write-Output "$Out ${w}x${h}"
+Write-Output "$Out ${w}x${h} $($r.L) $($r.T)"

@@ -55,26 +55,38 @@ def run() -> None:
     subprocess.run([java(), "-Xmx3G", "-jar", str(JAR), "nogui"])
 
 
-def rcon(*cmds: str) -> list[str]:
-    s = socket.create_connection(("127.0.0.1", PORT), timeout=30)
+class Rcon:
+    """A persistent RCON connection (camera paths send a command every tick)."""
 
-    def send(i, typ, body):
+    def __init__(self):
+        self.s = socket.create_connection(("127.0.0.1", PORT), timeout=30)
+        self.k = 1
+        self._send(3, PASSWORD)
+        if self._recv()[0] == -1:
+            raise SystemExit("rcon auth failed")
+
+    def _send(self, typ, body):
         b = body.encode() + b"\x00\x00"
-        s.sendall(struct.pack("<iii", len(b) + 8, i, typ) + b)
+        self.k += 1
+        self.s.sendall(struct.pack("<iii", len(b) + 8, self.k, typ) + b)
 
-    def recv():
-        n = struct.unpack("<i", _read(s, 4))[0]
-        d = _read(s, n)
+    def _recv(self):
+        n = struct.unpack("<i", _read(self.s, 4))[0]
+        d = _read(self.s, n)
         return struct.unpack("<ii", d[:8])[0], d[8:-2].decode(errors="replace")
 
-    send(1, 3, PASSWORD)
-    if recv()[0] == -1:
-        raise SystemExit("rcon auth failed")
-    out = []
-    for k, c in enumerate(cmds, 2):
-        send(k, 2, c)
-        out.append(recv()[1])
-    s.close()
+    def __call__(self, cmd: str) -> str:
+        self._send(2, cmd)
+        return self._recv()[1]
+
+    def close(self):
+        self.s.close()
+
+
+def rcon(*cmds: str) -> list[str]:
+    r = Rcon()
+    out = [r(c) for c in cmds]
+    r.close()
     return out
 
 

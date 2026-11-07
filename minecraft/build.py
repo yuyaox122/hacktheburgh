@@ -248,8 +248,8 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
     # ---- ambient light (invisible light blocks) so the chip reads at night without washing out the glow
     for x in range(0, SX, 7):
         for z in range(0, SZ, 7):
-            blocks.append(f"setblock {x} {Y0 + 3} {z} minecraft:light[level=7] keep")
-            blocks.append(f"setblock {x} {Y0 + 14} {z} minecraft:light[level=9] keep")
+            blocks.append(f"setblock {x} {Y0 + 3} {z} minecraft:light[level=11] keep")
+            blocks.append(f"setblock {x} {Y0 + 14} {z} minecraft:light[level=12] keep")
 
     # ---- panel: a lever per input pin, a lamp per output pin, at the pin's real x on the north edge
     def pin_x(bit: str, fallback: int) -> int:
