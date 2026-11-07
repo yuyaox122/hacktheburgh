@@ -1,0 +1,25 @@
+{
+  "name": "decap-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "golden": "tsx scripts/golden.ts",
+    "check-data": "tsx scripts/check-data.ts",
+    "sync-data": "node scripts/sync-data.mjs",
+    "stage-data": "../.venv/bin/python -I ../ingest/liberty.py && ../.venv/bin/python -I ../ingest/ingest_def.py"
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "@types/three": "0.160.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

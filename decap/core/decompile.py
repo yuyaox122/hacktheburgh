@@ -138,6 +138,7 @@ class Decompiler:
         self.decls: list[str] = []
         self.blocks: list[Block] = []
         self.counter = {}
+        self.rn = lambda t: t       # placeholder register names -> final names (set by _emit)
         self._cond: dict = {}
         self.conds_used: dict = {}
 
@@ -198,11 +199,30 @@ class Decompiler:
         if b in self.name:
             return self.name[b]
         n = self.fresh(stem)
-        e = self.struct(b, {})
-        self.decls.append(f"wire {n} = {X.render(e)};")
+        txt = self.raw_text(b)
+        note = "  // derived clock: written gate for gate (delay-line pulse generators are constant in zero-delay logic)" \
+            if stem == "gclk" else ""
+        self.temp_lines.append(f"wire {n} = {txt};{note}")
         self.proof_names[b] = n
         self.name[b] = n
         return n
+
+    def raw_text(self, b, depth=0):
+        """Gate-for-gate text of a net, no simplification (for clock and reset nets)."""
+        if isinstance(b, str):
+            return f"1'b{b}"
+        if b in self.name or depth > 200:
+            return self.name.get(b, "1'b0")
+        d = self.s.drv.get(b)
+        if d is None:
+            return "1'b0"
+        inst, pin = d
+        if inst.cell.base in IDENT:
+            return self.raw_text(inst.conns.get("A"), depth + 1)
+        ins = {p: ("v", self.raw_text(inst.conns.get(p, "0"), depth + 1)) for p in inst.cell.inputs}
+        from .lib import FRIENDLY
+        tmpl = X.parse_friendly(FRIENDLY[inst.cell.base]) if inst.cell.base in FRIENDLY else X._lib_to_ast(inst.cell.outputs[pin])
+        return "(" + X.render(X.subst(tmpl, {k: ("raw", v, 9) for k, (_, v) in ins.items()})) + ")"
 
     # ----- structural expression of a net in terms of sources (with forced nets as constants)
     def struct(self, b, force: dict, depth=0):
@@ -1251,6 +1271,7 @@ def _emit(self: Decompiler, regs, stmts) -> dict:
     import re
     pat = re.compile(r"\b(" + "|".join(map(re.escape, sorted(rename, key=len, reverse=True))) + r")\b") if rename else None
     rn = (lambda t: pat.sub(lambda mm: rename[mm.group(1)], t)) if pat else (lambda t: t)
+    self.rn = rn
 
     # ---------- drop unused temps
     temps = list(self.temp_lines)

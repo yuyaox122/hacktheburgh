@@ -84,7 +84,7 @@ def _yosys_json(netlist_text: str, top: str | None) -> dict:
         Path(td, "cells.v").write_text(lib.yosys_models(types) + stubs)
         Path(td, "net.v").write_text(netlist_text)
         script = f"read_verilog -lib {td}/cells.v\nread_verilog {td}/net.v\n" + \
-                 (f"hierarchy -top {top}\n" if top else "hierarchy -auto-top\n") + f"write_json {td}/out.json\n"
+                 (f"hierarchy -top {top}\n" if top else "hierarchy -auto-top\n") + f"flatten\nwrite_json {td}/out.json\n"
         r = subprocess.run(["yosys", "-q", "-p", script.replace("\n", "; ")], capture_output=True, text=True)
         if r.returncode:
             raise RuntimeError("yosys could not read the netlist:\n" + (r.stderr or r.stdout)[-2000:])
@@ -121,7 +121,7 @@ def load(path: str | Path | None = None, text: str | None = None, top: str | Non
             phys += 1
             continue
         if not t.startswith(lib.PREFIX):
-            raise RuntimeError(f"unexpected cell type {t} (not SKY130 HD)")
+            raise RuntimeError(f"contains a hard macro '{t}' whose netlist is not published, so Decap cannot read inside it")
         t = t[len(lib.PREFIX):]
         ce = lib.cell(t)
         if ce.physical:

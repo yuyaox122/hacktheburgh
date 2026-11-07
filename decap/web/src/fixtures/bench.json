@@ -1,0 +1,293 @@
+{
+ "generated": "2026-11-07T23:00:00Z",
+ "split": {
+  "frozen": "2026-11-07T20:00:00Z (FIXTURE)",
+  "dev": [
+   "tt_um_fixture_cla",
+   "tt_um_fixture_braille",
+   "tt_um_fixture_dpmu"
+  ],
+  "test": [
+   "tt_um_fixture_counter4",
+   "tt_um_fixture_alu4",
+   "tt_um_fixture_seg7",
+   "tt_um_fixture_divider",
+   "tt_um_fixture_mac",
+   "tt_um_fixture_alarm",
+   "tt_um_fixture_i2c",
+   "tt_um_fixture_obstacle",
+   "tt_um_fixture_addsub",
+   "tt_um_fixture_pwm"
+  ]
+ },
+ "summary": {
+  "test": {
+   "n": 10,
+   "proven": 7,
+   "tested": 2,
+   "failed": 1,
+   "coverage_pct": 62
+  },
+  "dev": {
+   "n": 3,
+   "proven": 3,
+   "tested": 0,
+   "failed": 0,
+   "coverage_pct": 71.8
+  },
+  "trojan": {
+   "planted": 10,
+   "caught": 8,
+   "clean": 10,
+   "clean_flagged": 3
+  }
+ },
+ "chips": [
+  {
+   "chip": "tt_um_fixture_counter4",
+   "title": "Fixture: 4-bit counter",
+   "split": "test",
+   "verdict": "proven",
+   "logic_cells": 19,
+   "flops": 4,
+   "lines_decompiled": 10,
+   "lines_author": 26,
+   "coverage_pct": 94.7,
+   "seconds": 0.8,
+   "author_check": "proven",
+   "trojan": {
+    "n": 36,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 0
+   }
+  },
+  {
+   "chip": "tt_um_fixture_alu4",
+   "title": "Fixture: 4-bit ALU",
+   "split": "test",
+   "verdict": "proven",
+   "logic_cells": 91,
+   "flops": 0,
+   "lines_decompiled": 18,
+   "lines_author": 44,
+   "coverage_pct": 71.4,
+   "seconds": 2.3,
+   "author_check": "proven",
+   "trojan": {
+    "n": 108,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 0
+   }
+  },
+  {
+   "chip": "tt_um_fixture_seg7",
+   "title": "Fixture: 7-segment decoder",
+   "split": "test",
+   "verdict": "proven",
+   "logic_cells": 94,
+   "flops": 0,
+   "lines_decompiled": 22,
+   "lines_author": 35,
+   "coverage_pct": 40.4,
+   "seconds": 1.1,
+   "author_check": "proven",
+   "trojan": {
+    "n": 111,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 1
+   }
+  },
+  {
+   "chip": "tt_um_fixture_divider",
+   "title": "Fixture: clock divider",
+   "split": "test",
+   "verdict": "proven",
+   "logic_cells": 106,
+   "flops": 9,
+   "lines_decompiled": 12,
+   "lines_author": 30,
+   "coverage_pct": 82.1,
+   "seconds": 3,
+   "author_check": "proven",
+   "trojan": {
+    "n": 123,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 0
+   }
+  },
+  {
+   "chip": "tt_um_fixture_mac",
+   "title": "Fixture: multiply-accumulate",
+   "split": "test",
+   "verdict": "tested",
+   "logic_cells": 118,
+   "flops": 24,
+   "lines_decompiled": 25,
+   "lines_author": 61,
+   "coverage_pct": 55,
+   "seconds": 41.2,
+   "author_check": "proven",
+   "trojan": {
+    "n": 135,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 0
+   }
+  },
+  {
+   "chip": "tt_um_fixture_alarm",
+   "title": "Fixture: alarm clock",
+   "split": "test",
+   "verdict": "proven",
+   "logic_cells": 119,
+   "flops": 18,
+   "lines_decompiled": 31,
+   "lines_author": 88,
+   "coverage_pct": 63,
+   "seconds": 4.4,
+   "author_check": "proven",
+   "trojan": {
+    "n": 136,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 1
+   }
+  },
+  {
+   "chip": "tt_um_fixture_i2c",
+   "title": "Fixture: I2C peripheral",
+   "split": "test",
+   "verdict": "failed",
+   "logic_cells": 190,
+   "flops": 34,
+   "lines_decompiled": 0,
+   "lines_author": 140,
+   "coverage_pct": 0,
+   "seconds": 60,
+   "author_check": "unavailable",
+   "trojan": {
+    "n": 207,
+    "caught": false,
+    "flag_line": null,
+    "clean_flags": 0
+   }
+  },
+  {
+   "chip": "tt_um_fixture_obstacle",
+   "title": "Fixture: obstacle detector",
+   "split": "test",
+   "verdict": "proven",
+   "logic_cells": 27,
+   "flops": 0,
+   "lines_decompiled": 6,
+   "lines_author": 20,
+   "coverage_pct": 88.9,
+   "seconds": 0.4,
+   "author_check": "proven",
+   "trojan": {
+    "n": 44,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 0
+   }
+  },
+  {
+   "chip": "tt_um_fixture_addsub",
+   "title": "Fixture: signed add/sub",
+   "split": "test",
+   "verdict": "proven",
+   "logic_cells": 65,
+   "flops": 0,
+   "lines_decompiled": 9,
+   "lines_author": 38,
+   "coverage_pct": 76.9,
+   "seconds": 1.3,
+   "author_check": "proven",
+   "trojan": {
+    "n": 82,
+    "caught": true,
+    "flag_line": 7,
+    "clean_flags": 0
+   }
+  },
+  {
+   "chip": "tt_um_fixture_pwm",
+   "title": "Fixture: I2S to PWM",
+   "split": "test",
+   "verdict": "tested",
+   "logic_cells": 231,
+   "flops": 57,
+   "lines_decompiled": 40,
+   "lines_author": 120,
+   "coverage_pct": 47.2,
+   "seconds": 52,
+   "author_check": "proven",
+   "trojan": {
+    "n": 248,
+    "caught": false,
+    "flag_line": null,
+    "clean_flags": 1
+   }
+  },
+  {
+   "chip": "tt_um_fixture_cla",
+   "title": "Fixture: 4-bit CLA",
+   "split": "dev",
+   "verdict": "proven",
+   "logic_cells": 59,
+   "flops": 5,
+   "lines_decompiled": 5,
+   "lines_author": 40,
+   "coverage_pct": 91.5,
+   "seconds": 1,
+   "author_check": "proven",
+   "trojan": null
+  },
+  {
+   "chip": "tt_um_fixture_braille",
+   "title": "Fixture: Braille encoder",
+   "split": "dev",
+   "verdict": "proven",
+   "logic_cells": 84,
+   "flops": 0,
+   "lines_decompiled": 14,
+   "lines_author": 52,
+   "coverage_pct": 66,
+   "seconds": 1.2,
+   "author_check": "proven",
+   "trojan": null
+  },
+  {
+   "chip": "tt_um_fixture_dpmu",
+   "title": "Fixture: DPMU",
+   "split": "dev",
+   "verdict": "proven",
+   "logic_cells": 91,
+   "flops": 15,
+   "lines_decompiled": 19,
+   "lines_author": 70,
+   "coverage_pct": 58,
+   "seconds": 2.8,
+   "author_check": "proven",
+   "trojan": null
+  },
+  {
+   "chip": "warmup_adder_demo",
+   "title": "Fixture: warm-up adder demo",
+   "split": "warmup",
+   "verdict": "proven",
+   "logic_cells": 79,
+   "flops": 16,
+   "lines_decompiled": 8,
+   "lines_author": 59,
+   "coverage_pct": 93.7,
+   "seconds": 1.6,
+   "author_check": "proven",
+   "trojan": null
+  }
+ ]
+}

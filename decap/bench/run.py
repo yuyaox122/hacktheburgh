@@ -61,7 +61,7 @@ def run_chip(chip: str, split: str) -> dict:
                "points": result["proof"]["points"], "attempts": result["proof"]["attempts"]}
         # trojan test
         n = trojan_n(chip)
-        planted, info = find.plant(nl, n)
+        planted, info = find.plant(nl, n, res={"registers": result.get("_registers", {})})
         pres, pproof, pdec = pipeline.run(planted, return_decompiler=True)
         pfl = find.flags(pdec, pres)
         ok, line = caught(pfl, info)

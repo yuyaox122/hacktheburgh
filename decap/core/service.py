@@ -90,7 +90,7 @@ def plant(base: str, n: int) -> Variant:
         if cid in _cache:
             return _cache[cid]
     clean = get(base)
-    pnl, info = find.plant(clean.nl, n)
+    pnl, info = find.plant(clean.nl, n, res=clean.res)
     res, proof, dec = pipeline.run(pnl, return_decompiler=True)
     src = {k: v for k, v in clean.result["author_source"].items()}
     src["check"], src["check_detail"] = "unavailable", "call prove_equiv with against='author_source'"

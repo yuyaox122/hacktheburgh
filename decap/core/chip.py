@@ -156,6 +156,7 @@ def decompile_chip(chip: str, split: str, nl: netlist.Netlist | None = None, aut
     check, detail = author_check(chip, src, nl.top) if author else ("unavailable", "not run")
     src["check"], src["check_detail"] = check, detail
     result = assemble(chip, split, nl, res, proof, meta, src)
+    result["_registers"] = res["registers"]
     result["seconds"] = round(time.time() - t0, 2)
     return result, dec
 
@@ -203,5 +204,5 @@ def _proof_detail(p: dict) -> str:
 def save(result: dict, name: str | None = None) -> Path:
     (OUT / "chips").mkdir(parents=True, exist_ok=True)
     p = OUT / "chips" / f"{name or result['chip']}.json"
-    p.write_text(json.dumps(result, indent=1))
+    p.write_text(json.dumps({k: v for k, v in result.items() if not k.startswith("_")}, indent=1))
     return p

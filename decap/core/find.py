@@ -11,6 +11,7 @@ Legitimate comparators (a counter hitting its limit) get flagged too, and we rep
 """
 from __future__ import annotations
 
+import random
 import re
 import time
 
@@ -77,10 +78,16 @@ def _target_bit(nl: Netlist) -> tuple[str, int]:
     return outs[0][0], 0
 
 
-def plant(nl: Netlist, n: int, target: tuple[str, int] | None = None) -> tuple[Netlist, dict]:
-    """Splice `target |= (operand == n)` into nl. Returns the re-read planted netlist and the record."""
+def plant(nl: Netlist, n: int, target: tuple[str, int] | None = None, res: dict | None = None) -> tuple[Netlist, dict]:
+    """Splice `target |= (operand == n)` into nl. The operand is an 8-bit input port (ui_in on Tiny Tapeout
+    chips); a chip without one (the warm-up) uses its widest register from the decompile `res`."""
     op = _operand_port(nl)
     obits = nl.ports[op]["bits"]
+    if len(obits) < 8 and res and res.get("registers"):
+        byid = {i.id: i for i in nl.insts}
+        rname, fids = max(res["registers"].items(), key=lambda kv: len(kv[1]))
+        if len(fids) >= 2:
+            op, obits = rname, [byid[f].conns["Q"] for f in fids][:8]
     w = len(obits)
     n = n % (1 << w)
     tport, tk = target or _target_bit(nl)
@@ -89,10 +96,19 @@ def plant(nl: Netlist, n: int, target: tuple[str, int] | None = None) -> tuple[N
     names = {i.id: nl._orig.get(i.id, i.id) for i in nl.insts}
     insts = list(nl.insts)
     new = []
+    # new instance names in the chip's own style: unused numbers from inside its existing `_N_` range,
+    # so the names don't mark the planted cells either
+    used = {int(m.group(1)) for nm in names.values() for m in [re.fullmatch(r"\\?_(\d+)_", nm.strip())] if m}
+    lo, hi = (min(used), max(used)) if used else (0, 64)
+    pad = max((len(m.group(1)) for nm in names.values() for m in [re.fullmatch(r"\\?_(\d+)_", nm.strip())] if m), default=1)
+    rng = random.Random(f"decap-plant:{nl.top}:{n}")
+    free = [k for k in range(lo, hi + 16) if k not in used]
+    rng.shuffle(free)
 
     def add(t, conns):
         iid = f"p{len(new)}"
-        names[iid] = f"_{9101 + 37 * len(new)}_"
+        num = free.pop() if free else hi + 1 + len(new)
+        names[iid] = f"_{num:0{pad}d}_"
         inst = Inst(iid, t, conns)
         insts.append(inst); new.append(names[iid])
         return inst
@@ -163,6 +179,8 @@ def flags(dec, res: dict, k: int = FLAG_K, max_exact: int = 18) -> list[dict]:
     out = []
     for fi, (b, inst, sup, cnt, space, rare0) in enumerate(accepted):
         cond = dec.condition(b, {})
+        if cond:
+            cond = ("raw", dec.rn(cond[1]), cond[2])
         text = cond[1] if cond else f"a rare condition over {len(sup)} bits"
         line = next((j + 1 for j, l in enumerate(vlines) if cond and cond[1] in l), res["cell_lines"].get(inst.id, 0))
         trig_cells = sorted(s.cone([b])[0], key=lambda c: int(c[1:]))
