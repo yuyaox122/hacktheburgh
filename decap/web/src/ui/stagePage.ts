@@ -27,15 +27,15 @@ export class StagePage {
   private running = false;
   private timer = 0;
   private speed = 450;
-  private history: Record<string, number>[] = [];
+  private history: number[][] = [];
   private shiftQueue: Record<string, number>[] = [];
   private buses: { name: string; bits: string[] }[] = [];
   private srcFile: string;
   private srcLines: string[];
   /** Named numbers from the chip's pinout (Tiny Tapeout): the sim bar shows these instead of one button per pin. */
   private io: { in: IoField[]; out: IoField[] } | null;
-  private waveSigs: string[];
-  private waveLabel = new Map<string, string>();
+  /** Logic-analyser rows: one per named number (a bus) or per single-bit pin. */
+  private waveRows: { label: string; bits: string[]; out: boolean }[];
 
   constructor(private design: Design, private lib: Lib, private chips: StageChip[] = []) {
     for (const c of design.cells) {
@@ -61,10 +61,9 @@ export class StagePage {
     this.buses = [...groups].filter(([, b]) => b.length >= 2).slice(0, 4).map(([name, b]) => ({ name, bits: b.sort((x, y) => x - y).map((i) => `${name}[${i}]`) }));
     this.io = design.io && (design.io.in.length || design.io.out.length) ? design.io : null;
     if (this.io) {
-      for (const f of [...this.io.in, ...this.io.out]) f.bits.forEach((b, k) => this.waveLabel.set(b, f.bits.length > 1 ? `${f.name}${k}` : f.name));
-      this.waveSigs = [...this.io.in, ...this.io.out].flatMap((f) => f.bits);
+      this.waveRows = [...this.io.in.map((f) => ({ label: f.name, bits: f.bits, out: false })), ...this.io.out.map((f) => ({ label: f.name, bits: f.bits, out: true }))];
     } else {
-      this.waveSigs = [...this.inputs.filter((x) => x !== this.clk), ...this.outputs];
+      this.waveRows = [...this.inputs.filter((x) => x !== this.clk).map((n) => ({ label: n, bits: [n], out: false })), ...this.outputs.map((n) => ({ label: n, bits: [n], out: true }))];
     }
     this.srcFile = Object.keys(design.source.files)[0] ?? "";
     this.srcLines = (design.source.files[this.srcFile] ?? "").split("\n");
@@ -77,44 +76,53 @@ export class StagePage {
           `<option value="${esc(c.chip)}" ${c.chip === design.name ? "selected" : ""}>${esc(c.title || c.chip)} · ${c.logic_cells} cells</option>`).join("")}</select></div>` : ""}
         <div class="pane-h">Source <b>${esc(this.srcFile || "none")}</b><span class="grow"></span>${this.chips.length > 1 ? `<a class="btn sm" href="#/chip/${encodeURIComponent(design.name)}" title="Decompile, proof and Find for this chip">Chip page</a>` : ""}</div>
         <div class="pane-b"><ol class="code click" id="stSrc"></ol></div>
-        <div class="sect"><p class="fine">${esc(design.source.mapping ?? "")}. Click a line to light its cells.</p></div>
       </aside>
       <main class="viewport" id="stView" aria-label="3D chip view">
-        <dl class="overlay stats" id="stStats"></dl>
-        <div class="overlay layers" id="stLayers">
-          <button type="button" id="stLayersT" aria-expanded="true">Layers <span aria-hidden="true">▾</span></button>
-          <div class="lbody" id="stLayersB">
+        <details class="ovl tl"><summary>Chip <span class="sum" id="stStatsSum"></span></summary><dl class="stats" id="stStats"></dl></details>
+        <details class="ovl tr" id="stLayers"><summary>Layers</summary>
+          <div class="lbody">
             ${LAYERS.map((L) => `<label><input type="checkbox" data-layer="${L.key}" ${L.on ? "checked" : ""}> ${L.label} <i class="sw" style="background:${L.colour}"></i></label>`).join("")}
-            <div class="ex"><span><label for="stExplode" style="cursor:default">Exploded view</label><kbd>X</kbd></span><input type="range" id="stExplode" min="0" max="100" value="0"></div>
-            <div class="ex"><span>Colour cells by</span>
+            <div class="ex"><span><label for="stExplode" style="cursor:default">Explode</label><kbd>X</kbd></span><input type="range" id="stExplode" min="0" max="100" value="0"></div>
+            <div class="ex"><span>Colour by</span>
               <div class="seg" role="group" aria-label="Colour cells by"><button type="button" data-colour="function" aria-pressed="true">function</button><button type="button" data-colour="module" aria-pressed="false">module</button></div></div>
-            <label><input type="checkbox" id="stHQ" checked> High quality (bloom)</label>
+            <label><input type="checkbox" id="stHQ" checked> Bloom</label>
           </div>
-        </div>
-        <div class="overlay legend" id="stLegend"></div>
-        <div class="overlay creditbar">${esc(design.credit ?? "")}</div>
+        </details>
+        <details class="ovl bl"><summary>Key</summary><div class="legend" id="stLegend"></div></details>
+        <div class="credit-line">${esc(design.credit ?? "")}</div>
       </main>
       <aside class="pane right" aria-label="Inspector">
-        <div class="pane-h">Inspector<span class="grow"></span><span class="pickms" id="stPick"></span></div>
+        <div class="pane-h">Inspector</div>
         <div class="pane-b"><div class="sect" id="stInsp"></div></div>
       </aside>
       <footer class="sim" aria-label="Simulator">
-        <div class="ctrls">
-          <button class="btn" id="stReset" type="button" title="Pulse rst_n low for one clock (R)">Reset</button>
-          <button class="btn" id="stStep" type="button" title="One clock edge (.)">Step</button>
-          <button class="btn primary" id="stRun" type="button" title="Run or pause (Space)">Run</button>
-          <select class="sel" id="stSpeed" aria-label="Clock speed"><option value="900">slow</option><option value="450" selected>normal</option><option value="120">fast</option></select>
-        </div>
-        <div class="ins" id="stIns" aria-label="Inputs"></div>
-        <div class="shiftin" ${this.io ? "hidden" : ""} title="Shift two 8-bit numbers into the chip's shift registers, most significant bit first">
-          <span class="muted">Shift in</span>
-          <input class="num" id="stA" type="number" min="0" max="255" value="250" aria-label="Number for A">
-          <span class="muted">+</span>
-          <input class="num" id="stB" type="number" min="0" max="255" value="246" aria-label="Number for B">
-          <button class="btn sm" id="stShift" type="button">8 clocks</button>
-        </div>
-        <div class="readout" id="stRead"></div>
-        <canvas class="wave" id="stWave" aria-label="Logic analyser: the last 40 clock cycles"></canvas>
+        <section class="sim-grp">
+          <h5>Clock <span class="muted" id="stCycle">cycle 0</span></h5>
+          <div class="ctrls">
+            <button class="btn" id="stReset" type="button" title="Reset (R)">Reset</button>
+            <button class="btn" id="stStep" type="button" title="One clock edge (.)">Step</button>
+            <button class="btn primary" id="stRun" type="button" title="Run or pause (Space)">Run</button>
+            <select class="sel" id="stSpeed" aria-label="Clock speed"><option value="900">slow</option><option value="450" selected>normal</option><option value="120">fast</option></select>
+          </div>
+        </section>
+        <section class="sim-grp">
+          <h5>Inputs</h5>
+          <div class="ins" id="stIns" aria-label="Inputs"></div>
+          <div class="shiftin" ${this.io ? "hidden" : ""} title="Shift two 8-bit numbers in, MSB first (8 clocks)">
+            <input class="num" id="stA" type="number" min="0" max="255" value="250" aria-label="Number for A">
+            <span class="muted">+</span>
+            <input class="num" id="stB" type="number" min="0" max="255" value="246" aria-label="Number for B">
+            <button class="btn sm" id="stShift" type="button">Shift in</button>
+          </div>
+        </section>
+        <section class="sim-grp">
+          <h5>Outputs</h5>
+          <div class="readout" id="stRead"></div>
+        </section>
+        <section class="sim-grp wavegrp">
+          <h5>Waveform <span class="muted">last 40 clocks</span></h5>
+          <canvas class="wave" id="stWave" aria-label="Logic analyser: the last 40 clock cycles"></canvas>
+        </section>
       </footer>`;
   }
 
@@ -128,7 +136,6 @@ export class StagePage {
         onPhys: (p) => this.showPhys(p),
       });
       this.bind();
-      if (innerWidth < 1300) { $("#stLayersB", this.el).hidden = true; $("#stLayersT", this.el).setAttribute("aria-expanded", "false"); }
       this.renderSource(); this.renderInsp(); this.renderInputs(); this.renderRead(); this.renderStats(); this.renderLegend();
       this.view.setValues((n) => this.sim.get(n));
       // Tiny Tapeout tiles are mostly filler: open on the logic, not the whole die.
@@ -146,9 +153,6 @@ export class StagePage {
     const el = this.el;
     $$<HTMLInputElement>("[data-layer]", el).forEach((cb) => cb.addEventListener("change", () => this.view?.setLayer(cb.dataset.layer as LayerKey, cb.checked)));
     $<HTMLInputElement>("#stExplode", el).addEventListener("input", (e) => this.view?.setExplode(+(e.target as HTMLInputElement).value / 100));
-    $("#stLayersT", el).addEventListener("click", () => {
-      const b = $("#stLayersB", el); b.hidden = !b.hidden; $("#stLayersT", el).setAttribute("aria-expanded", String(!b.hidden));
-    });
     $$<HTMLButtonElement>("[data-colour]", el).forEach((b) => b.addEventListener("click", () => {
       $$("[data-colour]", el).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
       this.view?.setColourBy(b.dataset.colour as "function" | "module"); this.renderLegend();
@@ -189,8 +193,7 @@ export class StagePage {
     const ins = { ...(q ?? {}), ...extra };
     for (const [k, v] of Object.entries(ins)) this.sim.set(k, v);
     if (this.clk) this.sim.clock(this.clk); else this.sim.settle();
-    const snap: Record<string, number> = {};
-    for (const n of this.waveSigs) snap[n] = this.sim.get(n);
+    const snap = this.waveRows.map((r) => r.bits.reduce((s, n, i) => s + (this.sim.get(n) << i), 0));
     this.history.push(snap); if (this.history.length > 40) this.history.shift();
     this.after();
     if (!this.shiftQueue.length && q && !this.running) this.renderRead();
@@ -255,8 +258,6 @@ export class StagePage {
     this.selModule = c.module;
     this.renderInsp(); this.renderSource(true);
     if (fly) this.view?.flyTo([id]);
-    const pk = $("#stPick", this.el);
-    if (pk && this.view) pk.textContent = this.view.lastPickMs ? `pick ${this.view.lastPickMs.toFixed(1)} ms` : "";
   }
   selectLine(ln: number) {
     const ids = this.design.cells.filter((c) => c.src === ln).map((c) => c.id);
@@ -368,12 +369,8 @@ export class StagePage {
   private renderInsp() {
     const el = $("#stInsp", this.el), id = this.selected;
     if (!id) {
-      el.innerHTML = `<p class="insp-role">${esc(this.design.intro ?? "This is a real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell (a tiny pre-made circuit). The gold labels are its pins.")}</p>
-        <p class="muted" style="font-size:13px">${this.design.hint ? esc(this.design.hint) : "Click any cell, wire or pin to see what it is. Press <b>Run</b> to clock it: wires carrying a 1 glow. Use <b>Shift in</b> to load two numbers; S lights up when they add to 496."}</p>
-        <dl class="kv">${this.design.title ? `<dt>Chip</dt><dd>${esc(this.design.title)}</dd>` : ""}<dt>Design</dt><dd>${esc(this.design.name)}</dd><dt>Process</dt><dd>${esc(this.design.pdk)}</dd>
-        <dt>Die</dt><dd>${this.design.die.w} × ${this.design.die.h} µm</dd><dt>Logic cells</dt><dd>${this.logicCount}</dd>
-        <dt>Flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>Physical cells</dt><dd>${this.design.phys.length} (fill, tap, decap)</dd>
-        <dt>Wires</dt><dd>${this.design.counts?.route_segments ?? "?"} segments, ${this.design.counts?.vias ?? "?"} vias</dd></dl>`;
+      el.innerHTML = `<div class="insp-title"><div><b>${esc(this.design.title || this.design.name)}</b><small>${esc(this.design.name)} · ${esc(this.design.pdk)}</small></div></div>
+        <p class="muted insp-hint">Click a cell, wire or pin.</p>`;
       return;
     }
     const c = this.byId.get(id)!, L = this.lib[c.type];
@@ -432,8 +429,7 @@ export class StagePage {
     if (this.io) {
       if (!host.querySelector("[data-io]")) {
         host.innerHTML = this.io.in.map((f) => `<label class="inbtn iofield" title="${esc(f.name)}: ${esc(f.bits.join(", "))}">${esc(f.name)}
-          <input class="num" type="number" min="0" max="${(1 << f.bits.length) - 1}" data-io="${esc(f.name)}" value="0" aria-label="Input ${esc(f.name)}"></label>`).join("") +
-          (this.clk ? `<span class="inbtn" id="stClkI" title="Clock: driven by Step / Run">${esc(this.clk)} <span class="bit">↑</span></span>` : "");
+          <input class="num" type="number" min="0" max="${(1 << f.bits.length) - 1}" data-io="${esc(f.name)}" value="0" aria-label="Input ${esc(f.name)}"></label>`).join("");
       }
       host.querySelectorAll<HTMLInputElement>("[data-io]").forEach((inp) => {
         const f = this.io!.in.find((x) => x.name === inp.dataset.io);
@@ -444,26 +440,29 @@ export class StagePage {
     host.innerHTML = this.inputs.filter((n) => n !== this.clk).map((n) => {
       const v = this.sim.get(n);
       return `<button type="button" class="inbtn${v ? " on" : ""}" data-in="${esc(n)}" title="Toggle input ${esc(n)}">${esc(n)} <span class="bit${v ? " on" : ""}">${v}</span></button>`;
-    }).join("") + (this.clk ? `<span class="inbtn" title="Clock: driven by Step / Run">${esc(this.clk)} <span class="bit${this.sim.get(this.clk) ? " on" : ""}">↑</span></span>` : "");
+    }).join("");
   }
   private renderRead() {
     const busVal = (b: { bits: string[] }) => b.bits.reduce((s, n, i) => s + (this.sim.get(n) << i), 0);
+    const cyc = $("#stCycle", this.el);
+    if (cyc) cyc.textContent = `cycle ${this.sim.cycles}${this.shiftQueue.length ? ` · shifting, ${this.shiftQueue.length} left` : ""}`;
+    const cell = (name: string, v: number, width: number, title = "") =>
+      `<div class="bus" title="${esc(title || name)}"><small>${esc(name)}</small><span class="big">${v}</span>${width > 1 ? `<span class="bin">${v.toString(2).padStart(width, "0")}</span>` : ""}</div>`;
     if (this.io) {
-      $("#stRead", this.el).innerHTML = [
-        ...this.io.out.map((f) => { const v = this.fieldVal(f); return `<div class="bus"><small>output</small><span class="big">${esc(f.name)} <b>${v}</b> <span class="muted">${v.toString(2).padStart(f.bits.length, "0")}</span></span></div>`; }),
-        `<div class="bus"><small>cycle</small><span>${this.sim.cycles}</span></div>`,
-      ].join("");
+      $("#stRead", this.el).innerHTML = this.io.out.map((f) => cell(f.name, this.fieldVal(f), f.bits.length, f.bits.join(", "))).join("");
       return;
     }
     $("#stRead", this.el).innerHTML = [
-      ...this.outputs.map((o) => `<div class="bus"><small>output</small><span class="big">${esc(o)} <span class="bit${this.sim.get(o) ? " on" : ""}">${this.sim.get(o)}</span></span></div>`),
-      ...this.buses.map((b) => `<div class="bus"><small>${esc(b.name)}</small><span>${busVal(b)} <span class="muted">${busVal(b).toString(2).padStart(b.bits.length, "0")}</span></span></div>`),
-      `<div class="bus"><small>cycle</small><span>${this.sim.cycles}${this.shiftQueue.length ? ` <span class="muted">(shifting, ${this.shiftQueue.length} left)</span>` : ""}</span></div>`,
+      ...this.outputs.map((o) => cell(o, this.sim.get(o), 1)),
+      ...this.buses.map((b) => cell(b.name, busVal(b), b.bits.length)),
     ].join("");
   }
   private renderStats() {
-    $("#stStats", this.el).innerHTML = `<dt>logic cells</dt><dd>${this.logicCount}</dd><dt>cell types</dt><dd>${new Set(this.design.cells.map((c) => c.type)).size}</dd>
-      <dt>flip-flops</dt><dd>${this.sim.flops.length}</dd><dt>wires</dt><dd>${this.design.counts?.nets ?? this.design.counts?.nets_on_wires ?? "?"}</dd><dt>die</dt><dd>${this.design.die.w}×${this.design.die.h} µm</dd>`;
+    const flops = this.sim.flops.length;
+    $("#stStatsSum", this.el).textContent = `${this.logicCount} cells${flops ? ` · ${flops} flops` : ""}`;
+    $("#stStats", this.el).innerHTML = `<dt>Logic cells</dt><dd>${this.logicCount}</dd><dt>Cell types</dt><dd>${new Set(this.design.cells.map((c) => c.type)).size}</dd>
+      <dt>Flip-flops</dt><dd>${flops}</dd><dt>Wires</dt><dd>${this.design.counts?.nets ?? this.design.counts?.nets_on_wires ?? "?"}</dd>
+      <dt>Physical cells</dt><dd>${this.design.phys.length}</dd><dt>Die</dt><dd>${this.design.die.w} × ${this.design.die.h} µm</dd>`;
   }
   private renderLegend() {
     const byModule = $("[data-colour='module']", this.el)?.getAttribute("aria-pressed") === "true";
@@ -479,26 +478,46 @@ export class StagePage {
   private drawWave() {
     const cv = $<HTMLCanvasElement>("#stWave", this.el);
     if (!cv) return;
-    const dpr = Math.min(devicePixelRatio, 2), w = cv.clientWidth, h = cv.clientHeight;
-    if (!w || !h) return;
+    // One lane per named number: single bits as a square wave, multi-bit numbers as a bus with its value written in.
+    const rows = this.waveRows, rowH = 20;
+    const h = Math.max(40, rows.length * rowH + 4);
+    cv.style.height = `${h}px`;
+    const dpr = Math.min(devicePixelRatio, 2), w = cv.clientWidth;
+    if (!w) return;
     cv.width = w * dpr; cv.height = h * dpr;
     const g = cv.getContext("2d")!;
     g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
-    const sigs = this.waveSigs;
-    const rowH = h / Math.max(1, sigs.length), lw = 44, n = 40, step = (w - lw) / n;
-    g.font = "10px JetBrains Mono, monospace";
-    sigs.forEach((s, r) => {
-      const y0 = r * rowH, hi = y0 + rowH * 0.2, lo = y0 + rowH * 0.85;
-      g.fillStyle = "#8995a9"; g.fillText(this.waveLabel.get(s) ?? s, 2, y0 + rowH * 0.7);
-      g.strokeStyle = this.outputs.includes(s) ? "#ffd45e" : "#4f7fe0"; g.lineWidth = 1.3; g.beginPath();
-      const hist = this.history;
-      let prevY: number | null = null;
-      hist.forEach((snap, i) => {
-        const x = lw + (n - hist.length + i) * step, y = snap[s] ? hi : lo;
-        if (prevY === null) g.moveTo(x, y); else { g.lineTo(x, prevY); g.lineTo(x, y); }
-        g.lineTo(x + step, y); prevY = y;
-      });
-      g.stroke();
+    const lw = 52, n = 40, step = (w - lw) / n, hist = this.history;
+    g.font = "11px JetBrains Mono, monospace"; g.textBaseline = "middle";
+    rows.forEach((row, r) => {
+      const y0 = r * rowH + 2, hi = y0 + 4, lo = y0 + rowH - 4, mid = (hi + lo) / 2;
+      g.fillStyle = "#8995a9"; g.fillText(row.label, 2, mid);
+      g.strokeStyle = "rgba(137,149,169,.12)"; g.lineWidth = 1; g.beginPath(); g.moveTo(lw, lo + 2.5); g.lineTo(w, lo + 2.5); g.stroke();
+      const col = row.out ? "#ffd45e" : "#6f9cf0";
+      g.strokeStyle = col; g.lineWidth = 1.4;
+      if (row.bits.length === 1) {
+        g.beginPath();
+        let prevY: number | null = null;
+        hist.forEach((snap, i) => {
+          const x = lw + (n - hist.length + i) * step, y = snap[r] ? hi : lo;
+          if (prevY === null) g.moveTo(x, y); else { g.lineTo(x, prevY); g.lineTo(x, y); }
+          g.lineTo(x + step, y); prevY = y;
+        });
+        g.stroke();
+        return;
+      }
+      // Bus: runs of equal value drawn as one hexagon, value centred when it fits.
+      let i = 0;
+      while (i < hist.length) {
+        let j = i; while (j + 1 < hist.length && hist[j + 1][r] === hist[i][r]) j++;
+        const x0 = lw + (n - hist.length + i) * step, x1 = lw + (n - hist.length + j + 1) * step, k = Math.min(3, (x1 - x0) / 2);
+        g.beginPath();
+        g.moveTo(x0, mid); g.lineTo(x0 + k, hi); g.lineTo(x1 - k, hi); g.lineTo(x1, mid); g.lineTo(x1 - k, lo); g.lineTo(x0 + k, lo); g.closePath();
+        g.stroke();
+        const label = String(hist[i][r]);
+        if (g.measureText(label).width + 6 < x1 - x0) { g.fillStyle = col; g.fillText(label, (x0 + x1) / 2 - g.measureText(label).width / 2, mid + 0.5); }
+        i = j + 1;
+      }
     });
   }
 

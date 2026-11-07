@@ -15,19 +15,18 @@ import { app, type PaletteCommand } from "./ui/state";
 const root = $("#app");
 root.innerHTML = `
   <header class="top">
-    <a class="brand" href="#/stage"><span class="die" aria-hidden="true"></span><b>Decap</b><small>View Source for silicon</small></a>
+    <a class="brand" href="#/stage"><span class="die" aria-hidden="true"></span><b>Decap</b></a>
     <nav class="main" aria-label="Pages">
-      <a href="#/stage" data-r="stage">Stage <kbd>1</kbd></a>
-      <a href="#/wall" data-r="wall">Proof wall <kbd>2</kbd></a>
-      <a href="#/chip" data-r="chip">Chip <kbd>3</kbd></a>
-      <a href="#/compare" data-r="compare">Compare <kbd>4</kbd></a>
+      <a href="#/stage" data-r="stage" title="Stage (1)">Stage</a>
+      <a href="#/wall" data-r="wall" title="Proof wall (2)">Proof wall</a>
+      <a href="#/chip" data-r="chip" title="Chip (3)">Chip</a>
+      <a href="#/compare" data-r="compare" title="Compare (4)">Compare</a>
     </nav>
     <span class="spacer"></span>
-    <span class="status" id="apiStatus" title="Backend status"><i></i> API…</span>
-    <button class="btn sm" type="button" id="btnGuide">Guide <kbd>G</kbd></button>
-    <button class="btn sm" type="button" id="btnDemo">Demo <kbd>D</kbd></button>
-    <button class="btn sm" type="button" id="btnBig" title="Bigger text for a projector">Aa</button>
-    <button class="btn sm" type="button" id="btnPal">Commands <kbd>⌘K</kbd></button>
+    <span class="status" id="apiStatus" title="Backend status"><i></i> API</span>
+    <button class="btn ghost sm" type="button" id="btnGuide" title="Guide (G)">Guide</button>
+    <button class="btn ghost sm" type="button" id="btnDemo" title="Demo (D)">Demo</button>
+    <button class="btn ghost sm" type="button" id="btnPal" title="Commands (Ctrl/⌘ K)">⌘K</button>
   </header>
   <div class="fixture-banner" id="fixBanner" hidden></div>
   <main class="page" id="page"></main>`;
@@ -144,7 +143,6 @@ const palette = new Palette((): PaletteCommand[] => [
 $("#btnGuide").addEventListener("click", () => guide.toggle());
 $("#btnDemo").addEventListener("click", () => demo.toggle());
 $("#btnPal").addEventListener("click", () => palette.open());
-$("#btnBig").addEventListener("click", () => document.body.classList.toggle("projector"));
 
 addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); palette.isOpen ? palette.close() : palette.open(); return; }
@@ -178,8 +176,13 @@ onFixtureChange(renderFixtureBanner);
 
 health().then((h) => {
   app.api = true; app.llm = !!h.llm;
-  $("#apiStatus").innerHTML = `<i class="ok"></i> API${h.yosys === false ? " (no Yosys)" : ""} · guide ${h.llm ? "on" : "off"}`;
-}).catch(() => { app.api = false; $("#apiStatus").innerHTML = `<i class="bad"></i> API offline (static data only)`; });
+  $("#apiStatus").innerHTML = `<i class="ok"></i> API`;
+  $("#apiStatus").title = `API online${h.yosys === false ? " (no Yosys: live proofs off)" : ""} · guide ${h.llm ? "on" : "off"}`;
+}).catch(() => {
+  app.api = false;
+  $("#apiStatus").innerHTML = `<i class="bad"></i> API offline`;
+  $("#apiStatus").title = "Static data only. Start it with: npm run dev:all (or npm run api)";
+});
 
 // Test hook (used by the headless browser check; harmless in production).
 (window as unknown as { __decap: unknown }).__decap = { get stage() { return stage; }, get chip() { return chip; }, app };

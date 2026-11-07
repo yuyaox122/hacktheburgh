@@ -20,51 +20,61 @@ export class WallPage {
     }
   }
 
+  /** A tile shows the name, the verdict colour, cells and coverage; everything else is in the hover. */
   private tile(c: BenchChip) {
     const t = c.trojan;
+    const word = c.verdict === "tested" ? "tested only" : c.verdict;
+    const href = `#/chip/${encodeURIComponent(c.chip)}`;
     if (c.coverage_pct == null) {   // failed before decompiling (e.g. a hard macro): no stats, only the reason
-      const err = (c as { error?: string }).error ?? "no result";
-      return `<a class="tile ${c.verdict}" href="#/chip/${encodeURIComponent(c.chip)}" title="${esc(c.chip)}: ${c.verdict}">
-      <b>${esc(c.chip)}</b><span class="ttl">${esc(c.title ?? "")}</span>
-      <span class="row"><span class="pill ${c.verdict}">${c.verdict}</span></span>
-      <span class="row"><span>${esc(err.replace(/^\w+Error: /, ""))}</span></span>
-    </a>`;
+      const err = ((c as { error?: string }).error ?? "no result").replace(/^\w+Error: /, "");
+      return `<a class="tile ${c.verdict}" href="${href}" title="${esc(`${c.chip}\n${word}\n${err}`)}">
+        <span class="ttl">${esc(c.title || c.chip)}</span><code>${esc(c.chip)}</code>
+        <span class="foot"><span class="why">${esc(err)}</span></span></a>`;
     }
-    return `<a class="tile ${c.verdict}" href="#/chip/${encodeURIComponent(c.chip)}" title="${esc(c.chip)}: ${c.verdict}">
-      <b>${esc(c.chip)}</b><span class="ttl">${esc(c.title ?? "")}</span>
-      <span class="row"><span class="pill ${c.verdict}">${c.verdict === "tested" ? "tested only" : c.verdict}</span><span>${c.logic_cells} cells</span>${c.flops ? `<span>${c.flops} flops</span>` : ""}<span>${c.seconds.toFixed(1)} s</span></span>
-      <span class="row"><span>${c.lines_decompiled} lines vs ${c.lines_author ?? "?"} by the author</span></span>
-      <span class="bar" title="block coverage ${c.coverage_pct}%"><i style="width:${Math.min(100, c.coverage_pct)}%"></i></span>
-      <span class="row"><span>coverage ${c.coverage_pct.toFixed(0)}%</span>${t ? `<span>${t.caught ? "trigger caught ✓" : "trigger missed ✗"}</span>${t.clean_flags ? `<span>${t.clean_flags} false alarm${t.clean_flags > 1 ? "s" : ""}</span>` : ""}` : ""}</span>
+    const tip = [c.chip, word, `${c.logic_cells} cells${c.flops ? `, ${c.flops} flip-flops` : ""} · ${c.seconds.toFixed(1)} s`,
+      `${c.lines_decompiled} lines decompiled vs ${c.lines_author ?? "?"} by the author`, `coverage ${c.coverage_pct.toFixed(1)}%`,
+      ...(t ? [`planted trigger ${t.caught ? "caught" : "missed"}${t.clean_flags ? ` · ${t.clean_flags} false alarm${t.clean_flags > 1 ? "s" : ""}` : ""}`] : [])].join("\n");
+    return `<a class="tile ${c.verdict}" href="${href}" title="${esc(tip)}">
+      <span class="ttl">${esc(c.title || c.chip)}</span><code>${esc(c.chip)}</code>
+      <span class="foot"><span>${c.logic_cells} cells</span>${t && !t.caught ? `<span class="miss">trigger missed</span>` : ""}
+        <span class="cov"><span class="bar"><i style="width:${Math.min(100, c.coverage_pct)}%"></i></span>${c.coverage_pct.toFixed(0)}%</span></span>
     </a>`;
   }
 
-  private summary(s: BenchSummary) {
-    if (!s?.n) return "not scored yet";
-    return `${s.proven ?? 0} proven · ${s.tested ?? 0} tested only · ${s.failed ?? 0} failed · coverage ${(s.coverage_pct ?? 0).toFixed(1)}%`;
+  /** Big fraction, then a proven / tested / failed bar with its counts underneath. */
+  private scoreCard(label: string, s: Partial<BenchSummary>, tip: string) {
+    const n = s.n ?? 0, p = s.proven ?? 0, t = s.tested ?? 0, f = s.failed ?? 0;
+    if (!n) return `<div class="metric" title="${esc(tip)}"><small>${esc(label)}</small><b>–</b></div>`;
+    const seg = (k: number, cls: string) => (k ? `<i class="${cls}" style="flex:${k}"></i>` : "");
+    return `<div class="metric" title="${esc(tip)}"><small>${esc(label)}</small><b>${p}<span>/${n}</span></b>
+      <span class="stack">${seg(p, "p")}${seg(t, "t")}${seg(f, "f")}</span>
+      <span class="counts"><span class="p">${p} proven</span>${t ? `<span class="t">${t} tested</span>` : ""}${f ? `<span class="f">${f} failed</span>` : ""}</span></div>`;
+  }
+  private numCard(label: string, big: string, tip: string, pct?: number) {
+    return `<div class="metric" title="${esc(tip)}"><small>${esc(label)}</small><b>${big}</b>${pct != null ? `<span class="stack"><i class="c" style="flex:${pct}"></i><i style="flex:${100 - pct}"></i></span>` : ""}</div>`;
   }
 
   private render() {
     const b = this.bench!;
     const T = b.summary.test ?? { n: 0 }, D = b.summary.dev ?? { n: 0 }, tj = b.summary.trojan;
-    const frac = (s: Partial<BenchSummary>) => (s.n ? `${s.proven ?? 0}/${s.n}` : "–");
     const test = b.chips.filter((c) => c.split === "test"), dev = b.chips.filter((c) => c.split === "dev"), other = b.chips.filter((c) => c.split !== "test" && c.split !== "dev");
     const order = (a: BenchChip, z: BenchChip) => ["proven", "tested", "failed"].indexOf(a.verdict) - ["proven", "tested", "failed"].indexOf(z.verdict) || a.logic_cells - z.logic_cells;
+    const cov = (T.n ? T : D).coverage_pct ?? 0;
     this.el.innerHTML = `
       <section class="headline">
         ${T.n ? `<h1><em>${T.proven ?? 0} of ${T.n}</em> proven on held-out chips</h1>` : `<h1>Held-out test set: <em style="color:var(--amber)">not scored yet</em></h1>`}
-        <p>${T.n ? "" : `So far: <b>${frac(D)}</b> dev chips proven (the dev set is what we tuned on, so it does not count). `}Real Tiny Tapeout chips Decap had never seen, every name stripped, read back as Verilog. Green means Yosys <b>proved</b> the code is the same circuit. Amber means tested on random inputs only. Red means it failed.</p>
+        <p>Real Tiny Tapeout chips, names stripped, read back as Verilog and checked by Yosys.</p>
       </section>
       <div class="metrics">
-        <div class="metric"><small>Held-out test set</small><b>${frac(T)}</b><span>${this.summary(T as BenchSummary)}</span></div>
-        <div class="metric"><small>Readable${T.n ? "" : " (dev set)"}</small><b>${((T.n ? T : D).coverage_pct ?? 0).toFixed(0)}%</b><span>of logic cells explained by recognised blocks</span></div>
-        ${tj && tj.planted ? `<div class="metric"><small>Planted triggers caught</small><b>${tj.caught}/${tj.planted}</b><span>blind, one random number per chip</span></div>
-        <div class="metric"><small>False alarms</small><b>${tj.clean_flagged}/${tj.clean}</b><span>clean copies with at least one flag</span></div>` : ""}
-        <div class="metric"><small>Dev set (tuned on)</small><b>${frac(D)}</b><span>${this.summary(D as BenchSummary)}</span></div>
+        ${this.scoreCard("Held-out test set", T, `Chips Decap never saw while being built. Green: Yosys proved the code is the same circuit. Amber: random tests only. Red: failed.${T.n ? ` Coverage ${(T.coverage_pct ?? 0).toFixed(1)}%.` : ""}`)}
+        ${this.numCard(`Readable${T.n ? "" : " (dev)"}`, `${cov.toFixed(0)}%`, "Logic cells explained by recognised blocks (adders, counters, muxes…)", Math.min(100, cov))}
+        ${tj && tj.planted ? this.numCard("Triggers caught", `${tj.caught}<span>/${tj.planted}</span>`, "Blind: one random number planted per chip, names stripped")
+          + this.numCard("False alarms", `${tj.clean_flagged}<span>/${tj.clean}</span>`, "Clean copies with at least one flag") : ""}
+        ${this.scoreCard("Dev set", D, `Chips we tuned on: not counted in the headline. Coverage ${(D.coverage_pct ?? 0).toFixed(1)}%.`)}
       </div>
-      <section><div class="split-h"><h2>Test set: held out</h2><span class="muted">frozen ${esc(b.split.frozen)} · sources opened only for scoring</span></div>
+      <section><div class="split-h"><h2>Test set</h2><span class="muted">held out · frozen ${esc(b.split.frozen.slice(0, 10))}</span></div>
         <div class="tiles">${test.sort(order).map((c) => this.tile(c)).join("") || `<p class="muted">No test chips yet.</p>`}</div></section>
-      <section><div class="split-h"><h2>Dev set: used for tuning</h2><span class="muted">not counted in the headline</span></div>
+      <section><div class="split-h"><h2>Dev set</h2><span class="muted">tuned on, not counted</span></div>
         <div class="tiles">${dev.sort(order).map((c) => this.tile(c)).join("") || `<p class="muted">No dev chips.</p>`}</div></section>
       ${other.length ? `<section><div class="split-h"><h2>Other</h2></div><div class="tiles">${other.map((c) => this.tile(c)).join("")}</div></section>` : ""}
       <p class="fine">Generated ${esc(b.generated)}${this.source === "fixture" ? " · FIXTURE data: made-up chips for development, not results" : this.source === "api" ? " · from the API" : ""}.</p>`;
