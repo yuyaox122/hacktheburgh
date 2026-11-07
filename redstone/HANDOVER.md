@@ -1,8 +1,8 @@
-# Handover: redstone backend → next session, the 2-D layout
+# Handover: redstone backend
 
-Written Sat 7 Nov 2026, about 22:00, at the end of the session that built `redstone/`. Read this first, then `README.md`.
+Written Sat 7 Nov 2026, about 22:00, at the end of the session that built `redstone/`. Updated about 23:00, after the session that built the **2-D layout** (§4). Read this first, then `README.md`.
 
-**Next session's goal:** build each chip's redstone at the **real 2-D positions** of its gates (the chip's rows and x positions from the GDS) instead of today's single long row. Everything must still pass the vanilla check.
+**Status:** both TT08 chips are built in 2-D (real rows, x to scale) and pass the vanilla check. The 2-D builds are smaller and faster than the old single row. Next ideas are at the end of §4.
 
 ---
 
@@ -33,12 +33,14 @@ Written Sat 7 Nov 2026, about 22:00, at the end of the session that built `redst
 
 | Build | Location |
 |---|---|
-| Spawn signpost | (250, −60, 124) |
+| Spawn signpost (from the first session; not re-checked, may still list the old one-row coordinates) | (250, −60, 124) |
 | Alex's real-layout CLA (his datapack, run unmodified) | z −16..76 |
-| `tt_um_sign_addsub` | z 200..274 |
-| Primitive showroom | z ≈ 318..344 |
-| `tt_um_Electom_cla_4bits` | z 400..482 |
-| Verilog `counter` | z ≈ 600..780 |
+| `tt_um_sign_addsub`, 2-D | x 528..1156, z 201..353 |
+| Primitive showroom | x −8..60, z ≈ 318..344 |
+| `tt_um_Electom_cla_4bits`, 2-D | x 512..1188, z 401..540 |
+| Verilog `counter` (one row) | x 0..600, z ≈ 600..780 |
+
+The world spawn is at the last chip built (`demo.py chip` sets it): cla_4bits' levers, (1050, −60, 441).
 
 The demo world also has these functions:
 - `redstone:goto/<chip>` teleports to a build.
@@ -57,10 +59,11 @@ Yuyao **doesn't have Minecraft installed yet**. Once they're in, run `python3 de
 | Primitives NOT / INH (= a∧¬b) / OR / BUF / LATCH, every rotation | pass |
 | Bus tiles (ports on the north face) | pass |
 | `sim.py`: cell-level (Liberty) vs primitive-level, 2,000 vectors | 0 mismatches on both chips |
-| `tt_um_sign_addsub` (combinational, 105 primitives) | 200/200 |
-| `tt_um_Electom_cla_4bits` (5 flops as two-phase latches, local async reset) | 60/60 cycles |
-| Verilog `examples/mul2.v` and `examples/counter.v`, vs iverilog on the source | 40/40 each |
-| Live (ticks running): adder; CLA 3+5, 9+8+1, 15+15+1; counter reset / count / load / down | correct |
+| `tt_um_sign_addsub` (combinational, 105 primitives), **2-D** | 200/200 |
+| `tt_um_Electom_cla_4bits` (5 flops as two-phase latches, local async reset), **2-D** | 60/60 cycles |
+| Verilog `examples/mul2.v` and `examples/counter.v`, vs iverilog on the source (one row; blocks identical to before 2-D except wire colours) | 40/40 each; counter re-run 30/30 after 2-D |
+| Live (ticks running), 2-D: adder 3/3 random vectors; CLA 3/3 random clock cycles (demo server) | correct |
+| Live, old one-row builds: CLA 3+5, 9+8+1, 15+15+1; counter reset / count / load / down | correct |
 
 Commands to re-verify after any change:
 ```sh
@@ -109,7 +112,32 @@ prims.py      tiles. Bus tiles (BUS dict): 5 wide x 4 deep, ports on the north f
 
 ---
 
-## 4. The next goal: the 2-D layout
+## 4. The 2-D layout (done Sat 7 Nov, ~23:00)
+
+### What was built
+
+The design below ("rows + channels + spines") was built as recommended, with no A\* fallback needed. It routed and passed DRC on the first try on both chips.
+
+| | one row (before) | 2-D (now) |
+|---|---|---|
+| sign_addsub | 833 × 74, 31.9k blocks, settle 223 rt | 629 × 153, 24.6k blocks, **settle 170 rt**, 4 rows, 27 spines |
+| cla_4bits | 801 × 82, 36.2k blocks, settle 171 rt | 677 × 140, 30.6k blocks, **settle 131 rt**, 3 rows, 26 spines |
+
+Code changes:
+- `techmap.Prim.y` holds the real row (GDS y), and `PrimNetlist.cell_type` holds the cell types for the signs.
+- `pnr.place` puts row 0 = IO pads at the real pin x (constant outputs packed west as unlit lamps), and rows 1.. = real rows, north first. Its `_legalise` is minimum-displacement (Abacus-style clusters) at 1 slot (8 blocks) per µm.
+- `pnr.route` builds each net as an undirected wire graph (port runs, trunks, dips, spine runs), then orients it from the driver's port by BFS. That BFS raises on loops or a disconnected net. A repeater is eligible on any straight, flat, unbranched cell. `_check_tree` rejects two cells of one net that could connect without being joined.
+- `world.build` clears up to y=8 and writes multi-line signs.
+- `demo.py goto` now lands just south of the levers, at ground level.
+- New `mapview.py <chip>` writes `out/<chip>/map.png`, a top-down picture (wires coloured by layer).
+- Verilog designs (no `y`) still get the one-row layout with pitch 6.
+
+### Next ideas
+- **Speed and size:** z is mostly channels. Fewer tracks would come from better spine column choice (today: the shortest total trunks, then the nearest to the median pin). Pads facing south into row 1's channel would save one channel per IO net.
+- The display idea below (signs per cell) is **done**: each cell's group has a sign at `zt + 4` (south of its tiles).
+- A picture for the pitch: `python3 mapview.py <chip> 2`.
+
+### Design notes (as planned before the build)
 
 ### Facts to design from (measured)
 
