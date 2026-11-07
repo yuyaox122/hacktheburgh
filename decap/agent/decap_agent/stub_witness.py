@@ -190,7 +190,7 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
     if free_bits <= 16:
         sizes = [1 << (8 if (k == "next" and n == "count") else WIDTHS[n]) for k, n in refs]
         if all(ev.holds(node, dict(zip(refs, vals))) for vals in itertools.product(*[range(s) for s in sizes])):
-            return {"verdict": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
+            return {"verdict": "tautology", "truth": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
 
     srcs = sorted(set().union(*[_deps(k, n, planted is not None) for k, n in refs]))
     for a in _assignments(srcs):
@@ -201,7 +201,7 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
                 key = f"next({n})" if k == "next" else n
                 if key not in cex:
                     cex[key] = env[(k, n)]
-            return {"verdict": "refuted", **out, "counterexample": cex, "refute_kind": "semantic"}
+            return {"verdict": "refuted", "truth": "refuted", **out, "counterexample": cex, "refute_kind": "semantic"}
 
     cone_lits = get_region(cones)["cone_literals"] if cones else None
     shape_ops = SHAPES.get(label)
@@ -212,7 +212,7 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
         want.add(("sig", "uo_out"))
     on_topic = not cones or bool(names(node) & want)
     if not on_topic:
-        return {"verdict": "restated", **out, "credit": {"cleared": False, "reason": "says nothing about this region's outputs",
+        return {"verdict": "restated", "truth": "proven", **out, "credit": {"cleared": False, "reason": "says nothing about this region's outputs",
                                                          "literals": out["literals"], "cone_literals": cone_lits}}
     rng = random.Random(3)
     envs = [chip_values(a, planted) for a in rng.sample(list(_assignments(srcs)), min(48, 1 << sum(SOURCES[x] for x in srcs)))]
@@ -222,14 +222,14 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
     missing = sorted(o for o in need if o not in said and o.split("[")[0] not in said)
     complete = is_complete(ev, node, envs, output_bits(node, want, WIDTHS | {"count": 8})) and not missing
     if not complete:
-        return {"verdict": "partial", **out, "credit": {"cleared": False, "complete": complete,
+        return {"verdict": "partial", "truth": "proven", **out, "credit": {"cleared": False, "complete": complete,
                 "reason": f"does not cover every output of the region: missing {', '.join(missing)}" if missing
                           else "true, but it does not say what the output is for every input",
                 "literals": out["literals"], "cone_literals": cone_lits}}
     if label_ok or short:
         reason = f"labelled shape: {label}" if label_ok else f"{out['literals']} literals vs {cone_lits} in the decompiled cone"
-        return {"verdict": "proven", **out, "credit": {"cleared": True, "complete": True, "reason": reason,
+        return {"verdict": "proven", "truth": "proven", **out, "credit": {"cleared": True, "complete": True, "reason": reason,
                                                        "literals": out["literals"], "cone_literals": cone_lits}}
-    return {"verdict": "restated", **out,
+    return {"verdict": "restated", "truth": "proven", **out,
             "credit": {"cleared": False, "reason": "proven, but no shorter than the decompile and no known shape",
                        "literals": out["literals"], "cone_literals": cone_lits}}

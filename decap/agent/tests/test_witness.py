@@ -204,3 +204,42 @@ def test_real_chip_claim_must_cover_every_region_output(monkeypatch):
     full = check_claim("tt_um_kapilan_alarm", ClaimIn(
         claim="(uio_out[7] == bit0) && (next(bit0) == (bit0 | ({count0, count1[4:0]} == {uio_in[2:0], ui_in})))", scope=alarm))
     assert full["verdict"] == "tested" and full["credit"]["cleared"]
+
+
+def test_bench_scores_first_drafts_with_a_clustered_ci(tmp_path):
+    from decap_agent.bench import run_bench
+
+    def fn(messages, info):   # right on the counter region at once; wrong first on the compare region
+        text = " ".join(str(p) for m in messages for p in getattr(m, "parts", []))
+        if "next(count)" in text.split("Region outputs:")[-1].split("\n")[0]:
+            claim = RIGHT
+        elif "REFUTED" in text:
+            claim = {"claim": "uo_out[1] == (count == 8'd200)", "label": "comparator"}
+        else:
+            claim = {"claim": "uo_out[1] == (count == 8'd100)", "label": "comparator"}
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, claim)])
+    res = run(run_bench(build_server(create_stub_app()), [CHIP], model=FunctionModel(fn, model_name="scripted"),
+                        max_regions=3, out_path=tmp_path / "b.json", log=lambda m: None))
+    s = res["summary"]
+    assert s["regions"] == 3 and s["claims"] == 3
+    assert s["first_draft"] == {"refuted_semantic": 1, "true_credited": 2}
+    assert s["error_rate_semantic"] == round(1 / 3, 4) and s["error_ci95_clustered"] is not None
+    assert s["explained_regions"] == 3 and s["headline"] == "explained coverage"     # n < 30
+    assert (tmp_path / "b.json").exists()
+
+
+def test_bench_refuses_held_out_split_without_freeze():
+    from decap_agent import cli
+    assert cli.main(["--no-transcript", "bench", "--split", "test"]) == 2
+
+
+def test_transcript_lifts_touched_lines(tmp_path):
+    t = Transcript(tmp_path / "t.jsonl")
+    server = build_server(create_stub_app(), transcript=t)
+
+    async def go():
+        async with Client(server) as c:
+            await c.call_tool("get_region", {"chip": CHIP, "scope": NEXT})
+    run(go())
+    ev = [e for e in load(t.path) if e["kind"] == "tool"][-1]
+    assert "lines" in ev and ev["cells"]

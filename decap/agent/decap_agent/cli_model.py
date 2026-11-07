@@ -43,7 +43,7 @@ def _transcript(messages: list[ModelMessage]) -> str:
     return "\n\n".join(out)
 
 
-def cli_model(alias: str = "sonnet", timeout: float = 180) -> FunctionModel:
+def cli_model(alias: str = "sonnet", timeout: float = 360) -> FunctionModel:
     if shutil.which("claude") is None:
         raise RuntimeError("the claude CLI is not installed")
 

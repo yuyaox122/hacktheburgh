@@ -140,6 +140,31 @@ decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the check
   the local `claude` CLI login (decap_agent/cli_model.py: no tools, no MCP, no user settings so no hooks, no saved
   session, API key removed from its env). Opt-in only, because it spends the logged-in account.
 
+### The bench (the measured number) and the Monte Carlo ablation
+
+```
+decap bench --split dev [--max-regions 4] [--model cli:sonnet]   # dry run on dev chips (tune here only)
+decap bench --freeze-hash                                        # post before scoring the held-out split
+decap bench --split test --frozen ...                            # refuses to run without --frozen
+decap bench --ablate runs/<bench>.jsonl                          # re-check every claim with simulation (no LLM)
+```
+- **Fixed region rule** (set before any test chip is seen): every block the templates could not name
+  (`recognised: false`), largest first, at most `--max-regions` per chip, scope `{cone_of: block id}`.
+- **Summary:**
+  - first-draft outcomes (true and credited / refuted semantic / reset-only / partial / restated / …);
+  - semantic error rate with a **bootstrap 95% CI clustered by chip**;
+  - explained coverage of unrecognised cells, and median compression;
+  - honesty counts with chip names;
+  - the plan's decision rule picks the headline.
+- **Ablation (Ian's Monte Carlo question):** every claim an agent made is re-checked by plain random simulation
+  (1024 vectors) and by the core's biased patterns (4096), then compared with Yosys. Each Yosys counterexample is
+  replayed in the simulator first: a disagreement there is a model mismatch (e.g. a cut ring-oscillator loop),
+  not a sampling miss, and is excluded.
+- **Dev dry run** (3 dev chips, 5 regions, claude CLI, 6 min): the kapilan alarm blob was proven on its first draft;
+  segdecode was refuted three times. Ablation over the 12 claims made so far: Yosys refuted 3. Of the 2 comparable
+  ones, **random and biased testing passed both** (the third was a ring-oscillator model mismatch). Simulation
+  never contradicted a proof. Small n, dev chips only: the held-out run gives the real number.
+
 ### The formaliser (judge's moment)
 
 ```
