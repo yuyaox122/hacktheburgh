@@ -45,6 +45,7 @@ export class MinecraftPage {
     this.el.innerHTML = `
       <aside class="mc-side">
         <section class="sect" id="mcServer"></section>
+        <section class="sect" id="mcPresetsS" hidden><h4>Ready-made</h4><div class="mc-builds" id="mcPresets"></div></section>
         <section class="sect"><h4>Builds</h4><div class="mc-builds" id="mcBuilds"></div></section>
         <section class="sect">
           <h4>Your Verilog</h4>
@@ -90,6 +91,12 @@ export class MinecraftPage {
   private async refresh() {
     try { this.health = await rs.health(); this.healthErr = null; } catch (e) { this.health = null; this.healthErr = (e as Error).message; }
     try { this.builds = await rs.builds(); } catch { this.builds = []; }
+    try {
+      const ps = await rs.presets();
+      $("#mcPresetsS", this.el).hidden = !ps.length;
+      $("#mcPresets", this.el).innerHTML = ps.map((p) => `<button type="button" class="mc-build" data-preset="${esc(p.id)}"><b>${esc(p.title)}</b><span>Compile and build</span></button>`).join("");
+      $$<HTMLElement>("[data-preset]", this.el).forEach((x) => x.addEventListener("click", () => void this.compileAndBuild({ preset: x.dataset.preset! })));
+    } catch { $("#mcPresetsS", this.el).hidden = true; }
     this.renderServer(); this.renderBuilds();
     if (!this.cur) this.renderHead();
   }
