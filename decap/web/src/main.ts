@@ -10,24 +10,32 @@ import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
 import { $, $$, esc, isTyping } from "./ui/dom";
+import { icon } from "./ui/icons";
 import { app, type PaletteCommand } from "./ui/state";
 
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 const root = $("#app");
 root.innerHTML = `
   <header class="top">
-    <a class="brand" href="#/stage"><span class="die" aria-hidden="true"></span><b>Decap</b><small>View Source for silicon</small></a>
+    <a class="brand" href="#/stage" aria-label="Decap home">${icon.logo}<b>Decap</b></a>
     <nav class="main" aria-label="Pages">
-      <a href="#/stage" data-r="stage">Stage <kbd>1</kbd></a>
-      <a href="#/wall" data-r="wall">Proof wall <kbd>2</kbd></a>
-      <a href="#/chip" data-r="chip">Chip <kbd>3</kbd></a>
-      <a href="#/compare" data-r="compare">Compare <kbd>4</kbd></a>
+      <a href="#/stage" data-r="stage" title="A real chip in 3D, live (1)">Explore</a>
+      <a href="#/wall" data-r="wall" title="Every benchmark chip and its proof (2)">Results</a>
+      <a href="#/chip" data-r="chip" title="One chip read back as Verilog (3)">Decompile</a>
+      <a href="#/compare" data-r="compare" title="Find chips like your design (4)">Compare</a>
     </nav>
-    <span class="spacer"></span>
-    <span class="status" id="apiStatus" title="Backend status"><i></i> API…</span>
-    <button class="btn sm" type="button" id="btnGuide">Guide <kbd>G</kbd></button>
-    <button class="btn sm" type="button" id="btnDemo">Demo <kbd>D</kbd></button>
-    <button class="btn sm" type="button" id="btnBig" title="Bigger text for a projector">Aa</button>
-    <button class="btn sm" type="button" id="btnPal">Commands <kbd>⌘K</kbd></button>
+    <div class="actions">
+      <span class="status" id="apiStatus"><i></i><span>Connecting</span></span>
+      <button class="search" type="button" id="btnPal" aria-label="Search and commands">${icon.search}<span class="lbl">Search</span><span class="k">${isMac ? "⌘K" : "Ctrl K"}</span></button>
+      <button class="btn plain" type="button" id="btnGuide" title="Ask about what's on screen (G)">${icon.sparkle}<span>Ask</span></button>
+      <div class="menuwrap">
+        <button class="btn plain icon" type="button" id="btnMore" aria-haspopup="menu" aria-expanded="false" aria-label="More">${icon.more}</button>
+        <div class="menu" id="moreMenu" role="menu" hidden>
+          <button type="button" role="menuitem" id="btnDemo">${icon.present}Presenter mode<span class="k">D</span></button>
+          <button type="button" role="menuitem" id="btnBig">${icon.textSize}Larger text</button>
+        </div>
+      </div>
+    </div>
   </header>
   <div class="fixture-banner" id="fixBanner" hidden></div>
   <main class="page" id="page"></main>`;
@@ -73,7 +81,7 @@ async function route() {
     if (!stage) {
       const d = document.createElement("div");
       d.className = "empty";
-      d.innerHTML = `<h3>No Stage data yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>decap/web</code> to build <code>public/data/design.json</code> (a Tiny Tapeout chip, from its GDS) and <code>lib.json</code> (SKY130 Liberty).</p>`;
+      d.innerHTML = `<h3>No chip layouts yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>decap/web</code> to build the 3D layouts from the Tiny Tapeout GDS files.</p>`;
       show(d, true); return;
     }
     const s = stage;
@@ -131,25 +139,29 @@ const demo = new Demo({
 root.append(demo.el);
 
 const palette = new Palette((): PaletteCommand[] => [
-  { label: "Go to Stage (a real chip in 3D)", key: "1", run: () => (location.hash = "#/stage") },
-  { label: "Go to Proof wall", key: "2", run: () => (location.hash = "#/wall") },
-  { label: "Go to Chip", key: "3", run: () => (location.hash = "#/chip") },
-  { label: "Go to Compare", key: "4", run: () => (location.hash = "#/compare") },
-  { label: "Open the AI guide", key: "G", run: () => guide.open() },
-  { label: "Demo flow (SPEC §9)", key: "D", run: () => demo.toggle() },
-  { label: "Bigger text (projector)", key: "", run: () => document.body.classList.toggle("projector") },
+  { label: "Explore a chip in 3D", key: "1", run: () => (location.hash = "#/stage") },
+  { label: "Results", key: "2", run: () => (location.hash = "#/wall") },
+  { label: "Decompile", key: "3", run: () => (location.hash = "#/chip") },
+  { label: "Compare", key: "4", run: () => (location.hash = "#/compare") },
+  { label: "Ask the guide", key: "G", run: () => guide.open() },
+  { label: "Presenter mode", key: "D", run: () => demo.toggle() },
+  { label: "Larger text", key: "", run: () => document.body.classList.toggle("projector") },
   ...(app.pageCommands?.() ?? []),
 ]);
 
+const menu = $("#moreMenu"), moreBtn = $("#btnMore");
+const setMenu = (open: boolean) => { menu.hidden = !open; moreBtn.setAttribute("aria-expanded", String(open)); };
+moreBtn.addEventListener("click", (e) => { e.stopPropagation(); setMenu(menu.hidden); });
+addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target as Node)) setMenu(false); });
 $("#btnGuide").addEventListener("click", () => guide.toggle());
-$("#btnDemo").addEventListener("click", () => demo.toggle());
+$("#btnDemo").addEventListener("click", () => { setMenu(false); demo.toggle(); });
 $("#btnPal").addEventListener("click", () => palette.open());
-$("#btnBig").addEventListener("click", () => document.body.classList.toggle("projector"));
+$("#btnBig").addEventListener("click", () => { setMenu(false); document.body.classList.toggle("projector"); });
 
 addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); palette.isOpen ? palette.close() : palette.open(); return; }
   if (palette.isOpen) return;
-  if (e.key === "Escape") { if (guide.isOpen) guide.close(); else if (app.route === "stage") stage?.selectCell(null); return; }
+  if (e.key === "Escape") { if (!menu.hidden) setMenu(false); else if (guide.isOpen) guide.close(); else if (app.route === "stage") stage?.selectCell(null); return; }
   if (isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
   if (demo.isOpen && (e.key === "PageDown" || e.key === "ArrowRight")) { e.preventDefault(); demo.next(); return; }
   if (demo.isOpen && (e.key === "PageUp" || e.key === "ArrowLeft")) { e.preventDefault(); demo.prev(); return; }
@@ -165,21 +177,28 @@ addEventListener("keydown", (e) => {
     else if (k === ".") { stage.pause(); stage.step(); }
     else if (k === "r" || k === "R") stage.reset();
     else if (k === "x" || k === "X") stage.toggleExplode();
-    else if (k === "f" || k === "F") stage.view?.flyTo(null);
+    else if (k === "f" || k === "F") stage.fit();
   }
 });
 
 function renderFixtureBanner() {
   const b = $("#fixBanner");
   b.hidden = fixtureUsed.size === 0;
-  b.textContent = `FIXTURE data on screen (made up, for development): ${[...fixtureUsed].join(", ")}. Real results appear once decap/out is synced (npm run sync-data) or the API is running.`;
+  b.textContent = `Sample data on screen, for development only: ${[...fixtureUsed].join(", ")}. Run npm run sync-data or start the API for real results.`;
 }
 onFixtureChange(renderFixtureBanner);
 
 health().then((h) => {
   app.api = true; app.llm = !!h.llm;
-  $("#apiStatus").innerHTML = `<i class="ok"></i> API${h.yosys === false ? " (no Yosys)" : ""} · guide ${h.llm ? "on" : "off"}`;
-}).catch(() => { app.api = false; $("#apiStatus").innerHTML = `<i class="bad"></i> API offline (static data only)`; });
+  const s = $("#apiStatus");
+  s.innerHTML = `<i class="ok"></i><span>Live</span>`;
+  s.title = `Connected to the Decap API.${h.yosys === false ? " Yosys is missing, so proofs are off." : ""} The guide is ${h.llm ? "on" : "off"}.`;
+}).catch(() => {
+  app.api = false;
+  const s = $("#apiStatus");
+  s.innerHTML = `<i class="bad"></i><span>Offline</span>`;
+  s.title = "Showing saved results. Live planting, Fix, Compare and the guide need the Decap API.";
+});
 
 // Test hook (used by the headless browser check; harmless in production).
 (window as unknown as { __decap: unknown }).__decap = { get stage() { return stage; }, get chip() { return chip; }, app };

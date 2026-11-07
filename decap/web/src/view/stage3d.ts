@@ -16,14 +16,14 @@ import { cellBox, OVERVIEW_DIR, Y, usedArea, type Rect } from "./geometry";
 
 export type LayerKey = "pkg" | "cell" | "m1" | "via" | "m2" | "m3" | "m4" | "power";
 export const LAYERS: { key: LayerKey; label: string; colour: string; on: boolean }[] = [
-  { key: "power", label: "power straps (met4/5)", colour: "var(--met4)", on: false },
-  { key: "m4", label: "met4", colour: "var(--met4)", on: true },
-  { key: "m3", label: "met3", colour: "var(--met3)", on: true },
-  { key: "m2", label: "met2", colour: "var(--met2)", on: true },
-  { key: "via", label: "vias", colour: "#c9d3e3", on: true },
-  { key: "m1", label: "met1 + rails", colour: "var(--met1)", on: true },
-  { key: "cell", label: "cells", colour: "var(--adder)", on: true },
-  { key: "pkg", label: "package", colour: "var(--accent)", on: true },
+  { key: "power", label: "Power straps", colour: "var(--met4)", on: false },
+  { key: "m4", label: "Metal 4", colour: "var(--met4)", on: true },
+  { key: "m3", label: "Metal 3", colour: "var(--met3)", on: true },
+  { key: "m2", label: "Metal 2", colour: "var(--met2)", on: true },
+  { key: "via", label: "Vias", colour: "#c9d3e3", on: true },
+  { key: "m1", label: "Metal 1 and rails", colour: "var(--met1)", on: true },
+  { key: "cell", label: "Cells", colour: "var(--adder)", on: true },
+  { key: "pkg", label: "Package", colour: "#c9a24a", on: true },
 ];
 type Group = "pkg" | "sub" | "cell" | "m1" | "via" | "m2" | "via2" | "m3" | "via3" | "m4" | "power";
 const EXPLODE_IDX: Record<Group, number> = { pkg: 0, sub: 0, cell: 1, m1: 2, via: 3, m2: 4, via2: 5, m3: 6, via3: 7, m4: 8, power: 9 };
@@ -140,7 +140,7 @@ export class Stage3D {
     const r = this.renderer;
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
-    const bg = new THREE.Color(css("--bg") || "#090d13");
+    const bg = new THREE.Color(css("--bg") || "#0b0b0d");
     this.scene.background = bg; this.scene.fog = new THREE.FogExp2(bg, 0.0028);
     const pmrem = new THREE.PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -161,7 +161,7 @@ export class Stage3D {
     key.shadow.camera.updateProjectionMatrix(); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.05;
     this.scene.add(key);
     const rim = new THREE.DirectionalLight(0x6a8cff, 0.6); rim.position.set(90, 40, -110); this.scene.add(rim);
-    const desk = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x0a0e14, roughness: 0.6, metalness: 0.45, envMapIntensity: 0.3 }));
+    const desk = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.6, metalness: 0.45, envMapIntensity: 0.3 }));
     desk.rotation.x = -Math.PI / 2; desk.position.y = -4; desk.receiveShadow = true; this.scene.add(desk);
 
     this.chip.position.set(-xc, 0, -zc); this.scene.add(this.chip);
@@ -318,7 +318,7 @@ export class Stage3D {
     this.hovBox.visible = false; this.G.cell.add(this.hovBox);
     const tagEl = document.createElement("div"); tagEl.className = "celltag"; tagEl.hidden = true;
     this.tagObj = new CSS2DObject(tagEl); this.G.cell.add(this.tagObj);
-    for (const [g, text, y] of [["cell", "cells · transistors", Y.cellTop], ["m1", "met1 · power rails + local wires", Y.m1], ["m2", "met2 · vertical wires", Y.m2], ["m3", "met3 · long wires", Y.m3], ["m4", "met4", Y.m4]] as [Group, string, number][]) {
+    for (const [g, text, y] of [["cell", "Cells and transistors", Y.cellTop], ["m1", "Metal 1: power rails, local wires", Y.m1], ["m2", "Metal 2: vertical wires", Y.m2], ["m3", "Metal 3: long wires", Y.m3], ["m4", "Metal 4", Y.m4]] as [Group, string, number][]) {
       const el = document.createElement("div"); el.className = "layerlabel"; el.textContent = text; el.style.opacity = "0";
       const o = new CSS2DObject(el); o.position.set(this.V.x0 - 3, y, this.sz(this.V.y0 + (this.V.y1 - this.V.y0) * 0.45)); o.userData.layerLabel = true; this.G[g].add(o);
     }
@@ -443,7 +443,7 @@ export class Stage3D {
     const el = this.tagObj.element as HTMLElement;
     if (id && this.cellIdx.has(id)) {
       const c = this.cells[this.cellIdx.get(id)!];
-      el.textContent = `${c.id} · ${c.type}`; el.hidden = false;
+      el.innerHTML = `${c.id}<small>${c.type}</small>`; el.hidden = false;
       this.tagObj.position.set(c.x + c.w / 2, Y.cellTop + 0.6, this.sz(c.y + this.RH / 2));
     } else el.hidden = true;
   }
@@ -554,9 +554,9 @@ export class Stage3D {
         this.setHover(h?.kind === "cell" ? h.id : null);
         if (h) {
           let t = "";
-          if (h.kind === "cell") { const c = this.cells[this.cellIdx.get(h.id)!]; const o = this.outNet.get(c.id); t = `${c.id} <small>${c.type}</small>${o ? ` · out <b>${this.value(o)}</b>` : ""}`; }
-          else if (h.kind === "net") t = `wire ${h.net} · <b>${this.value(h.net)}</b>`;
-          else t = `${h.p.type} <small>physical only</small>`;
+          if (h.kind === "cell") { const c = this.cells[this.cellIdx.get(h.id)!]; const o = this.outNet.get(c.id); t = `<span>${c.id}</span><small>${c.type}</small>${o ? `<small>out</small><b>${this.value(o)}</b>` : ""}`; }
+          else if (h.kind === "net") t = `<small>wire</small><span>${h.net}</span><b>${this.value(h.net)}</b>`;
+          else t = `<span>${h.p.type}</span><small>no logic</small>`;
           this.tip.innerHTML = t; this.tip.hidden = false;
           const r = this.host.getBoundingClientRect();
           this.tip.style.left = `${last.clientX - r.left}px`; this.tip.style.top = `${last.clientY - r.top}px`;
@@ -601,7 +601,22 @@ export class Stage3D {
     this.controls.update();
     this.composer.render();
     this.labels.render(this.scene, this.camera);
+    if (this.frame++ % 6 === 0) this.declutterPins();
   };
+
+  private frame = 0;
+  /** Hide pin labels that would overlap one already placed (lit pins win), so names never print over each other. */
+  private declutterPins() {
+    const els = [...this.pinEls.values()].sort((a, b) => Number(b.classList.contains("on")) - Number(a.classList.contains("on")));
+    const placed: DOMRect[] = [];
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      if (!r.width) continue;
+      const hit = placed.some((p) => r.left < p.right + 4 && r.right > p.left - 4 && r.top < p.bottom + 2 && r.bottom > p.top - 2);
+      if (el.classList.contains("clash") !== hit) el.classList.toggle("clash", hit);
+      if (!hit) placed.push(r);
+    }
+  }
 
   /** Client (page) coordinates of a cell's top centre, for tests and tours. */
   screenPos(id: string): { x: number; y: number } | null {
