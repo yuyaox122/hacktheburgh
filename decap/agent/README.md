@@ -120,6 +120,21 @@ decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the check
   formal, english, counterexample, refute_kind, credit {cleared, reason, literals, cone_literals}, touched}`.
   The stub implements all three on `stub_counter8` so the loop runs offline.
 
+- **Credit needs a complete claim.** A true partial fact ("once set, bit0 stays set": 2 literals vs 50) used to
+  pass the 1/3-literals rule. Now credit also needs the claim to pin down the output bits it names for every
+  input (verdict `partial` otherwise). The live agent found that loophole on its own first run.
+- **Real chips before the checker lands:** `DECAP_CORE_APP=decap_agent.core_witness:app PYTHONPATH=<checkout>`
+  adds `get_region`, `probe_truth` (with `fix`) and a FALLBACK `propose_claim` (netlist simulation; verdicts
+  `tested`/`refuted`/`partial`, never `proven`) on top of the real core, without editing a core file. Each route steps
+  aside once the core has one with the same operation_id.
+- **Budget:** the controller puts the region + a 1024-vector probe in the first prompt; the LLM may probe twice more;
+  6 requests / 120k input tokens per attempt. Uncapped, one 23-input region cost 1.37M tokens; now about 3k.
+
+Real chip, fallback checker (`tt_um_kapilan_alarm`, region `cone_of uio_out[7]`, 50-literal decompiled blob):
+first draft `(uio_out[7] == bit0) && (next(bit0) == (bit0 | ({count0, count1[4:0]} == {uio_in[2:0], ui_in})))`.
+That's the alarm latch: minutes and hours equal the alarm set on the inputs. It is complete, 9 literals vs 50, and was
+tested on 4096 random vectors (not proven; that needs core/claims.py), in 8.5 s with 3k input tokens.
+
 Live check (stub chip, `claude-sonnet-5-5`, about 10 s): the agent claimed
 `next(count) == (en ? count + 8'd1 : count)` labelled counter, which was proven on its first draft and credited
 (4 literals vs 40 in the decompiled cone).

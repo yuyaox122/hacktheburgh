@@ -80,6 +80,7 @@ class ConeIn(BaseModel):
 class ProbeIn(ScopeIn):
     n: int = Field(256, ge=1, le=4096, description="How many random input vectors to try (all of them if the region has <= 12 input bits).")
     seed: int = Field(1, description="Random seed, so a probe can be repeated.")
+    fix: dict[str, int] = Field(default_factory=dict, description="Hold some region inputs at fixed values while the rest vary, e.g. {\"bit0\": 0, \"ui_in\": 37}. Names as the region lists them.")
 
 
 class ClaimIn(ScopeIn):
@@ -272,7 +273,7 @@ def create_stub_app() -> FastAPI:
         """Try many input vectors on the region and show what its outputs did (random, or every input if the region is
         small). Free to call; a pattern that held on samples can still be false, which only propose_claim decides."""
         cones = scoped_cones(chip, body.scope)
-        return {"chip": chip, **stub_witness.probe(cones, trigger_of(chip), body.n, body.seed),
+        return {"chip": chip, **stub_witness.probe(cones, trigger_of(chip), body.n, body.seed, body.fix),
                 "touched": touched(cones), "source": SOURCE}
 
     @app.post("/chips/{chip}/claim", operation_id="propose_claim")

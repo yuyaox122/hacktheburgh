@@ -18,7 +18,7 @@ from __future__ import annotations
 import itertools
 import random
 
-from .claim_expr import ClaimSyntaxError, Evaluator, Node, literals, names, parse, unparse
+from .claim_expr import ClaimSyntaxError, Evaluator, Node, is_complete, literals, names, output_bits, parse, unparse
 
 SOURCES = {"en": 1, "ui_in": 8, "count": 8}
 FLOPS = [f"q_ff_{k}" for k in range(8)]
@@ -135,16 +135,21 @@ def _out_value(name: str, env: dict) -> int:
     return (v >> int(sel.rstrip("]"))) & 1 if sel else v
 
 
-def probe(cones: list[str], planted: int | None, n: int, seed: int) -> dict:
+def probe(cones: list[str], planted: int | None, n: int, seed: int, fix: dict | None = None) -> dict:
     region = get_region(cones)
-    srcs = [i["name"] for i in region["inputs"]]
+    fix = fix or {}
+    bad = [k for k in fix if k not in SOURCES]
+    if bad:
+        from fastapi import HTTPException
+        raise HTTPException(400, f"fix: unknown input(s) {bad}; use the region's inputs")
+    srcs = [i["name"] for i in region["inputs"] if i["name"] not in fix]
     bits = sum(SOURCES[s] for s in srcs)
     exhaustive = bits <= 12
     if exhaustive:
-        rows_in = list(_assignments(srcs))
+        rows_in = [{**a, **fix} for a in _assignments(srcs)]
     else:
         rng = random.Random(seed)
-        rows_in = [{s: rng.getrandbits(SOURCES[s]) for s in srcs} for _ in range(n)]
+        rows_in = [{**{s: rng.getrandbits(SOURCES[s]) for s in srcs}, **fix} for _ in range(n)]
     outs = [o["name"] for o in region["outputs"]]
     rows = [{"in": r, "out": {o: _out_value(o, chip_values(r, planted)) for o in outs}} for r in rows_in]
     stats = {}
@@ -160,7 +165,7 @@ def probe(cones: list[str], planted: int | None, n: int, seed: int) -> dict:
             stats[o] = {"distinct": len(set(vals)), "of": len(vals)}
     shown = random.Random(seed).sample(rows, min(64, len(rows)))
     return {"exhaustive": exhaustive, "vectors": len(rows), "samples": shown, "stats": stats,
-            "assumed": {"rst_n": 1, "ena": 1},
+            "assumed": {"rst_n": 1, "ena": 1}, "fixed": fix,
             "note": "Simulation samples: what the chip did on these inputs. Not a proof."}
 
 
@@ -202,9 +207,23 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
     shape_ops = SHAPES.get(label)
     label_ok = shape_ops is not None and (label == "constant" or _has_op(node, shape_ops))
     short = cone_lits is not None and out["literals"] * 3 <= cone_lits
+    want = {("next", "count")} | {("next", f) for f in FLOPS} if "c0" in cones else set()
+    if {"c1", "c2"} & set(cones):
+        want.add(("sig", "uo_out"))
+    on_topic = not cones or bool(names(node) & want)
+    if not on_topic:
+        return {"verdict": "restated", **out, "credit": {"cleared": False, "reason": "says nothing about this region's outputs",
+                                                         "literals": out["literals"], "cone_literals": cone_lits}}
+    rng = random.Random(3)
+    envs = [chip_values(a, planted) for a in rng.sample(list(_assignments(srcs)), min(48, 1 << sum(SOURCES[x] for x in srcs)))]
+    complete = is_complete(ev, node, envs, output_bits(node, want, WIDTHS | {"count": 8}))
+    if not complete:
+        return {"verdict": "partial", **out, "credit": {"cleared": False, "complete": complete,
+                "reason": "true, but it does not say what the output is for every input",
+                "literals": out["literals"], "cone_literals": cone_lits}}
     if label_ok or short:
         reason = f"labelled shape: {label}" if label_ok else f"{out['literals']} literals vs {cone_lits} in the decompiled cone"
-        return {"verdict": "proven", **out, "credit": {"cleared": True, "reason": reason,
+        return {"verdict": "proven", **out, "credit": {"cleared": True, "complete": True, "reason": reason,
                                                        "literals": out["literals"], "cone_literals": cone_lits}}
     return {"verdict": "restated", **out,
             "credit": {"cleared": False, "reason": "proven, but no shorter than the decompile and no known shape",
