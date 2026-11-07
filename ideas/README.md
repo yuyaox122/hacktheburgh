@@ -1,0 +1,20 @@
+# Idea shortlist: HackTheBurgh XIII
+
+Scored by a 3-model council (Claude Sonnet 5.5, Claude Opus 5.5, Grok 4.7) on one rubric: track fit 30 · 24h feasibility 20 · demo wow 25 · past-winner comparison 15 · data evidence 10. **90+ means "I'd bet this places 1st".** ~67 ideas were scored over 12 rounds; each finalist had a hackathon-mode office-hours pass and a rescore.
+
+| # | Idea | Track | Before → after (mean) | File |
+|---|---|---|---|---|
+| 1 | **Fault Lines**: hidden fault planes drive an aftershock forecast + inspection decision | G-R × HRT | 89.7 → **89.3** | [01-fault-lines.md](01-fault-lines.md) |
+| 2 | **Invisible Ink**: red-team arena where a legal AI must sign/refuse real T&Cs with hidden traps | Wordsmith | 86.7 → **86.3** | [02-invisible-ink.md](02-invisible-ink.md) |
+| 3 | **Bought Stars**: fake-GitHub-star campaigns predict malware takedowns | G-R × HRT | 85.0 → **84.3** | [03-bought-stars.md](03-bought-stars.md) |
+| 4 | **Clear to Launch**: agents duel on live trade-mark registers to clear a startup name | Wordsmith | 83.7 → **83.3** | [04-clear-to-launch.md](04-clear-to-launch.md) |
+| 5 | **Who Knew?**: informed-money clusters on Polymarket vs the market price | G-R × HRT | 85.0 → **82.7** | [05-who-knew.md](05-who-knew.md) |
+| T | **Decap "Silicon, live"** (Yuyao, #4): real chip in 3D with live gate-level simulation | G-Research (+MetaView) | 81.0 → **85.3** | [06-decap.md](06-decap.md) |
+| T | **Sea-Route "Channel Window"** (Ian, #6): learned crossing window → rescue pre-positioning | G-R × HRT | 71.0 → **79.0** | [07-sea-route-nowcast.md](07-sea-route-nowcast.md) |
+
+**No idea formally cleared the bar** (mean ≥90 and no judge below 85). Fault Lines came closest (every judge 87+ across four versions).
+
+## Recommendation
+- **G-R × HRT:** Fault Lines. Run its hour-6 log-likelihood gate before anything else.
+- **Wordsmith:** Invisible Ink (safest: no bot-walled sites) or Clear to Launch (if UK IPO search can be automated; test in hour 0).
+- **Strongest single-track alternative:** Decap for G-Research + MetaView (Opus 89). Choosing it means giving up the combined HRT prize.
