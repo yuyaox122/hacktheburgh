@@ -112,9 +112,6 @@ export class ChipPage {
     const verdictWord = r.verdict === "proven" ? "Proven equivalent" : r.verdict === "tested" ? "Tested, not proven" : "Proof failed";
     const variantNote = this.plantSource === "fixture" ? " (sample)" : this.plantSource === "preplanted" ? " (saved)" : "";
     this.el.classList.remove("show-author");
-    // Colour scheme preview (?scheme=silicon|blueprint|paper on the URL); none = the default tokens.
-    const scheme = new URLSearchParams(location.search).get("scheme");
-    if (scheme) this.el.dataset.scheme = scheme; else delete this.el.dataset.scheme;
     this.el.innerHTML = `
       <header class="chiphead">
         <div class="ttlblock">
