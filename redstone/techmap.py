@@ -34,6 +34,7 @@ class Prim:
     out: str
     cell: str                       # instance it came from ("" for shared helpers)
     x: float                        # real x of that instance (um), for placement order
+    y: float | None = None          # real y (um) = which standard-cell row; None when there is no layout (Verilog)
 
 
 @dataclass
@@ -45,6 +46,7 @@ class PrimNetlist:
     pin_x: dict[str, float]         # port bit -> real x (um)
     sequential: bool = False
     stats: dict = field(default_factory=dict)
+    cell_type: dict = field(default_factory=dict)   # instance -> cell type, for signs on the build
 
 
 # ---------------------------------------------------------------- per-type mapping with Yosys
@@ -134,13 +136,14 @@ def build(chip: str) -> PrimNetlist:
     k = [0]
 
     def new(kind, ins, out, cell, x) -> None:
-        prims.append(Prim(f"p{len(prims)}", kind, ins, out, cell, x))
+        prims.append(Prim(f"p{len(prims)}", kind, ins, out, cell, x, ys.get(cell)))
 
     def local(cell: str) -> str:
         k[0] += 1
         return f"{cell}.n{k[0]}"
 
     xs = {c.name: g["cells"].get(c.name, (0, 0))[0] for c in logic}
+    ys = {c.name: g["cells"][c.name][1] for c in logic if c.name in g["cells"]}
     for c in comb:
         d = cd.celldef(c.type)
         for out_pin, plist, out_alias in map_type(c.type):
@@ -213,7 +216,7 @@ def build(chip: str) -> PrimNetlist:
             raise RuntimeError(f"output {b} -> {n} has no driver")
     stats = {"logic_cells": len(logic), "comb": len(comb), "flops": len(flops), "prims": len(prims),
              "by_kind": {k_: sum(p.kind == k_ for p in prims) for k_ in ("NOT", "INH", "OR", "LATCH")}}
-    return PrimNetlist(chip, prims, in_bits, outputs, pin_x, seq, stats)
+    return PrimNetlist(chip, prims, in_bits, outputs, pin_x, seq, stats, {c.name: c.type for c in logic})
 
 
 def _propagate(prims: list[Prim], alias: dict) -> list[Prim]:

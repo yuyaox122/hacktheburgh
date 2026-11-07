@@ -62,10 +62,10 @@ def showroom(mc: MC) -> None:
 def goto_function(lay: dict) -> None:
     """/function redstone:goto/<chip> teleports you to the chip's input levers, looking north at the build."""
     xs = [p[0] for p in lay["inputs"].values()]
-    x, z = (min(xs) + max(xs)) // 2, max(p[2] for p in lay["inputs"].values()) + 8
+    x, z = (min(xs) + max(xs)) // 2, max(p[2] for p in lay["inputs"].values()) + 5   # just south of the levers
     fn = mcmod.SRV / "world" / "datapacks" / "redstone_chip" / "data" / "redstone" / "function" / "goto"
     fn.mkdir(parents=True, exist_ok=True)
-    (fn / f"{lay['chip'].lower()}.mcfunction").write_text(f"tp @s {x} {Y + 6} {z} facing {x} {Y} {z - 30}\n")
+    (fn / f"{lay['chip'].lower()}.mcfunction").write_text(f"tp @s {x} {Y} {z} facing {x} {Y} {z - 30}\n")
     own = fn.parent / lay["chip"].lower()
     own.mkdir(parents=True, exist_ok=True)
     (own / "settle.mcfunction").write_text(f"tick sprint {2 * lay['settle_rt'] + 20}\n"
@@ -133,7 +133,7 @@ def main() -> None:
                 mc.cmd("reload")
             mc.cmd("tick unfreeze")
             xs = [p[0] for p in lay["inputs"].values()]
-            sx, sy, sz = (min(xs) + max(xs)) // 2, Y, max(p[2] for p in lay["inputs"].values()) + 8
+            sx, sy, sz = (min(xs) + max(xs)) // 2, Y, max(p[2] for p in lay["inputs"].values()) + 5
             mc.cmd(f"setworldspawn {sx} {sy} {sz}")
             mc.cmd(f'tellraw @a {{"text":"{a[1]} built in redstone: flip the levers (inputs), watch the lamps (outputs)","color":"gold"}}')
             print(f"built {a[1]}; spawn at {sx} {sy} {sz}; stats {lay['stats']}")

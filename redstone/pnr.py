@@ -24,11 +24,16 @@ from pathlib import Path
 import prims as P
 import techmap as tm
 
-PITCH = 6                      # tile pitch along x
+PITCH = 6                      # tile pitch along x, one-row layout (Verilog designs with no real placement)
+PITCH_2D = 8                   # tile pitch along x, 2-D layout: offset 6 of every slot is a free spine column
+SPINE_DX = 6
+UM_PER_SLOT = 1.0              # 2-D: one tile slot (8 blocks) per um of real x, so x is to scale at 8 blocks/um
 TRACK = 4                      # trunk pitch along z
+SPINE_Y = 6                    # spines (nets spanning several rows) run north-south on this layer
 COLORS = ["red", "orange", "yellow", "lime", "green", "cyan", "light_blue", "blue", "purple", "magenta", "pink",
           "brown", "white", "light_gray", "gray", "black"]
 TILE_DELAY = {"INH": 4, "NOT": 4, "OR": 2, "LATCH": 4, "IN": 1, "OUT": 1}
+PORT_DX = {"A": 0, "OUT": 2, "B": 4}
 
 
 @dataclass
@@ -38,7 +43,10 @@ class Unit:
     x_real: float
     ins: dict[str, str] = field(default_factory=dict)       # tile port -> net
     out: str | None = None
-    x: int = 0                  # world x of the tile's local origin
+    x: int = 0                  # world x of the tile's local origin (relative to x0)
+    row: int = 0                # tile row, 0 = northmost
+    cell: str = ""              # chip instance this primitive came from
+    order: int = 0              # tie-break inside one cell
 
 
 @dataclass
@@ -54,63 +62,166 @@ class Layout:
     labels: list = field(default_factory=list)
 
 
-def place(pn: tm.PrimNetlist) -> list[Unit]:
-    units = []
+def _units(pn: tm.PrimNetlist) -> tuple[list[Unit], list[Unit]]:
+    logic, pads = [], []
     for p in pn.prims:
-        if p.kind in ("NOT",):
-            units.append(Unit("NOT", p.id, p.x, {"B": p.ins["B"]}, p.out))
+        o = int(p.id[1:]) if p.id[1:].isdigit() else 0
+        if p.kind == "NOT":
+            u = Unit("NOT", p.id, p.x, {"B": p.ins["B"]}, p.out)
         elif p.kind == "LATCH":
-            units.append(Unit("LATCH", p.id, p.x, {"A": p.ins["D"], "B": p.ins["H"]}, p.out))
+            u = Unit("LATCH", p.id, p.x, {"A": p.ins["D"], "B": p.ins["H"]}, p.out)
         else:
-            units.append(Unit(p.kind, p.id, p.x, {"A": p.ins["A"], "B": p.ins["B"]}, p.out))
+            u = Unit(p.kind, p.id, p.x, {"A": p.ins["A"], "B": p.ins["B"]}, p.out)
+        u.cell, u.order = p.cell, o
+        logic.append(u)
     for b in pn.inputs:
-        units.append(Unit("IN", b, pn.pin_x.get(b, 0.0), {}, b))
+        pads.append(Unit("IN", b, pn.pin_x.get(b, 0.0), {}, b))
     for b, n in pn.outputs.items():
-        units.append(Unit("OUT", b, pn.pin_x.get(b, 0.0), {"A": n}))
-    units.sort(key=lambda u: (u.x_real, u.kind != "OUT", u.name))
-    for i, u in enumerate(units):
-        u.x = i * PITCH
-    return units
+        pads.append(Unit("OUT", b, pn.pin_x.get(b, 0.0), {"A": n}))
+    return logic, pads
+
+
+def _legalise(targets: list[float]) -> list[int]:
+    """Integer slots for items kept in this order, at least 1 apart, as close as possible to their targets
+    (minimum squared displacement: merge overlapping clusters, each sits at the mean of its members' targets)."""
+    clusters = []                                       # [first index, count, sum of (target - offset)]
+    for i, t in enumerate(targets):
+        clusters.append([i, 1, t])
+        while len(clusters) > 1:
+            a, b = clusters[-2], clusters[-1]
+            if round(a[2] / a[1]) + a[1] > round(b[2] / b[1]):
+                clusters[-2:] = [[a[0], a[1] + b[1], a[2] + b[2] - b[1] * a[1]]]
+            else:
+                break
+    slots = []
+    for first, n, q in clusters:
+        x = round(q / n)
+        slots += [x + j for j in range(n)]
+    return slots
+
+
+def place(pn: tm.PrimNetlist) -> tuple[list[Unit], int, int]:
+    """Returns (units, number of rows, tile pitch).
+
+    With a real placement (TT08 chips): row 0 holds the IO pads at their pins' real x (the pins are all on the
+    chip's north edge), rows 1.. are the chip's standard-cell rows in real order, north (higher GDS y) first.
+    Within a row, tiles keep the real x order; x is to scale (one 8-block slot per um), legalised so tiles don't
+    overlap. A cell's primitives stay together. Without one (Verilog): everything in one row, as before."""
+    logic, pads = _units(pn)
+    ys = sorted({p.y for p in pn.prims if p.y is not None}, reverse=True)
+    if not ys:
+        units = logic + pads
+        units.sort(key=lambda u: (u.x_real, u.kind != "OUT", u.name))
+        for i, u in enumerate(units):
+            u.x = i * PITCH
+        return units, 1, PITCH
+    row_of = {y: i + 1 for i, y in enumerate(ys)}
+    y_of = {p.id: p.y for p in pn.prims}
+    for u in logic:
+        u.row = row_of[y_of[u.name]]
+    # constant outputs have no wire: pack their lamps just west of the first real pad, in pin order
+    const = sorted([u for u in pads if u.kind == "OUT" and u.ins["A"] in (tm.CONST0, tm.CONST1)],
+                   key=lambda u: u.x_real)
+    live = sorted([u for u in pads if u not in const], key=lambda u: (u.x_real, u.name))
+    first = min(u.x_real for u in live) if live else 0.0
+    for i, u in enumerate(const):
+        u.x_real = first - (len(const) - i) * UM_PER_SLOT
+    rows = [const + live] + [sorted([u for u in logic if u.row == r], key=lambda u: (u.x_real, u.cell, u.order))
+                             for r in range(1, len(ys) + 1)]
+    for r, us in enumerate(rows):
+        for u, slot in zip(us, _legalise([u.x_real / UM_PER_SLOT for u in us])):
+            u.row, u.x = r, slot * PITCH_2D
+    return [u for us in rows for u in us], len(rows), PITCH_2D
+
+
+def _tracks(nets: list[dict]) -> int:
+    """Left-edge channel routing: nets whose spans are >= 3 apart share a track. Sets d['track']."""
+    nets.sort(key=lambda d: (d["lo"], d["hi"]))
+    end = []
+    for d in nets:
+        for k, e in enumerate(end):
+            if d["lo"] >= e + 3:
+                d["track"] = k
+                end[k] = d["hi"]
+                break
+        else:
+            d["track"] = len(end)
+            end.append(d["hi"])
+    return len(end)
 
 
 def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
-    units = place(pn)
-    port_dx = {"A": 0, "OUT": 2, "B": 4}
-    # nets: driver column + sink columns
+    """Rows + channels + spines (one row and one channel when there is no real placement):
+
+      channel r (north of tile row r): one E-W trunk per net per row on y=3, built exactly like the one-row bus
+      (each port owns a N-S column, ground run on y=0, staircase up to its trunk)
+      spine (net with pins in several rows): N-S dust line on y=6 in a column no port uses (offset 6 of a
+      slot); in every channel it serves it dips down to that channel's trunk by a 3-step staircase along z and
+      climbs back up. y=6 sits 2 blocks of air above trunks and 5 above tiles, so it crosses them without contact.
+    """
+    units, R, pitch = place(pn)
+    # pins of every net, by row
     drv, sinks = {}, defaultdict(list)
-    const_ports = []                                   # (column, value) for constant tile inputs
+    const_ports = []                                   # (row, column) for constant-1 tile inputs
     for u in units:
         if u.out is not None and u.kind != "OUT":
-            drv[u.out] = (u.x + port_dx["OUT"], u)
+            drv[u.out] = (u.row, u.x + PORT_DX["OUT"], u)
         for port, n in u.ins.items():
-            col = u.x + port_dx[port]
+            col = u.x + PORT_DX[port]
             if n == tm.CONST1:
-                const_ports.append((col, u))
-            elif n == tm.CONST0:
-                pass
-            else:
-                sinks[n].append((col, u, port))
+                const_ports.append((u.row, col))
+            elif n != tm.CONST0:
+                sinks[n].append((u.row, col, u, port))
     nets = []
     for n, ss in sinks.items():
         if n not in drv:
             raise RuntimeError(f"net {n} has sinks but no driver")
-        cols = [drv[n][0]] + [c for c, _, _ in ss]
-        nets.append({"net": n, "drv": drv[n][0], "sinks": [c for c, _, _ in ss], "lo": min(cols), "hi": max(cols),
-                     "sink_units": ss, "drv_unit": drv[n][1]})
-    # left-edge track assignment
-    nets.sort(key=lambda d: (d["lo"], d["hi"]))
-    track_end = []
+        pins = defaultdict(list)
+        pins[drv[n][0]].append(drv[n][1])
+        for r, c, _, _ in ss:
+            pins[r].append(c)
+        nets.append({"net": n, "drv": drv[n], "sinks": ss, "pins": dict(pins), "rows": sorted(pins)})
+
+    # spine columns: one per multi-row net, chosen to keep its trunks short; a column can be reused by nets
+    # whose channel ranges don't overlap
+    used = defaultdict(list)                           # column -> [(first row, last row)]
+    all_x = [u.x for u in units]
+    cands = list(range(min(all_x) - 3 * pitch + SPINE_DX, max(all_x) + 4 * pitch, pitch))
+    multi = sorted([d for d in nets if len(d["rows"]) > 1], key=lambda d: (-(d["rows"][-1] - d["rows"][0]), d["net"]))
+    for d in multi:
+        a, b = d["rows"][0], d["rows"][-1]
+        mid = sorted(c for cs in d["pins"].values() for c in cs)
+        mid = mid[len(mid) // 2]
+
+        def cost(s):
+            return (sum(max(cs + [s]) - min(cs + [s]) for cs in d["pins"].values()), abs(s - mid))
+        free = [s for s in cands if all(b2 < a or a2 > b for a2, b2 in used[s])]
+        if not free:
+            raise RuntimeError(f"net {d['net']}: no free spine column")
+        s = min(free, key=cost)
+        used[s].append((a, b))
+        d["spine"] = s
+
+    # tracks, per channel
+    chans = defaultdict(list)                          # row -> [per-channel dicts]
     for d in nets:
-        for k, end in enumerate(track_end):
-            if d["lo"] >= end + 3:
-                d["track"] = k
-                track_end[k] = d["hi"]
-                break
-        else:
-            d["track"] = len(track_end)
-            track_end.append(d["hi"])
-    T = len(track_end)
-    zt = z_min + 6 + TRACK * (T - 1) + 1              # tile row z; trunks extend north down to >= z_min
+        d["seg"] = {}
+        for r, cs in d["pins"].items():
+            xs = cs + ([d["spine"]] if "spine" in d else [])
+            seg = {"net": d["net"], "lo": min(xs), "hi": max(xs), "d": d}
+            d["seg"][r] = seg
+            chans[r].append(seg)
+    T = [_tracks(chans[r]) for r in range(R)]
+
+    # z: rows top-down; the northmost track of channel r sits 6 south of the previous row's tiles
+    zt = []
+    for r in range(R):
+        north = z_min + 1 if r == 0 else zt[r - 1] + 3 + 6
+        zt.append(north + TRACK * (T[r] - 1) + 6 if T[r] else north + 2)
+    for d in nets:
+        for r, seg in d["seg"].items():
+            seg["zk"] = zt[r] - 6 - TRACK * seg["track"]
+
     Y = 0
     blocks: dict = {}
     owner: dict = {}
@@ -127,67 +238,96 @@ def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
     inputs, outputs, labels = {}, {}, []
     for u in units:
         t = P.BUS[u.kind]
+        z0 = zt[u.row]
         for x, y, z, s in t.blocks:
             if s == "redstone_block":
-                last.append((x0 + u.x + x, Y + y, zt + z, s))   # constants go in last so they update neighbours
-                owner[(x0 + u.x + x, Y + y, zt + z)] = f"tile:{u.name}"
+                last.append((x0 + u.x + x, Y + y, z0 + z, s))   # constants go in last so they update neighbours
+                owner[(x0 + u.x + x, Y + y, z0 + z)] = f"tile:{u.name}"
             else:
-                put(u.x + x, Y + y, zt + z, s, f"tile:{u.name}")
+                put(u.x + x, Y + y, z0 + z, s, f"tile:{u.name}")
         if u.kind == "IN":
-            inputs[u.name] = (x0 + u.x + 2, Y, zt + 1)
-            labels.append((x0 + u.x + 2, Y, zt + 3, u.name))
+            inputs[u.name] = (x0 + u.x + 2, Y, z0 + 1)
+            labels.append((x0 + u.x + 2, Y, z0 + 3, u.name))
         if u.kind == "OUT":
             n = u.ins["A"]
             if n in (tm.CONST0, tm.CONST1):
                 outputs[u.name] = int(n == tm.CONST1)
             else:
-                outputs[u.name] = (x0 + u.x, Y, zt, "repeater[powered=true]")
-            labels.append((x0 + u.x, Y, zt + 3, u.name))
-    for col, u in const_ports:
-        last.append((x0 + col, Y, zt - 1, "redstone_block"))
+                outputs[u.name] = (x0 + u.x, Y, z0, "repeater[powered=true]")
+            labels.append((x0 + u.x, Y, z0 + 3, u.name if n not in (tm.CONST0, tm.CONST1) else f"{u.name}\ntied {n[-1]}"))
+    for r, col in const_ports:
+        last.append((x0 + col, Y, zt[r] - 1, "redstone_block"))
+    # a sign under each chip cell's group of tiles: instance name and cell type (as in the GDS and Decap)
+    if R > 1:
+        seen = set()
+        for u in units:
+            if u.cell and u.cell not in seen:
+                seen.add(u.cell)
+                labels.append((x0 + u.x, Y, zt[u.row] + 4, f"{u.cell}\n{pn.cell_type.get(u.cell, '')}"))
 
     # wires
-    rep_count = 0
-    net_delay = {}                                     # net -> {sink column: repeaters on the path}
-    for i, d in enumerate(nets):
-        k = d["track"]
-        zk = zt - 6 - TRACK * k
+    rep_count, spine_cells = 0, 0
+    net_delay = {}                                     # net -> {(unit, port): repeaters on the path}
+    for i, d in enumerate(sorted(nets, key=lambda d: d["net"])):
         color = COLORS[i % len(COLORS)] + "_concrete"
-        lo, hi = d["lo"], d["hi"]
-        # cell lists with flow direction and eligibility, as a tree rooted at the driver port
-        # node: (x, y, z) ; children ; eligible ; flow
-        tree = {}
+        adj = defaultdict(set)
 
-        def add(cell, parent, eligible, flow):
-            tree[cell] = {"parent": parent, "kids": [], "elig": eligible, "flow": flow}
-            if parent is not None:
-                tree[parent]["kids"].append(cell)
+        def chain(cells):
+            for p_, q_ in zip(cells, cells[1:]):
+                adj[p_].add(q_)
+                adj[q_].add(p_)
 
-        c = d["drv"]
-        prev = None
-        for z in range(zt - 1, zk + 2, -1):          # ground run north: zt-1 .. zk+3
-            add((c, 0, z), prev, z != zk + 3, "north"); prev = (c, 0, z)
-        add((c, 1, zk + 2), prev, False, None); prev = (c, 1, zk + 2)
-        add((c, 2, zk + 1), prev, False, None); prev = (c, 2, zk + 1)
-        add((c, 3, zk), prev, False, None)
-        root_j = (c, 3, zk)
-        sink_cols = set(d["sinks"])
-        for direction, rng in (("east", range(c + 1, hi + 1)), ("west", range(c - 1, lo - 1, -1))):
-            prev = root_j
-            for x in rng:
-                junction = x in sink_cols
-                add((x, 3, zk), prev, not junction, direction); prev = (x, 3, zk)
-        for s in d["sinks"]:
-            j = (s, 3, zk)
-            if s == c:
-                raise RuntimeError(f"net {d['net']}: sink and driver share column {s}")
-            add((s, 2, zk + 1), j, False, None)
-            add((s, 1, zk + 2), (s, 2, zk + 1), False, None)
-            prev = (s, 1, zk + 2)
-            for z in range(zk + 3, zt):                  # ground run south: zk+3 .. zt-1
-                add((s, 0, z), prev, z != zk + 3, "south"); prev = (s, 0, z)
+        def port_run(r, c, zk):
+            return [(c, 0, z) for z in range(zt[r] - 1, zk + 2, -1)] + [(c, 1, zk + 2), (c, 2, zk + 1), (c, 3, zk)]
 
-        # look-ahead distance (cells) from each node to the next eligible node / port on every branch
+        rows = d["rows"]
+        for r, seg in d["seg"].items():
+            zk = seg["zk"]
+            for c in d["pins"][r]:
+                chain(port_run(r, c, zk))
+            chain([(x, 3, zk) for x in range(seg["lo"], seg["hi"] + 1)])
+            if "spine" in d:
+                s = d["spine"]
+                if r > rows[0]:                           # spine continues north: dip
+                    chain([(s, 3, zk), (s, 4, zk - 1), (s, 5, zk - 2), (s, SPINE_Y, zk - 3)])
+                if r < rows[-1]:                          # spine continues south
+                    chain([(s, 3, zk), (s, 4, zk + 1), (s, 5, zk + 2), (s, SPINE_Y, zk + 3)])
+        if "spine" in d:
+            s = d["spine"]
+            for r1, r2 in zip(rows, rows[1:]):
+                run = [(s, SPINE_Y, z) for z in range(d["seg"][r1]["zk"] + 3, d["seg"][r2]["zk"] - 2)]
+                chain(run)
+                spine_cells += len(run)
+
+        # orient as a tree from the driver's port
+        dr, dc, _ = d["drv"]
+        root = (dc, 0, zt[dr] - 1)
+        tree = {root: {"parent": None, "kids": []}}
+        order = [root]
+        for cell in order:
+            for nb in sorted(adj[cell]):
+                if nb == tree[cell]["parent"]:
+                    continue
+                if nb in tree:
+                    raise RuntimeError(f"net {d['net']}: wiring has a loop at {nb}")
+                tree[nb] = {"parent": cell, "kids": []}
+                tree[cell]["kids"].append(nb)
+                order.append(nb)
+        if len(tree) != len(adj) and adj:
+            raise RuntimeError(f"net {d['net']}: wiring is not connected")
+        # a repeater fits on a straight, flat, unbranched cell: same y as its parent and child, in line
+        for cell, node in tree.items():
+            par = node["parent"] or (cell[0], 0, cell[2] + 1)    # the driver's port is fed from the south
+            node["elig"] = False
+            node["flow"] = None
+            if len(node["kids"]) == 1:
+                kid = node["kids"][0]
+                dv = tuple(k - c for k, c in zip(kid, cell))
+                if par[1] == cell[1] == kid[1] and tuple(c - p for c, p in zip(cell, par)) == dv:
+                    node["elig"] = True
+                    node["flow"] = {(1, 0): "east", (-1, 0): "west", (0, 1): "south", (0, -1): "north"}[(dv[0], dv[2])]
+        _check_tree(d["net"], tree)
+
         def ahead(cell):
             best = 0
             for kid in tree[cell]["kids"]:
@@ -195,53 +335,57 @@ def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
             return best
 
         reps = set()
-        stack = [((c, 0, zt - 1), 15)]                   # driver tile's output repeater feeds the port at 15
+        stack = [(root, 15)]                             # driver tile's output repeater feeds the port at 15
         while stack:
-            cell, s = stack.pop()
+            cell, sig = stack.pop()
             node = tree[cell]
-            if node["elig"] and node["kids"] and s - ahead(cell) < 1 + 0:
+            if node["elig"] and node["kids"] and sig - ahead(cell) < 1:
                 reps.add(cell)
-                s_out = 15
+                sig_out = 15
             else:
-                if s < 1:
+                if sig < 1:
                     raise RuntimeError(f"net {d['net']}: signal dies at {cell}")
-                s_out = s
+                sig_out = sig
             for kid in node["kids"]:
-                stack.append((kid, (s_out if cell in reps else s_out - 1)))
-        # sinks need strength >= 1 at their port; checked by the walk above (s < 1 raises)
+                stack.append((kid, sig_out if cell in reps else sig_out - 1))
 
-        # repeaters on each path to a sink, for timing
         def count(cell):
             n = 0
             while cell is not None:
                 n += cell in reps
                 cell = tree[cell]["parent"]
             return n
-        net_delay[d["net"]] = {s: count((s, 0, zt - 1)) for s in d["sinks"]}
+        net_delay[d["net"]] = {(u.name, port): count((c, 0, zt[r] - 1)) for r, c, u, port in d["sinks"]}
         rep_count += len(reps)
 
         for cell, node in tree.items():
             x, y, z = cell
-            if cell in reps:
-                put(x, Y + y, z, P.rep(node["flow"]), d["net"])
-            else:
-                put(x, Y + y, z, "redstone_wire", d["net"])
-            if y > 0:
-                put(x, Y + y - 1, z, color, d["net"])       # support
-            else:
-                put(x, Y - 1, z, color, d["net"])           # recolour the floor under the ground run
-        d["zk"] = zk
+            put(x, Y + y, z, P.rep(node["flow"]) if cell in reps else "redstone_wire", d["net"])
+            put(x, Y + y - 1, z, color, d["net"])          # support (or the recoloured floor under a ground run)
 
     _drc(owner, blocks)
     _shape_dust(blocks)
-    settle = _sta(pn, units, nets, net_delay)
+    settle = _sta(units, nets, net_delay)
     xs = [k[0] for k in blocks]
     zs = [k[2] for k in blocks]
-    stats = {"units": len(units), "nets": len(nets), "tracks": T, "repeaters_in_wires": rep_count,
+    ys_ = [k[1] for k in blocks]
+    stats = {"units": len(units), "rows": R, "nets": len(nets), "spines": sum("spine" in d for d in nets),
+             "tracks": T, "repeaters_in_wires": rep_count, "spine_cells": spine_cells,
              "blocks": len(blocks) + len(last), "settle_rt": settle,
              "size": (max(xs) - min(xs) + 1, max(zs) - min(zs) + 1)}
     return Layout(pn.chip, blocks, last, inputs, outputs, settle, stats,
-                  (min(xs), -1, min(zs), max(xs), 4, max(zs)), labels)
+                  (min(xs), -1, min(zs), max(xs), max(ys_), max(zs)), labels)
+
+
+def _check_tree(net, tree):
+    """Inside one net, two dust cells that could connect (side by side, at most one block apart in height)
+    must be parent and child; otherwise the wire could short past its own repeaters and latch itself on."""
+    for (x, y, z), node in tree.items():
+        for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            for dy in (-1, 0, 1):
+                nb = (x + dx, y + dy, z + dz)
+                if nb in tree and node["parent"] != nb and tree[nb]["parent"] != (x, y, z):
+                    raise RuntimeError(f"net {net}: {(x, y, z)} and {nb} touch but are not joined")
 
 
 def _drc(owner, blocks):
@@ -312,13 +456,9 @@ def _shape_dust(blocks):
     blocks.update(upd)
 
 
-def _sta(pn, units, nets, net_delay) -> int:
+def _sta(units, nets, net_delay) -> int:
     """Longest input->output path in redstone ticks (latch outputs treated as sources)."""
     by_out = {u.out: u for u in units if u.out is not None and u.kind != "OUT"}
-    col_of = {}
-    for d in nets:
-        for c, u, port in d["sink_units"]:
-            col_of[(d["net"], u.name, port)] = c
     memo = {}
 
     def arrive(net, depth=0):
@@ -333,8 +473,7 @@ def _sta(pn, units, nets, net_delay) -> int:
             for port, n in u.ins.items():
                 if n in (tm.CONST0, tm.CONST1):
                     continue
-                c = col_of[(n, u.name, port)]
-                best = max(best, arrive(n, depth + 1) + net_delay[n][c])
+                best = max(best, arrive(n, depth + 1) + net_delay[n][(u.name, port)])
             t += best
         memo[net] = t
         return t
@@ -345,8 +484,7 @@ def _sta(pn, units, nets, net_delay) -> int:
             for port, n in u.ins.items():
                 if n in (tm.CONST0, tm.CONST1):
                     continue
-                c = col_of[(n, u.name, port)]
-                worst = max(worst, arrive(n) + net_delay[n][c] + TILE_DELAY[u.kind])
+                worst = max(worst, arrive(n) + net_delay[n][(u.name, port)] + TILE_DELAY[u.kind])
     return worst
 
 

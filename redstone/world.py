@@ -23,7 +23,7 @@ def build(mc: MC, lay: dict, verbose: bool = True) -> None:
     x0, y0, z0, x1, y1, z1 = lay["bbox"]
     mc.forceload(x0 - 2, z0 - 2, x1 + 2, z1 + 6)
     time.sleep(2)                                     # let the forced chunks load before writing into them
-    mc.clear(x0 - 1, YB, z0 - 1, x1 + 1, YB + 5, z1 + 5)
+    mc.clear(x0 - 1, YB, z0 - 1, x1 + 1, YB + max(5, y1 + 2), z1 + 5)
     mc.cmd(f"fill {x0 - 1} {FLOOR_Y} {z0 - 1} {min(x1 + 1, x0 + 31)} {FLOOR_Y} {z1 + 5} stone")
     for x in range(x0 - 1, x1 + 2, 32):
         mc.cmd(f"fill {x} {FLOOR_Y} {z0 - 1} {min(x + 31, x1 + 1)} {FLOOR_Y} {z1 + 5} stone")
@@ -38,7 +38,9 @@ def build(mc: MC, lay: dict, verbose: bool = True) -> None:
     for x, y, z, s in lay["last"]:
         mc.cmd(f"setblock {x} {YB + y} {z} {s}")
     for x, y, z, text in lay.get("labels", []):
-        mc.cmd(f'setblock {x} {YB + y} {z} oak_sign[rotation=0]{{front_text:{{messages:["{text}","","",""]}}}}')
+        lines = (text.split("\n") + ["", "", "", ""])[:4]
+        msgs = ",".join('"' + s.replace('"', "'") + '"' for s in lines)
+        mc.cmd(f'setblock {x} {YB + y} {z} oak_sign[rotation=0]{{front_text:{{messages:[{msgs}]}}}}')
     if verbose:
         print(f"  built {len(blocks) + len(lay['last'])} blocks in {time.time() - t0:.0f}s", flush=True)
 
