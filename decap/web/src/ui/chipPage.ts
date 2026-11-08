@@ -9,12 +9,12 @@ import { icon } from "./icons";
 import { app } from "./state";
 import { pendingBuild } from "../data/redstone";
 
-const KIND_COLOUR: Record<string, string> = {
+export const KIND_COLOUR: Record<string, string> = {
   adder: "var(--adder)", subtractor: "var(--adder)", counter: "var(--reg)", register: "var(--reg)", shift: "var(--reg)",
   comparator: "var(--detect)", mux: "var(--mux)", reduce: "var(--gate)", const: "var(--const)", copy: "var(--const)", logic: "var(--faint)",
 };
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const KIND_WORD: Record<string, string> = {
+export const KIND_WORD: Record<string, string> = {
   adder: "adder", subtractor: "subtractor", counter: "counter", register: "register", shift: "shift register", comparator: "comparator",
   mux: "multiplexer", reduce: "reduction", const: "constant", copy: "wire copy", logic: "leftover logic",
 };
