@@ -11,6 +11,8 @@ Intents (keyword-dispatch, honest about what it is):
           author's source (a planted trigger is exposed by a failing proof with a counterexample).
   explain "explain / what does / optimize / suggest" -> resolve the named region (or the whole chip) and run the
           region agent (look -> claim -> Yosys checks -> refine).
+  investigate  "audit / review / walk me through / ... and ...?" -> the investigator (investigate.py): plans,
+          picks skills from what it sees, writes chip memory, ends with an evidence-tagged report.
   guide   anything else -> the guide agent answers with facts, quoted from tool results.
 """
 
@@ -25,6 +27,8 @@ from . import lifecycle
 from .transcript import Transcript, result_payload
 
 HUNT = re.compile(r"hidden|trigger|trojan|suspicious|backdoor|planted|anything (extra|wrong|else|weird)", re.I)
+INVESTIGATE = re.compile(r"audit|investigat|review|report|overview|walk me|tour|everything|plan|deep|\bthen\b|\band\b.*\?|"
+                         r"slow|speed|timing|critical|faster|memory|remember|what do (you|we) know", re.I)
 EXPLAIN = re.compile(r"explain|what does|optimize|optimise|suggest|understand|how does|summari", re.I)
 
 
@@ -45,21 +49,37 @@ async def _hunt(client: Client, chip: str, transcript: Transcript | None) -> dic
     if err2:
         proof = {"error": str(proof)}
     found = proof.get("verdict") in ("failed", "refuted")
+    # 'clean' needs a proof. 'tested' is random simulation: a 1-in-2^17 trigger can slip past it, so say so.
+    verdict = "found" if found else "clean" if proof.get("verdict") in ("proven", "inductive") else "inconclusive"
     if transcript is not None:
         transcript.record("note", intent="hunt", chip=chip,
                           flags=[r.get("condition") for r in rows],
                           result={"verdict": proof.get("verdict"), "counterexample": proof.get("counterexample")})
     return {"intent": "hunt", "chip": chip, "flags": rows,
-            "verdict": "found" if found else "clean",
+            "verdict": verdict,
             "proof": proof.get("verdict", proof.get("error")),
             "counterexample": proof.get("counterexample"),
-            "note": "a counterexample here is the exact input that wakes the hidden logic" if found else None}
+            "note": ("a counterexample here is the exact input that wakes the hidden logic" if found else
+                     None if verdict == "clean" else
+                     "no proof was possible (only random testing passed); rare flags above are still open")}
+
+
+def _intent(command: str) -> str:
+    """Single-skill commands take the fast fixed flow; compound or open-ended ones go to the investigator,
+    which plans its own steps. A bare question with no chip verb falls through to the guide."""
+    if INVESTIGATE.search(command):
+        return "investigate"
+    if HUNT.search(command):
+        return "hunt"
+    if EXPLAIN.search(command):
+        return "explain"
+    return "guide"
 
 
 async def run_command(server: FastMCP, chip: str, command: str, *, transcript: Transcript | None = None,
                       model: Any = None, max_refine: int = 2) -> dict:
     """Interpret one natural-language command and run the matching flow (tracked as a session)."""
-    kind = "hunt" if HUNT.search(command) else "explain" if EXPLAIN.search(command) else "guide"
+    kind = _intent(command)
     sid = lifecycle.start(chip, kind, command, transcript=transcript) if transcript is not None else None
     try:
         result = await _run_command(server, chip, command, transcript=transcript, model=model, max_refine=max_refine)
@@ -76,11 +96,16 @@ async def run_command(server: FastMCP, chip: str, command: str, *, transcript: T
 async def _run_command(server: FastMCP, chip: str, command: str, *, transcript: Transcript | None,
                        model: Any, max_refine: int) -> dict:
     """The dispatch, moved out of run_command so the lifecycle wrapper stays small."""
+    kind = _intent(command)
+    if kind == "investigate":
+        from .investigate import investigate
+        return await investigate(server, chip, command, transcript=transcript, model=model,
+                                 max_refine=min(max_refine, 2))
     async with Client(server) as client:
-        if HUNT.search(command):
+        if kind == "hunt":
             return await _hunt(client, chip, transcript)
 
-        if EXPLAIN.search(command):
+        if kind == "explain":
             from .witness import explain_region
             # name a region if the command mentions a block/output, else the whole chip
             block = re.search(r"\b(b\d+)\b", command)

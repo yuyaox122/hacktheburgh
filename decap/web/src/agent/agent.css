@@ -85,7 +85,7 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 /* ---------- terminal: command bar, live transcript, status line ---------- */
 .ag-drawer { --ag-teal: #6ae5cf; }   /* DimOS's accent teal, used only by the terminal stream */
 .ag-termbox { display: flex; flex-direction: column; flex: 0 0 auto; border-bottom: 1px solid var(--line); }
-.ag-term { flex: 0 1 auto; overflow-y: auto; min-height: 0; max-height: 320px; padding: 10px 14px 2px;
+.ag-term { flex: 0 1 auto; overflow-y: auto; min-height: 0; max-height: min(56vh, 560px); padding: 10px 14px 2px;
   display: flex; flex-direction: column; gap: 2px; }
 .ag-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 14px 0;
   font: 11px/1.4 var(--font-mono); color: var(--muted); }
@@ -97,7 +97,7 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .ag-cmd input { flex: 1; min-width: 0; font: 13px/1.5 var(--font-body); }
 
 .ag-line { display: flex; align-items: baseline; font: 12.5px/1.6 var(--font-mono); word-break: break-word; }
-.ag-line .ag-who { flex: 0 0 36px; text-align: right; color: var(--faint); font-size: 11px; padding-right: 8px; user-select: none; }
+.ag-line .ag-who { flex: 0 0 46px; white-space: nowrap; overflow: hidden; text-align: right; color: var(--faint); font-size: 11px; padding-right: 8px; user-select: none; }
 .ag-line .ag-sep { flex: 0 0 14px; color: var(--line-2); text-align: center; user-select: none; }
 .ag-line .ag-body { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; }
 .ag-line .ag-meta { flex: 0 0 auto; color: var(--faint); font-size: 11px; padding-left: 10px; font-variant-numeric: tabular-nums; }
@@ -118,3 +118,26 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .ag-outcome .ag-answer { color: var(--fg); white-space: pre-wrap; }
 .ag-outcome code { display: block; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 var(--font-mono); color: var(--fg); }
 @media (prefers-reduced-motion: reduce) { .ag-thinkdots::after { animation: none; } }
+
+/* investigator: plan, visible reasoning, chip memory, evidence-tagged report */
+.ag-line.ag-planline .ag-body { color: var(--fg); }
+.ag-plan-h { color: var(--ag-amber, #F5C078); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.ag-plan { list-style: none; margin: 2px 0 4px; padding: 0; display: grid; gap: 1px; }
+.ag-plan li { display: flex; gap: 8px; }
+.ag-plan .ag-n { color: var(--faint); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.ag-line.ag-thought .ag-body { color: var(--muted); font-style: italic; }
+.ag-line.ag-thought .ag-body b { font-style: normal; color: var(--ag-amber, #F5C078); font-weight: 500; }
+.ag-line.ag-mem .ag-body { color: var(--muted); }
+.ag-line.ag-mem .ag-body b { color: var(--ag-teal); font-weight: 500; }
+.ag-line .ag-arg { color: var(--muted); }
+.ag-findings { margin: 2px 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.ag-findings li { display: flex; gap: 6px; align-items: baseline; line-height: 1.45; }
+.ag-findings .pill { flex: 0 0 auto; }
+.ag-nexts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ag-next { font: inherit; font-size: 12px; text-align: left; padding: 3px 8px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--ag-teal); border: 1px solid var(--line-2); }
+.ag-next:hover { border-color: var(--ag-teal); }
+.ag-claimbox summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
+.ag-clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.ag-clamp:hover { -webkit-line-clamp: unset; }
+.ag-suggest { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }

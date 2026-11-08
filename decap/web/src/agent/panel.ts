@@ -38,6 +38,12 @@ export class AgentPanel {
         <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
           placeholder="Type a message…" aria-label="Command the chip agent">
           <button class="btn primary" type="submit">Run</button></form>
+        <div class="ag-suggest" id="agSuggest">
+          <button type="button" class="ag-next" data-cmd="Audit this chip: what are its parts, and is the unrecognised logic doing anything odd?">Audit this chip</button>
+          <button type="button" class="ag-next" data-cmd="Is anything hidden in this chip?">Is anything hidden?</button>
+          <button type="button" class="ag-next" data-cmd="What is the slowest path, and what does the block on it do?">Slowest path</button>
+          <button type="button" class="ag-next" data-cmd="What do we already know about this chip? Review memory and fill one gap.">What do we know?</button>
+        </div>
       </div>
       <div class="ag-runs" id="agRuns" aria-live="polite"></div>`;
     document.body.append(this.el);
@@ -121,6 +127,8 @@ export class AgentPanel {
   }
 
   private onClick(e: MouseEvent) {
+    const cmd = (e.target as HTMLElement).closest<HTMLElement>("[data-cmd]");
+    if (cmd?.dataset.cmd) { void this.runCommand(cmd.dataset.cmd); return; }
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-run-act]");
     if (!b) return;
     const run = store.run(b.closest<HTMLElement>("[data-run]")!.dataset.run!);

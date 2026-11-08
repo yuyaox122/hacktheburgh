@@ -26,6 +26,10 @@ interface DoneShape {
   english?: string | null;
   answer?: string;
   flags?: unknown[];
+  note?: string | null;
+  summary?: string;
+  findings?: Array<{ text: string; evidence: string; block?: string | null }>;
+  next_steps?: string[];
   [k: string]: unknown;
 }
 
@@ -86,18 +90,46 @@ export class Terminal {
 
   /** Feed one streamed event into the transcript. */
   event(e: TerminalEvent) {
-    if (e.kind === "tool") this.tool(e);
-    else if (e.kind === "claim") this.claim(e);
+    const k = (e as { kind: string }).kind;
+    if (k === "plan") this.plan(e as unknown as { steps?: string[]; revision?: number });
+    else if (k === "thought") this.thought(e as unknown as { step?: string; why?: string });
+    else if (k === "memory") this.memory(e as unknown as { fact?: { key?: string; verdict?: string } });
+    else if (k === "tool") this.tool(e as Parameters<Terminal["tool"]>[0]);
+    else if (k === "claim") this.claim(e as { verdict?: string | null });
     else if (e.kind === "done") this.done(e as unknown as DoneShape);
     else if (e.kind === "error") this.error(e.error);
   }
 
+  /** The investigator's plan (and any later revision): a numbered checklist the steps tick off. */
+  private plan(e: { steps?: string[]; revision?: number }) {
+    this.hideThinking();
+    const steps = (e.steps ?? []).map((s, i) => `<li><span class="ag-n">${i + 1}</span>${esc(s)}</li>`).join("");
+    this.line("plan", `<span class="ag-plan-h">${e.revision ? "revised plan" : "plan"}</span><ol class="ag-plan">${steps}</ol>`, "ag-planline");
+    this.showThinking();
+  }
+
+  /** Why the agent is taking its next step — the visible reasoning between tool calls. */
+  private thought(e: { step?: string; why?: string }) {
+    this.hideThinking();
+    this.line("think", `<b>${esc(e.step ?? "")}</b> — ${esc(e.why ?? "")}`, "ag-thought");
+    this.showThinking();
+  }
+
+  /** A fact Yosys decided, written to chip memory so the next question starts from it. */
+  private memory(e: { fact?: { key?: string; verdict?: string } }) {
+    this.line("mem", `remembered <b>${esc(e.fact?.key ?? "")}</b> · ${esc(e.fact?.verdict ?? "")}`, "ag-mem");
+  }
+
   /** A tool finished (the stream only reports a tool once it has returned). */
-  private tool(e: { tool: string; args?: Record<string, unknown>; wall_s?: number; is_error?: boolean }) {
+  private tool(e: { tool: string; args?: Record<string, unknown>; wall_s?: number; is_error?: boolean; summary?: string }) {
     this.hideThinking();
     const meta = typeof e.wall_s === "number" ? fmtDur(e.wall_s) : "";
-    const row = this.line("agent", `▶ ${esc(e.tool)}`, e.is_error ? "ag-tool err" : "ag-tool", meta);
-    this.pending.push({ name: e.tool, row, args: e.args });
+    const scope = (e.args?.scope ?? null) as { cone_of?: unknown } | null;
+    const tgt = scope && typeof scope.cone_of === "string" ? ` <span class="ag-arg">${esc(scope.cone_of)}</span>` : "";
+    const row = this.line("agent", `▶ ${esc(e.tool)}${tgt}`, e.is_error ? "ag-tool err" : "ag-tool", meta);
+    if (e.summary) this.spliceResult(row, e.summary);
+    else this.pending.push({ name: e.tool, row, args: e.args });
+    this.showThinking();
   }
 
   /** A claim attempt: the checker's verdict on the most recent `propose_claim`. */
@@ -108,6 +140,14 @@ export class Terminal {
       this.spliceResult(this.pending[i].row, String(e.verdict ?? "checked"));
       this.pending.splice(i, 1);
     }
+    // the region tools of a finished attempt won't get a better summary; settle them now so they don't pile up
+    this.pending = this.pending.filter((p) => {
+      if (p.name !== "get_region" && p.name !== "probe_truth") return true;
+      const s = summarizeTool(p.name, p.args, {});
+      if (s) this.spliceResult(p.row, s);
+      return false;
+    });
+    this.showThinking();
   }
 
   private done(d: DoneShape) {
@@ -135,14 +175,24 @@ export class Terminal {
     const block = document.createElement("div");
     block.className = "ag-outcome";
     if (d.intent === "hunt") {
-      const found = d.verdict === "found";
-      block.innerHTML = found
+      block.innerHTML = d.verdict === "found"
         ? `<span class="pill warn">found</span><span class="ag-sub">hidden logic — equivalence with the author's source fails</span>${cexHtml(d.counterexample ?? null)}`
-        : `<span class="pill ok">clean</span><span class="ag-sub">matches the author's source — no hidden logic</span>`;
+        : d.verdict === "clean"
+          ? `<span class="pill ok">clean</span><span class="ag-sub">proven equivalent to the author's source — no hidden logic</span>`
+          : `<span class="pill warn">inconclusive</span><span class="ag-sub">${esc(d.note ?? "only random testing passed; that is not a proof")}` +
+            `${Array.isArray(d.flags) && d.flags.length ? ` · ${d.flags.length} rare condition${d.flags.length > 1 ? "s" : ""} still open` : ""}</span>`;
+    } else if (d.intent === "investigate") {
+      const tag: Record<string, string> = { yosys: "ok", proof: "ok", structure: "", estimate: "warn", memory: "", unverified: "bad" };
+      const fs = (d.findings ?? []).map((f) =>
+        `<li><span class="pill sm ${tag[f.evidence] ?? ""}">${esc(f.evidence)}</span>${f.block ? `<b>${esc(f.block)}</b> ` : ""}${esc(f.text)}</li>`).join("");
+      const nx = (d.next_steps ?? []).map((n) => `<button type="button" class="ag-next" data-cmd="${esc(n)}">${esc(n)}</button>`).join("");
+      block.innerHTML = `<span class="ag-answer">${esc(d.summary ?? "")}</span>` +
+        (fs ? `<ul class="ag-findings">${fs}</ul>` : "") +
+        (nx ? `<div class="ag-nexts"><span class="ag-sub">next</span>${nx}</div>` : "");
     } else if (d.intent === "explain") {
       block.innerHTML = `${pill(String(d.verdict))}` +
-        (d.claim ? `<code>${esc(String(d.claim))}</code>` : "") +
-        (d.english ? `<span class="ag-sub">${esc(String(d.english))}</span>` : "") +
+        (d.claim ? `<details class="ag-claimbox"${String(d.claim).length < 160 ? " open" : ""}><summary>claim (${String(d.claim).length} chars)</summary><code>${esc(String(d.claim))}</code></details>` : "") +
+        (d.english ? `<span class="ag-sub ag-clamp">${esc(String(d.english))}</span>` : "") +
         (d.verdict === "refuted" ? cexHtml(d.counterexample ?? null) : "");
     } else {
       block.innerHTML = `<span class="ag-answer">${esc(String(d.answer ?? ""))}</span>`;
@@ -155,6 +205,7 @@ export class Terminal {
     div.className = `ag-line ${cls}`;
     div.innerHTML = `<span class="ag-who">${esc(who)}</span><span class="ag-sep">│</span><span class="ag-body">${body}</span>${meta ? `<span class="ag-meta">${meta}</span>` : ""}`;
     this.el.append(div);
+    this.el.scrollTop = this.el.scrollHeight;
     return div;
   }
 
@@ -167,6 +218,12 @@ export class Terminal {
 
   private hideThinking() {
     this.el.querySelector(".ag-think")?.remove();
+  }
+
+  private showThinking() {
+    if (!this.busy || this.el.querySelector(".ag-think")) return;
+    this.line("agent", `<span class="ag-thinkdots">thinking</span>`, "ag-think");
+    this.el.scrollTop = this.el.scrollHeight;
   }
 
   private setState(word: string) {

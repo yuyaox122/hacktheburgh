@@ -53,8 +53,39 @@ class CommandIn(BaseModel):
     max_refine: int = Field(2, ge=0, le=4)
 
 
+def tool_summary(tool: str, r: Any) -> str | None:
+    """A one-line `↳` result for the terminal, computed server-side before the (large) result is dropped."""
+    if not isinstance(r, dict):
+        return None
+    try:
+        if tool == "recover_blocks":
+            bl = r.get("blocks") or []
+            unrec = sum(1 for b in bl if not b.get("recognised"))
+            cov = (r.get("coverage") or {}).get("pct")
+            return f"{len(bl)} blocks, {unrec} unrecognised" + (f" · {cov}% explained" if cov is not None else "")
+        if tool == "find_rare_triggers":
+            n = len(r.get("flagged") or [])
+            return "no rare conditions" if n == 0 else f"{n} rare condition{'s' if n > 1 else ''}"
+        if tool == "prove_equiv":
+            v = r.get("verdict")
+            return f"{v}" + (" (random testing only, not a proof)" if v == "tested" else "")
+        if tool == "critical_path":
+            d = r.get("delay_ns_estimate")
+            return f"~{d} ns to {r.get('ends_at', '?')}" if d is not None else None
+        if tool == "list_chips":
+            return f"{len(r.get('chips') or r)} chips" if isinstance(r.get("chips"), list) else None
+    except Exception:
+        return None
+    return None
+
+
 def _slim(ev: dict) -> dict:
-    return {k: v for k, v in ev.items() if k not in SLIM_DROP}
+    out = {k: v for k, v in ev.items() if k not in SLIM_DROP}
+    if ev.get("kind") == "tool" and "summary" not in out:
+        s = tool_summary(str(ev.get("tool")), ev.get("result"))
+        if s:
+            out["summary"] = s
+    return out
 
 
 def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> FastAPI:
