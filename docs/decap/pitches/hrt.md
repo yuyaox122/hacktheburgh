@@ -21,7 +21,7 @@ HRT are quant traders and researchers. They will judge on:
 
 - **It's framed as a decision with error bars:** "ship or reject this chip block". The 3D chip and the redstone are evidence, not the point.
 - **It leads with the numbers.** Results wall first, presented as a model card.
-- **It's the only pitch where the AI is the prediction:** Witness agents *predict* what a region of a chip does, and Yosys is the ground truth that scores every prediction. That is a real predict → verify → score loop, run on held-out chips.
+- **It's the only pitch where the AI is the prediction:** Witness agents *predict* what a region of a chip does, and Yosys is the ground truth that scores every prediction. That is a real predict → verify → score loop, shown live (the held-out agent run timed out, so no number from it).
 - **Minecraft is short:** lamp lit = reject, lamp dark = ship. 10 s, not 20.
 - **Be upfront that there's no trained model in the decompiler.** HRT will respect "we can't be wrong, and here's how we measure it" over a fake ML claim.
 
@@ -38,11 +38,9 @@ Presenter mode (`D`), but click the steps **out of order**: Results first.
 | 0–15 s | **Hook** | Results wall (Presenter step 3) | The hook |
 | 15–35 s | **The model card** | Results wall: green/amber/red tiles; point at the numbers | "Held-out test set: 18 real chips, split frozen before we tuned anything. 15 proven exactly right. Planted triggers: caught 16 of 16. False positives: 3 of 16 clean chips. And we keep our first run on the board too, because that's how you avoid fooling yourself." |
 | 35–55 s | **One decision, live** | Find (step 5) on the judge's chip with the judge's N: the flagged line, its condition and its rate | "You picked a number. The signal: a condition that fires on 1 input in 256, reaching exactly one output pin. That's the 'reject' call, and the evidence is one readable line instead of 260 gates." |
-| 55–75 s | **The AI predicts, the proof scores it** | Witness drawer (`A`) on a region: the agent's claim, then proven or refuted with a counterexample | "Here AI agents make predictions about what a region does. Every prediction is checked by a formal proof, so we get a ground-truth score for every single one. On chips the agents had never seen: ___ of ___ proven on the first draft." *(Ian's number, see below)* |
+| 55–75 s | **The AI predicts, the proof scores it** | Witness drawer (`A`) on a region: the agent's claim, then proven or refuted with a counterexample | "Here AI agents make predictions about what a region does. Every prediction is checked by a formal proof, so every single one gets a ground-truth score, live." *(Keep it short, about 10 s: no held-out Witness number, see below. Give the spare time to the model card.)* |
 | 75–85 s | **The decision, physical** | Minecraft: flip the levers to the trigger value. Planted lamp lit, clean lamp dark | "Same proven circuit, in redstone. Lamp on: reject. Lamp off: ship." |
 | 85–90 s | **Close** | | "A decision you can't check is a bet. **This one's proven.**" |
-
-**If Ian's held-out number isn't in by pitch time:** cut the 55–75 s beat to 10 s. Say "AI agents propose explanations and a proof scores every one; the full run is overnight", and give the time to the model card.
 
 **Minecraft honesty:** the redstone copy is pre-planted with **78** until Yuyao's live "judge's number in Minecraft" is rehearsed. Say so.
 
@@ -56,28 +54,24 @@ Presenter mode (`D`), but click the steps **out of order**: Results first.
 | Features | Recognised blocks (adders, counters, comparators), guessed from random input samples | Templates + exact logic, not learned |
 | Signal | Rare-signal flag: a condition that fires on very few inputs | The easy case; multi-cycle triggers aren't caught |
 | Out-of-sample check | Yosys proves or rejects every guess. It rejected a guess on 5 chips; 4 then proved as plain logic | |
-| Model predictions | Witness agents propose one-line claims about a region | Claude Sonnet (`cli:sonnet`); held-out numbers pending (Ian) |
+| Model predictions | Witness agents propose one-line claims about a region | Claude Sonnet (`cli:sonnet`); no held-out number (run timed out, see below) |
 | Ground truth | Formal proof: every input, every state | Says nothing about timing or the factory |
 | Backtest discipline | Frozen split, both runs reported, failures shown in red | |
 | Decision | Proven + no flag → ship; flag → a human reads one line | Intent (lock vs backdoor) still needs a human |
 
-## Ian's Witness number (the HRT headline if it lands)
+## Witness number: cut (decided 09:43)
 
-Ian is running the Witness bench with **Claude Sonnet** (`cli:sonnet`), the model every demo result was made with. The model string is part of the freeze hash.
-- Dev: 9 chips, running now.
-- Held-out: after the **02:30 freeze**, via `overnight_bench.sh`. It checks the freeze hash and aborts on any mismatch, which is exactly the anti-overfitting story HRT likes.
-- Dev re-run with Sonnet: going now (about 10–15 min), to warm the cache. A dev number, not a held-out one.
+The held-out Witness run (Claude Sonnet, `cli:sonnet`, hash-locked to the freeze) finished, but 18 of 21 regions hit the Claude CLI's 360 s timeout, so only 3 claims were scored. The timeout is in code covered by the freeze hash; fixing it would need a re-freeze, and we won't move the goalposts. That refusal is itself the HRT story: **we'd rather report no number than a re-tuned one.**
+
+If asked: "The held-out agent run timed out on most regions, so we don't report a number from it. The freeze hash stopped us from patching it and re-running. What you see live is proven by Yosys, every claim."
+
 - A real model comparison, for Q&A: DeepSeek was tried and is weak at this task (65% of parseable first drafts wrong, 37% unparseable). That is why we chose Sonnet before the freeze, and the proof is what tells the two apart.
 
-Ask Ian for these three numbers:
-1. **First-draft proven rate** (the prediction accuracy)
-2. **Proven after refinement** (max 2 refinements)
-3. **Coverage** (share of the region's cells explained)
-
 **Never quote:**
-- the dev number as a held-out result;
+- the 3 scored held-out claims (1/3 first draft, 3.2% coverage);
+- any dev number as a held-out result;
 - the old dev 80% (the API cap made it error on 19 of 27 regions);
-- DeepSeek's numbers as the result. If the overnight run ends up finishing on the fallback, report whichever model finished.
+- DeepSeek's numbers as the result.
 
 ## Likely questions
 
