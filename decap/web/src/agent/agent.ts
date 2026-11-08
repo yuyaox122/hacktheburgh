@@ -91,13 +91,34 @@ export function suggestEditFrom(run: Run, verilog: string): boolean {
   return true;
 }
 
-/** A comment on a line. With `ask`, the agent formalises the sentence, Yosys checks it, and the agent replies. */
+/** A comment on a line. With `ask`, a claim is formalised + proved; a request ("check the logic") is explained. */
+const REQUEST = /\b(check|explain|what|how|why|is this|optimize|optimise|understand|review|verify|look at|tell me|describe|does this|can you|fix|improve)\b/i;
+
 export async function comment(chip: string, line: number, text: string, ask: boolean, scope: Scope | null) {
   store.addComment({ id: uid(), chip, line, author: "you", text, ts: Date.now() });
   if (!ask) return;
+  const sentence = text.replace(/@agent\b/gi, "").trim();
+
+  // A request/question ("check the logic of this part") → explain the region, not prove a vacuous tautology.
+  if (REQUEST.test(sentence)) {
+    if (!scope) return;
+    const reply = store.addComment({ id: uid(), chip, line, author: "agent", text: "Explaining this part and asking Yosys to check the explanation…", ts: Date.now(), pending: true });
+    try {
+      const run = await runAgent({ chip, scope, label: `comment on line ${line}`, origin: "comment", line });
+      const last = run.attempts[run.attempts.length - 1];
+      store.updateComment(reply.id, {
+        pending: false,
+        text: run.explained ? `This part: ${last.english ?? last.claim ?? ""}` : `I couldn't prove an explanation (${run.final}).`,
+        claim: last.claim ?? undefined, english: last.english, verdict: run.final, counterexample: last.counterexample ?? null,
+      });
+    } catch (e) {
+      store.updateComment(reply.id, { pending: false, text: (e as Error).message });
+    }
+    return;
+  }
+
   const reply = store.addComment({ id: uid(), chip, line, author: "agent", text: "Reading your comment as a claim and asking Yosys…", ts: Date.now(), pending: true });
   try {
-    const sentence = text.replace(/@agent\b/gi, "").trim();
     const f = await formalise(chip, sentence, scope ?? {}, true);
     if (f.error) {
       store.updateComment(reply.id, { pending: false, text: `I couldn't turn that into a checkable line: ${f.error}` });
