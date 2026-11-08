@@ -81,3 +81,17 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .ag-legend code { font: 11.5px/1.4 var(--font-mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ag-stagebtn { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) { .ag-hover { transition: none; } }
+
+/* ---------- terminal command bar + stream ---------- */
+.ag-cmd { display: flex; gap: 6px; padding: 8px 14px 0; }
+.ag-cmd input { flex: 1; min-width: 0; font: 13px/1.5 var(--font-body); }
+.ag-term { padding: 10px 14px 0; display: grid; gap: 6px; }
+.ag-trow { font: 12.5px/1.5 var(--font-mono); padding: 6px 9px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--line); word-break: break-word; }
+.ag-trow.me { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.ag-trow.tool { color: var(--muted); }
+.ag-trow.tool b { color: var(--info); font-weight: 600; }
+.ag-trow.claim code { display: block; margin-top: 4px; white-space: pre-wrap; font: 12px/1.5 var(--font-mono); }
+.ag-trow.done { border-color: color-mix(in srgb, var(--add) 40%, var(--line)); }
+.ag-trow.done code { display: block; margin-top: 4px; white-space: pre-wrap; font: 12px/1.5 var(--font-mono); }
+.ag-trow.err { border-color: color-mix(in srgb, var(--del) 40%, var(--line)); color: var(--del); }
+.ag-trow.spin { display: flex; align-items: center; gap: 8px; color: var(--muted); }
