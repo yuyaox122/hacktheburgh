@@ -14,6 +14,9 @@
   decap mcp [--http PORT]              serve the tools over MCP (stdio by default)
   decap replay FILE [--check]          step through a recorded run; --check re-runs and compares
   decap stream FILE [--port 8790]      serve a transcript to the UI (SSE /events)
+  decap status                         list sessions (running first, then recent done)
+  decap log -f SESSION                 tail a session's transcript (append-only follow)
+  decap stop SESSION                   mark a session stopped
 
 Every command except mcp/replay/stream records a transcript in runs/ unless --no-transcript.
 """
@@ -228,6 +231,12 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("stream", help="serve a transcript to the UI")
     s.add_argument("file")
     s.add_argument("--port", type=int, default=8790)
+    stt = sub.add_parser("status", help="list agent sessions (running first, then recent done)")
+    lg = sub.add_parser("log", help="print or follow a session's transcript")
+    lg.add_argument("session_id")
+    lg.add_argument("-f", "--follow", action="store_true", help="follow append-only until the run ends")
+    sp = sub.add_parser("stop", help="mark a session stopped")
+    sp.add_argument("session_id")
     args = p.parse_args(argv)
     load_secrets()
 
@@ -246,9 +255,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "serve":
         import uvicorn
+        from . import lifecycle
         from .witness_api import create_witness_app
         core, _ = load_core_app()
-        uvicorn.run(create_witness_app(core, model=args.model), host="127.0.0.1", port=args.port, log_level="warning")
+        sid = lifecycle.start(None, "serve")
+        print(f"[decap] serve session {sid} (decap status / decap stop {sid})", file=sys.stderr)
+        try:
+            uvicorn.run(create_witness_app(core, model=args.model), host="127.0.0.1", port=args.port,
+                        log_level="warning")
+        finally:
+            lifecycle.finish(sid, "stopped")
         return 0
 
     if args.cmd == "replay":
@@ -257,6 +273,22 @@ def main(argv: list[str] | None = None) -> int:
         rows = asyncio.run(replay(events, build_server() if args.check else None, check=args.check))
         _print(rows)
         return 1 if any(r["status"] == "mismatch" for r in rows) else 0
+
+    if args.cmd == "status":
+        from .lifecycle import format_session, list_sessions
+        for s in list_sessions():
+            print(format_session(s))
+        return 0
+
+    if args.cmd == "log":
+        from .lifecycle import follow
+        return follow(args.session_id, follow=args.follow)
+
+    if args.cmd == "stop":
+        from .lifecycle import stop
+        ok = stop(args.session_id)
+        print(f"[decap] {'stopped' if ok else 'no such session'} {args.session_id}", file=sys.stderr)
+        return 0 if ok else 1
 
     transcript = None if args.cmd == "mcp" else _transcript(args)
     _, core = load_core_app()

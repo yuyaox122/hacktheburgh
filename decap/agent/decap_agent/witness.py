@@ -31,6 +31,7 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.usage import UsageLimits
 
+from . import lifecycle
 from .transcript import Transcript, result_payload
 
 DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
@@ -150,8 +151,29 @@ def _model_name(agent: Agent) -> str:
 
 async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any = None,
                          transcript: Transcript | None = None, max_refine: int = 2,
-                         cache_dir: Path | None = None) -> dict:
-    """Run one region agent: look, claim, check, refine. Returns the attempts and the final verdict."""
+                         cache_dir: Path | None = None, register: bool = True) -> dict:
+    """Run one region agent: look, claim, check, refine. Returns the attempts and the final verdict.
+
+    With `register` (default) the run is tracked as a terminal session; callers that already
+    register their own session (run_command) or that fan out many regions (bench) pass register=False.
+    """
+    sid = lifecycle.start(chip, "explain", None, transcript=transcript) if (register and transcript is not None) else None
+    try:
+        run = await _explain_region(chip, scope, server, model=model, transcript=transcript,
+                                    max_refine=max_refine, cache_dir=cache_dir)
+    except Exception as exc:
+        if sid:
+            lifecycle.finish(sid, "error", transcript=transcript, error=f"{type(exc).__name__}: {exc}")
+        raise
+    if sid:
+        lifecycle.finish(sid, "done", transcript=transcript, intent="explain", verdict=run.get("final"))
+    return run
+
+
+async def _explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any = None,
+                          transcript: Transcript | None = None, max_refine: int = 2,
+                          cache_dir: Path | None = None) -> dict:
+    """The region loop (moved out of explain_region so the session wrapper stays small)."""
     agent = build_region_agent(server, model)
     model_name = _model_name(agent)
     async with Client(server) as client:

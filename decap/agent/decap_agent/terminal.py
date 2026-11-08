@@ -21,6 +21,7 @@ from typing import Any
 
 from fastmcp import Client, FastMCP
 
+from . import lifecycle
 from .transcript import Transcript, result_payload
 
 HUNT = re.compile(r"hidden|trigger|trojan|suspicious|backdoor|planted|anything (extra|wrong|else|weird)", re.I)
@@ -57,7 +58,24 @@ async def _hunt(client: Client, chip: str, transcript: Transcript | None) -> dic
 
 async def run_command(server: FastMCP, chip: str, command: str, *, transcript: Transcript | None = None,
                       model: Any = None, max_refine: int = 2) -> dict:
-    """Interpret one natural-language command and run the matching flow."""
+    """Interpret one natural-language command and run the matching flow (tracked as a session)."""
+    kind = "hunt" if HUNT.search(command) else "explain" if EXPLAIN.search(command) else "guide"
+    sid = lifecycle.start(chip, kind, command, transcript=transcript) if transcript is not None else None
+    try:
+        result = await _run_command(server, chip, command, transcript=transcript, model=model, max_refine=max_refine)
+    except Exception as exc:
+        if sid:
+            lifecycle.finish(sid, "error", transcript=transcript, error=f"{type(exc).__name__}: {exc}")
+        raise
+    if sid:
+        lifecycle.finish(sid, "done", transcript=transcript,
+                         intent=result.get("intent"), verdict=result.get("verdict"))
+    return result
+
+
+async def _run_command(server: FastMCP, chip: str, command: str, *, transcript: Transcript | None,
+                       model: Any, max_refine: int) -> dict:
+    """The dispatch, moved out of run_command so the lifecycle wrapper stays small."""
     async with Client(server) as client:
         if HUNT.search(command):
             return await _hunt(client, chip, transcript)
@@ -68,7 +86,8 @@ async def run_command(server: FastMCP, chip: str, command: str, *, transcript: T
             block = re.search(r"\b(b\d+)\b", command)
             out = re.search(r"\b(u[io]_out|u[io]_in)(?:\[\d+(?::\d+)?\])?", command)
             scope = {"cone_of": block.group(1)} if block else ({"cone_of": out.group(0)} if out else {})
-            run = await explain_region(chip, scope, server, model=model, transcript=transcript, max_refine=max_refine)
+            run = await explain_region(chip, scope, server, model=model, transcript=transcript,
+                                       max_refine=max_refine, register=False)
             final = run["attempts"][-1]
             return {"intent": "explain", "chip": chip, "scope": scope,
                     "verdict": run["final"], "claim": final.get("claim"), "english": final.get("english"),
