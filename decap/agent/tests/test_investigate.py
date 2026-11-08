@@ -80,3 +80,12 @@ def test_inconclusive_hunt_is_corrected_in_the_report(tmp_path, monkeypatch):
     assert "tested, not proven" in res["summary"]
     assert any("inconclusive" in f["text"] for f in res["findings"])
     assert inv.recall_memory("stub_counter8") == []         # 'tested' is not remembered as a fact
+
+
+def test_plain_english_guard_rejects_invented_constants():
+    from decap_agent.plain import Plain, unsupported_numbers
+    material = "count0 <= (count0 == 6'd59) ? 6'd0 : count0 + 1'b1; ui_in == 8'h89"
+    ok = Plain(headline="A counter that wraps at 59", explanation="It matches 137 on ui_in.", example="")
+    bad = Plain(headline="A counter that wraps at 60", explanation="It fires at 200.", example="")
+    assert unsupported_numbers(ok, material) == []          # 59 written plainly, 137 = 8'h89
+    assert unsupported_numbers(bad, material) == [60, 200]

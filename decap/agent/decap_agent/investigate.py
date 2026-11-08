@@ -55,6 +55,12 @@ How you work:
 7. Finish with the report. Every finding cites its evidence: 'yosys' (a proven/inductive/refuted verdict),
    'proof' (prove_equiv), 'structure' (overview/blocks), 'estimate' (timing), or 'memory'.
 
+Writing the report: the reader is a sharp engineer new to this chip. Say what the chip does first, in hardware
+terms ("a clock with an alarm"), then the findings. Where an explain result has `plain`, reuse its wording rather
+than reciting the formal claim. Group repeated structure instead of listing bits. Plain words, short sentences of
+varied length, no em dashes, no "not just X but Y", no hype words (crucial, robust, seamless, essentially).
+Interpretation of purpose gets "looks like" or "probably"; proven facts are stated plainly.
+
 Hard rules: a hunt verdict 'inconclusive' is not 'clean' — say the chip was tested, not proven, free of
 hidden logic. Never call something proven unless a tool returned verdict proven or inductive. 'tested' and
 'bounded' are not proven. Quote block ids, numbers and verdicts exactly. Plain English, no hype."""
@@ -181,6 +187,10 @@ def build_investigator(model: Any = None) -> Agent[Deps, Report]:
                "english": final.get("english"), "attempts": len(run["attempts"]),
                "counterexample": final.get("counterexample") if run["final"] == "refuted" else None,
                "credit_reason": (final.get("credit") or {}).get("reason")}
+        from .plain import plain_for_run
+        plain = await plain_for_run(ctx.deps.client, run, model=ctx.deps.model)
+        if plain:   # the readable version, so the report can say it the same way the card does
+            out["plain"] = {"headline": plain["headline"], "explanation": plain["explanation"]}
         ctx.deps.trail.append({"explain": out})
         if run["final"] in ("proven", "inductive", "refuted"):
             remember(ctx.deps.chip, {"key": f"explain:{block}", "verdict": run["final"], "claim": final.get("claim"),

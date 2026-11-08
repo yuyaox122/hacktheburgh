@@ -145,7 +145,9 @@ async def _run_command(server: FastMCP, chip: str, command: str, *, transcript: 
             run = await explain_region(chip, scope, server, model=model, transcript=transcript,
                                        max_refine=max_refine, register=False)
             final = run["attempts"][-1]
-            return {"intent": "explain", "chip": chip, "scope": scope,
+            from .plain import plain_for_run
+            plain = await plain_for_run(client, run, model=model)
+            return {"intent": "explain", "chip": chip, "scope": scope, "plain": plain,
                     "verdict": run["final"], "claim": final.get("claim"), "english": final.get("english"),
                     "counterexample": final.get("counterexample"), "explained": run["explained"],
                     "attempts": len(run["attempts"])}

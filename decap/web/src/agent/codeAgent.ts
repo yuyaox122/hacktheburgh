@@ -99,8 +99,7 @@ function commentHtml(c: Comment): string {
   return `<div class="ag-cm ${c.author}">
     <div class="ag-cm-h"><b>${c.author === "agent" ? "Witness agent" : "You"}</b><time>${when(c.ts)}</time>${c.verdict ? pill(c.verdict) : ""}</div>
     <p>${c.pending ? `<span class="spin"></span> ` : ""}${esc(c.text)}</p>
-    ${c.claim ? `<code class="ag-claim">${esc(c.claim)}</code>` : ""}
-    ${c.english ? `<p class="muted">${esc(c.english)}</p>` : ""}
+    ${c.claim ? `<details class="ag-how"><summary>The checked claim</summary><code class="ag-claim">${esc(c.claim)}</code>${c.english ? `<p class="muted">${esc(c.english)}</p>` : ""}</details>` : ""}
     ${c.verdict === "refuted" ? cexHtml(c.counterexample) : ""}
   </div>`;
 }

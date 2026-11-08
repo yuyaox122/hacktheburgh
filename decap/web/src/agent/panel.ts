@@ -9,11 +9,12 @@ import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
 import { Terminal } from "./terminal";
+import { plainHtml, verdictWords } from "./words";
 
 const STEP: Record<string, (s: Run["steps"][number]) => string> = {
-  get_region: () => "Read the region: its inputs, outputs and decompiled lines",
-  probe_truth: (s) => `Simulated ${Number((s.args as { n?: number } | undefined)?.n ?? 1024).toLocaleString()} input vectors (evidence, not proof)`,
-  propose_claim: () => "Sent the claim to Yosys",
+  get_region: () => "Read this part's inputs, outputs and code",
+  probe_truth: (s) => `Tried ${Number((s.args as { n?: number } | undefined)?.n ?? 1024).toLocaleString()} random inputs to see what it does (a hint, not a proof)`,
+  propose_claim: () => "Asked Yosys to prove the explanation",
 };
 
 export class AgentPanel {
@@ -90,7 +91,7 @@ export class AgentPanel {
   private render() {
     const intro = $("#agIntro", this.el);
     if (!intro.querySelector(".bad")) {
-      intro.innerHTML = `<p class="muted">Hover a line of decompiled Verilog and press <b>Explain</b> or <b>Suggest edit</b>, select a cell in Explore and press <b>Explain block</b>, or write a comment and tick <b>Ask the agent</b>. The agent can only look; every verdict below comes from Yosys.</p>`;
+      intro.innerHTML = `<p class="muted">Ask about this chip below, or hover a line of code and press <b>Explain</b>. The agent writes the explanation. Yosys decides whether it's true.</p>`;
     }
     const runs = this.chip ? store.runs(this.chip) : [];
     $("#agRuns", this.el).innerHTML = runs.length ? runs.map((r) => this.card(r)).join("")
@@ -104,19 +105,21 @@ export class AgentPanel {
     const steps = r.steps.filter((s) => s.tool !== "propose_claim").map((s) => `<li>${esc(STEP[s.tool]?.(s) ?? s.tool)}</li>`).join("");
     const atts = r.attempts.map((a) => `
       <div class="ag-att">
-        <div class="ag-att-h"><span class="ag-tag">${a.first_draft ? "First draft" : `Refine ${a.attempt}`}</span>${pill(a.verdict)}${a.checker_s != null ? `<span class="muted">Yosys ${a.checker_s.toFixed(2)} s</span>` : ""}</div>
+        <div class="ag-att-h"><span class="ag-tag">${a.first_draft ? "First try" : `Try ${a.attempt + 1}`}</span>${pill(a.verdict)}${a.checker_s != null ? `<span class="muted">Yosys ${a.checker_s.toFixed(2)} s</span>` : ""}</div>
         <code class="ag-claim">${esc(a.claim ?? "(no claim)")}</code>
         ${a.english ? `<p class="muted">${esc(a.english)}</p>` : ""}
         ${a.verdict === "refuted" ? cexHtml(a.counterexample) : ""}
         ${a.error ? `<p class="muted">${esc(a.error)}</p>` : ""}
         ${a.credit?.reason && a.verdict !== "proven" && a.verdict !== "inductive" ? `<p class="muted">${esc(a.credit.reason)}</p>` : ""}
-        ${a.credit?.cleared ? `<p class="ag-ok">${a.credit.literals} literals instead of ${a.credit.cone_literals} in the decompiled code</p>` : ""}
+        ${a.credit?.cleared ? `<p class="ag-ok">Shorter than the code: ${a.credit.literals} terms instead of ${a.credit.cone_literals}</p>` : ""}
       </div>`).join("");
     const canEdit = r.explained && r.lines && r.lines[0] > 0 && !store.edits(r.chip).some((e) => e.runId === r.id);
     return `<article class="ag-run ${r.status}${r.explained ? " explained" : ""}" data-run="${r.id}">
       <header><b>${esc(r.label)}</b>${status}<span class="muted">${secs.toFixed(1)} s${r.cached ? " · cached" : ""}</span></header>
-      ${steps ? `<ol class="ag-steps">${steps}</ol>` : r.status === "running" ? `<ol class="ag-steps"><li><span class="spin"></span> Reading the region…</li></ol>` : ""}
-      ${atts}
+      ${r.status === "running" ? `<ol class="ag-steps">${steps || `<li><span class="spin"></span> Reading this part of the chip…</li>`}</ol>` : ""}
+      ${plainHtml(r.plain)}
+      ${r.status === "done" && !r.plain && !r.explained ? `<p class="ag-why">${esc(verdictWords(r.final ?? "", true))}</p>` : ""}
+      ${r.status !== "running" && (atts || steps) ? `<details class="ag-how"${r.plain ? "" : " open"}><summary>How it was checked (${r.attempts.length} attempt${r.attempts.length === 1 ? "" : "s"})</summary>${steps ? `<ol class="ag-steps">${steps}</ol>` : ""}${atts}</details>` : ""}
       ${r.error ? `<div class="callout bad">${esc(r.error)}</div>` : ""}
       <div class="ag-actions">
         ${r.cells.length ? `<button type="button" class="btn sm" data-run-act="cells">Show cells (${r.cells.length})</button>` : ""}

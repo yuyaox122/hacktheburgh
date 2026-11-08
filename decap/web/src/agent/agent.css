@@ -141,3 +141,14 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .ag-clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .ag-clamp:hover { -webkit-line-clamp: unset; }
 .ag-suggest { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+
+/* plain-English explanation (decap_agent/plain.py): what people read first; the formal claim folds below */
+.ag-plain { display: grid; gap: 4px; padding: 9px 11px; border-radius: 8px; margin: 6px 0;
+  background: color-mix(in srgb, var(--add) 7%, transparent); border: 1px solid color-mix(in srgb, var(--add) 22%, transparent); }
+.ag-plain-h { font-weight: 600; color: var(--fg); }
+.ag-plain p { margin: 0; line-height: 1.5; color: var(--fg); }
+.ag-plain .ag-eg { display: flex; gap: 8px; align-items: baseline; color: var(--muted); }
+.ag-plain .ag-eg code { white-space: pre-wrap; word-break: break-word; font: 12px/1.5 var(--font-mono); color: var(--fg); }
+.ag-plain .ag-by { font-size: 11px; color: var(--faint); }
+.ag-how > summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 4px 0; }
+.ag-why { margin: 6px 0; color: var(--muted); }

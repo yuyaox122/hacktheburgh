@@ -4,7 +4,8 @@
 
 import { esc } from "../ui/dom";
 import { cexHtml, pill } from "./codeAgent";
-import type { TerminalEvent } from "./api";
+import type { Plain, TerminalEvent } from "./api";
+import { plainHtml } from "./words";
 
 /** Format a seconds float as a short duration: "12ms", "1.24s", "3.5s". */
 function fmtDur(s: number): string {
@@ -24,6 +25,7 @@ interface DoneShape {
   counterexample?: Record<string, number> | null;
   claim?: string | null;
   english?: string | null;
+  plain?: Plain | null;
   answer?: string;
   flags?: unknown[];
   note?: string | null;
@@ -194,6 +196,9 @@ export class Terminal {
       block.innerHTML = `<span class="ag-answer">${esc(d.summary ?? "")}</span>` +
         (fs ? `<ul class="ag-findings">${fs}</ul>` : "") +
         (nx ? `<div class="ag-nexts"><span class="ag-sub">next</span>${nx}</div>` : "");
+    } else if (d.intent === "explain" && d.plain) {
+      block.innerHTML = `${pill(String(d.verdict))}${plainHtml(d.plain)}` +
+        (d.claim ? `<details class="ag-claimbox"><summary>the checked claim</summary><code>${esc(String(d.claim))}</code></details>` : "");
     } else if (d.intent === "explain") {
       block.innerHTML = `${pill(String(d.verdict))}` +
         (d.claim ? `<details class="ag-claimbox"${String(d.claim).length < 160 ? " open" : ""}><summary>claim (${String(d.claim).length} chars)</summary><code>${esc(String(d.claim))}</code></details>` : "") +

@@ -4,6 +4,7 @@
 import type { Block, ChipResult } from "../data/types";
 import { explain, formalise, type Scope } from "./api";
 import { claimToVerilog, store, uid, type Origin, type Run } from "./store";
+import { verdictWords } from "./words";
 
 const KIND_WORD: Record<string, string> = {
   adder: "adder", subtractor: "subtractor", counter: "counter", register: "register", shift: "shift register",
@@ -57,7 +58,7 @@ export async function runAgent(o: StartOpts): Promise<Run> {
         run.attempts.push(e);
         if (e.cells?.length) run.cells = e.cells;
       } else if (e.kind === "done") {
-        run.status = "done"; run.final = e.final; run.explained = e.explained; run.cached = e.cached; run.t1 = Date.now();
+        run.status = "done"; run.final = e.final; run.explained = e.explained; run.cached = e.cached; run.plain = e.plain ?? null; run.t1 = Date.now();
         if (e.cells?.length) run.cells = e.cells;
       } else if (e.kind === "error") {
         run.status = "error"; run.error = e.error; run.t1 = Date.now();
@@ -108,7 +109,8 @@ export async function comment(chip: string, line: number, text: string, ask: boo
       const last = run.attempts[run.attempts.length - 1];
       store.updateComment(reply.id, {
         pending: false,
-        text: run.explained ? `This part: ${last.english ?? last.claim ?? ""}` : `I couldn't prove an explanation (${run.final}).`,
+        text: run.plain ? `${run.plain.headline}. ${run.plain.explanation}${run.plain.verdict === "proven" || run.plain.verdict === "inductive" ? "" : ` (${verdictWords(run.plain.verdict)})`}`
+          : run.explained ? (last.english ?? last.claim ?? "") : verdictWords(run.final ?? "", true),
         claim: last.claim ?? undefined, english: last.english, verdict: run.final, counterexample: last.counterexample ?? null,
       });
     } catch (e) {
@@ -126,11 +128,9 @@ export async function comment(chip: string, line: number, text: string, ask: boo
     }
     const v = f.verdict;
     const verdict = v?.truth ?? v?.verdict ?? "unchecked";
-    const said = verdict === "proven" || verdict === "inductive" ? "Yosys proved it."
-      : verdict === "refuted" ? "Yosys refuted it. Here is an input where the chip does something else."
-      : verdict === "bounded" ? "It holds for 30 cycles after reset, but isn't proven beyond that."
-      : verdict === "tautology" ? "That's true of any chip, so it says nothing about this one."
-      : `Checker verdict: ${verdict}.`;
+    const said = verdict === "proven" || verdict === "inductive" ? "You're right. Yosys proved it for every input."
+      : verdict === "refuted" ? "That's not quite what the chip does. Here is an input where it behaves differently."
+      : verdictWords(verdict);
     const reading = f.assumptions?.length ? ` I read it as: ${f.assumptions.join("; ")}.` : "";
     store.updateComment(reply.id, {
       pending: false, text: said + reading + (f.ambiguous && f.alternative ? ` (Another reading: ${f.alternative})` : ""),

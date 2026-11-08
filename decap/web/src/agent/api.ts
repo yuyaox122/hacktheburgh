@@ -22,9 +22,12 @@ export interface Attempt {
 
 export interface ToolStep { tool: string; args?: Record<string, unknown>; cells?: string[]; lines?: number[]; wall_s?: number; is_error?: boolean }
 
+/** The plain-English reading written after Yosys decided (decap_agent/plain.py). The formal claim stays the source. */
+export interface Plain { headline: string; explanation: string; example?: string; verdict: string }
+
 export interface Done {
   final: string; first_draft: string; explained: boolean; proof?: boolean; claim: string | null; english: string | null;
-  cells: string[]; cached: boolean;
+  cells: string[]; cached: boolean; plain?: Plain | null;
 }
 
 export type AgentEvent =
