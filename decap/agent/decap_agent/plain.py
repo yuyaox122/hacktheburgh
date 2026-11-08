@@ -86,8 +86,10 @@ def _verilog_numbers(text: str) -> set[int]:
 
 def unsupported_numbers(out: Plain, material: str) -> list[int]:
     known = _verilog_numbers(material)
+    near = known | {k + 1 for k in known} | {k - 1 for k in known}   # 58 for "wraps after 59", 256 for an 8-bit range
+    near |= {1 << k for k in range(33)} | {(1 << k) - 1 for k in range(33)}
     said = _verilog_numbers(" ".join([out.headline, out.explanation, out.example]))
-    return sorted(n for n in said if n > 32 and n not in known)
+    return sorted(n for n in said if n > 32 and n not in near)
 
 
 def _material(chip: str, region: dict | None, attempt: dict, blocks: list[dict] | None) -> str:
@@ -144,7 +146,7 @@ async def explain_plainly(chip: str, attempt: dict, *, region: dict | None = Non
     except Exception:   # an explanation is a nicety: never break the verdict for it
         return None
     plain = {"headline": out.headline.strip(), "explanation": out.explanation.strip(),
-             "example": out.example.strip(), "verdict": verdict, "by": "ai reading of the checked claim"}
+             "example": out.example.strip(), "verdict": verdict, "source": "claim"}
     if cache:
         hit.parent.mkdir(parents=True, exist_ok=True)
         hit.write_text(json.dumps(plain, indent=1))
@@ -174,3 +176,104 @@ async def _plain_for_run(client, run: dict, model: Any = None) -> dict | None:
     return await explain_plainly(run["chip"], {**final, "scope": run.get("scope")},
                                  region=region if isinstance(region, dict) else None,
                                  blocks=blocks.get("blocks") if isinstance(blocks, dict) else None, model=model)
+
+
+# ---- reading the decompiled code (always available) ---------------------------------------------------------
+# The decompiled Verilog is itself proven equal to the chip's gates (the core's decompile verdict). So a plain
+# explanation read straight off those lines is grounded in proven code, and it exists for EVERY region, including
+# tangled "leftover logic" where no short formal claim can be found. The Witness claim loop then becomes a bonus:
+# a shorter summary that Yosys proves on top.
+
+CODE_VERSION = "code-v2"
+
+CODE_INSTRUCTIONS = """You explain one part of a chip to a sharp engineer who has never seen this chip (think of a
+recent computer-science graduate). You get the decompiled Verilog lines for this part, the helper wires (tN) they
+use, the part's inputs and outputs, and a list of the chip's other blocks. The decompiled code is exact.
+
+Write three fields.
+- headline: at most 10 words, the mechanism ("A sticky flag set when the input bits match").
+- explanation: 2 to 4 short sentences, at most 80 words. Say what each output does in behaviour: when it goes high
+  or low, whether it holds its value (it feeds back into itself), and what it depends on. For a big boolean
+  expression, don't transcribe it: summarise its structure (which signals matter, what sets it, what clears it),
+  and say "roughly" when you summarise. End with what it is probably for in this chip.
+- example: one concrete case read straight off the code, or empty.
+
+Truth rules: only say what the code shows. Purpose (that a counter holds minutes) is a guess: use "probably" or
+"looks like". If the logic is too tangled to summarise exactly, say so plainly and describe what it depends on.
+Never write a constant that isn't in the material; never invent signal names.
+
+Style: plain words, short sentences of varied length. No em dashes. No "not just X but Y". Don't open with "This
+block". Never use: crucial, essentially, simply, seamlessly, robust, intricate, delve, leverage, ensures."""
+
+
+def _code_material(chip: str, region: dict, defs: dict[str, str], blocks: list[dict] | None) -> str:
+    from .claim_expr import temps_used
+    focus = [f for f in region.get("focus") or [] if isinstance(f, dict)]
+    lines = [f"Chip: {chip}",
+             "Inputs: " + ", ".join(f"{i['name']}[{i.get('width', 1)}] ({i.get('kind')})" for i in region.get("inputs", [])),
+             "Outputs: " + ", ".join(o["name"] for o in region.get("outputs", [])),
+             "Decompiled lines:"] + [f"  {f.get('line')}: {f.get('text')}" for f in focus[:40]]
+    helpers = temps_used([f.get("text", "") for f in focus], defs)
+    if helpers:
+        lines.append("Helper wires:")
+        lines += [f"  {t} = {defs[t]}" for t in helpers[:24]]
+    if blocks:
+        lines.append("Other blocks in the chip:")
+        lines += [f"  {b.get('id')} {b.get('kind')} ({b.get('width')} bit): {(b.get('text') or '')[:100]}" for b in blocks[:14]]
+    return "\n".join(lines)
+
+
+async def explain_code(chip: str, region: dict, *, defs: dict[str, str] | None = None, blocks: list[dict] | None = None,
+                       proof: str | None = None, model: Any = None, cache: bool = True) -> dict | None:
+    """{headline, explanation, example, verdict: 'code', source: 'code', proof} or None. Never raises."""
+    try:
+        from .cli_model import resolve
+        model = resolve(model, os.environ.get("DECAP_PLAIN_MODEL") or os.environ.get("DECAP_WITNESS_MODEL") or "deepseek:deepseek-chat")
+        material = _code_material(chip, region, defs or {}, blocks)
+        key = hashlib.sha1(json.dumps([CODE_VERSION, chip, material, _model_name(model)]).encode()).hexdigest()[:20]
+        hit = CACHE / f"code-{key}.json"
+        if cache and hit.exists():
+            return json.loads(hit.read_text())
+        agent = Agent(model, instructions=CODE_INSTRUCTIONS, output_type=Plain, defer_model_check=True, retries=1)
+        res = await agent.run(f"{material}\n\nExplain this part.")
+        out: Plain = res.output
+        bad = unsupported_numbers(out, material)
+        if bad:
+            res = await agent.run(f"Your answer used {bad}, which are not in the material. Rewrite it without them.",
+                                  message_history=res.all_messages())
+            out = res.output
+            if unsupported_numbers(out, material):
+                return None
+        reading = {"headline": out.headline.strip(), "explanation": out.explanation.strip(), "example": out.example.strip(),
+                   "verdict": "code", "source": "code", "proof": proof}
+        if cache:
+            hit.parent.mkdir(parents=True, exist_ok=True)
+            hit.write_text(json.dumps(reading, indent=1))
+        return reading
+    except Exception:
+        return None
+
+
+async def reading_for_scope(client, chip: str, scope: dict, model: Any = None) -> dict | None:
+    """Fetch the region, the decompiled Verilog (helper wires + its proof verdict) and the block list, then read it."""
+    try:
+        from .claim_expr import temp_defs
+        from .transcript import result_payload
+
+        async def look(tool: str, **args):
+            r = await client.call_tool(tool, args, raise_on_error=False)
+            return None if getattr(r, "is_error", False) else result_payload(r)
+        region = await look("get_region", chip=chip, scope=scope)
+        dec = await look("decompile", chip=chip)
+        blocks = await look("recover_blocks", chip=chip)
+        if not isinstance(region, dict):   # some blocks (pure copies) have no region: explain the block's own line
+            bid = scope.get("cone_of") if isinstance(scope, dict) else None
+            b = next((x for x in (blocks or {}).get("blocks", []) if x.get("id") == bid), None) if isinstance(blocks, dict) else None
+            if not b:
+                return None
+            region = {"inputs": [], "outputs": [], "focus": [{"line": (b.get("lines") or [0])[0], "text": b.get("text", "")}]}
+        return await explain_code(chip, region, defs=temp_defs(dec.get("verilog", "")) if isinstance(dec, dict) else {},
+                                  blocks=blocks.get("blocks") if isinstance(blocks, dict) else None,
+                                  proof=dec.get("verdict") if isinstance(dec, dict) else None, model=model)
+    except Exception:
+        return None

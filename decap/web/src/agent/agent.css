@@ -186,3 +186,8 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 @keyframes ag-leg-fold { to { max-height: 0; max-width: 0; opacity: 0; padding: 0; margin-top: 0; } }
 @keyframes ag-leg-dim { to { opacity: .6; } }
 @media (prefers-reduced-motion: reduce) { .ag-legend, .ag-legend button { animation-duration: .01s; } }
+/* inline code inside rendered markdown stays inline (the claim box's `.ag-outcome code` rule made it a block) */
+.ag-outcome .md code, .ag-plain .md code, .ag-cm .md code, .md p code, .md li code, .md td code {
+  display: inline; white-space: normal; padding: 0 4px; font-size: 12px; }
+.ag-outcome .md pre code { display: block; white-space: pre; }
+.ag-plain .md p { color: var(--fg); }

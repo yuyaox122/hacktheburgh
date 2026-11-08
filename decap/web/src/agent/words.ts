@@ -31,10 +31,13 @@ export function verdictWords(v: string, failed = false): string {
 export function plainHtml(p: Plain | null | undefined): string {
   if (!p) return "";
   const proven = p.verdict === "proven" || p.verdict === "inductive";
+  const by = p.source === "code"
+    ? `Read from the decompiled code${p.proof === "proven" ? ", which Yosys proved equal to the chip's gates" : p.proof ? ` (decompile: ${esc(p.proof)})` : ""}`
+    : proven ? "Plain-English reading of the proven claim below" : `Plain-English reading. ${esc(verdictWords(p.verdict))}`;
   return `<div class="ag-plain">
     <b class="ag-plain-h">${esc(p.headline)}</b>
     ${md(p.explanation)}
     ${p.example ? `<p class="ag-eg"><span>e.g.</span><code>${esc(p.example)}</code></p>` : ""}
-    <span class="ag-by">${proven ? "Plain-English reading of the proven claim below" : `Plain-English reading. ${esc(verdictWords(p.verdict))}`}</span>
+    <span class="ag-by">${by}</span>
   </div>`;
 }
