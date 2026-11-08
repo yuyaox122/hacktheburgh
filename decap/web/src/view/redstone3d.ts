@@ -1,9 +1,11 @@
 // The redstone build in the browser: every block of the layout as an instanced voxel, with live lamps and levers.
 // It draws exactly the block list the bridge places in Minecraft, so it doubles as the no-Minecraft fallback.
+// With /mc/ assets (npm run mc-assets) every block uses its real Minecraft model and texture; without them, flat colours.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { RsLayout } from "../data/redstone";
+import { bakeState, loadMcAssets, McMaterials, type McAssets } from "./mcmodels";
 
 // Minecraft's own concrete colours (each routed net gets one colour of support blocks in the build).
 const CONCRETE: Record<string, number> = {
@@ -25,6 +27,31 @@ function look(state: string): { color: number; h: number; w: number } | null {
   return { color: 0x9a9a9a, h: 1, w: 1 };
 }
 
+/** Set one property of a block state string: withProp("lever[facing=north]", "powered", "true"). */
+function withProp(state: string, k: string, v: string): string {
+  const [name, rest] = state.split("[");
+  const props = (rest ?? "").replace("]", "").split(",").filter((kv) => kv && !kv.startsWith(`${k}=`));
+  return `${name}[${[...props, `${k}=${v}`].join(",")}]`;
+}
+
+/** The same blocks drawn twice (off and on); each instance shows in exactly one of the two meshes. */
+class Toggle {
+  private m = new THREE.Matrix4();
+  private hide = new THREE.Matrix4().makeScale(0, 0, 0);
+  constructor(private off: THREE.InstancedMesh, private on: THREE.InstancedMesh, private at: THREE.Vector3[]) {
+    at.forEach((_, i) => this.set(i, false));
+    this.flush();
+  }
+  set(i: number, lit: boolean) {
+    const p = this.at[i];
+    if (!p) return;
+    this.m.makeTranslation(p.x, p.y, p.z);
+    this.off.setMatrixAt(i, lit ? this.hide : this.m);
+    this.on.setMatrixAt(i, lit ? this.m : this.hide);
+  }
+  flush() { this.off.instanceMatrix.needsUpdate = true; this.on.instanceMatrix.needsUpdate = true; }
+}
+
 export class Redstone3D {
   readonly el: HTMLElement;
   private renderer: THREE.WebGLRenderer | null = null;
@@ -39,6 +66,12 @@ export class Redstone3D {
   private ray = new THREE.Raycaster();
   onLever?: (bit: string) => void;
   ok = true;
+  private mc: McAssets | null = null;
+  private mats: McMaterials | null = null;
+  private lay: RsLayout | null = null;
+  private painted: [Record<string, number>, Record<string, number>] | null = null;
+  private mcLamps: Toggle | null = null;
+  private mcLevers: Toggle | null = null;
 
   constructor() {
     this.el = document.createElement("div");
@@ -63,12 +96,24 @@ export class Redstone3D {
     }
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(this.el);
+    if (this.renderer) void loadMcAssets().then((a) => {
+      if (!a) return;
+      this.mc = a;
+      this.mats = new McMaterials(this.renderer!.capabilities.getMaxAnisotropy());
+      if (this.lay) { this.build(this.lay); if (this.painted) this.paint(...this.painted); }
+    });
   }
 
   /** Replace the scene with this layout. Coordinates are world blocks, so x/z match what players see in Minecraft. */
   setLayout(lay: RsLayout) {
+    this.lay = lay; this.painted = null;
+    this.build(lay);
+    this.overview(lay);
+  }
+
+  private build(lay: RsLayout) {
     for (const g of this.groups) { this.scene.remove(g); (g as THREE.Mesh).geometry?.dispose(); }
-    this.groups = []; this.lamps.clear(); this.levers = null;
+    this.groups = []; this.lamps.clear(); this.levers = null; this.mcLamps = null; this.mcLevers = null;
     const [x0, , z0, x1, , z1] = lay.bbox;
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const all = [...lay.blocks, ...lay.last];
@@ -77,17 +122,43 @@ export class Redstone3D {
     for (const [b, p] of Object.entries(lay.inputs)) leverAt.set(`${p[0]},${p[1]},${p[2]}`, b);
     const solid: { x: number; y: number; z: number; c: number; h: number; w: number }[] = [];
     const lampList: { x: number; y: number; z: number }[] = [];
-    const leverList: { x: number; y: number; z: number; bit: string }[] = [];
+    const leverList: { x: number; y: number; z: number; bit: string; s: string }[] = [];
+    const byState = new Map<string, [number, number, number][]>();     // textured mode: instances per block state
     for (const [x, y, z, s] of all) {
       const key = `${x},${y},${z}`;
       if (s.startsWith("redstone_lamp")) { lampAt.set(key, lampList.length); lampList.push({ x, y, z }); continue; }
-      if (s.startsWith("lever")) { const bit = leverAt.get(key); if (bit) leverList.push({ x, y, z, bit }); continue; }
+      if (s.startsWith("lever")) { const bit = leverAt.get(key); if (bit) leverList.push({ x, y, z, bit, s }); continue; }
+      if (this.mc && !s.includes("sign") && s !== "air") {
+        const st = s.replace(/^minecraft:/, "");
+        let list = byState.get(st);
+        if (!list) byState.set(st, (list = []));
+        list.push([x, y, z]);
+        continue;
+      }
       const l = look(s);
       if (l) solid.push({ x, y, z, c: l.color, h: l.h, w: l.w });
     }
     // levers the layout does not list as blocks (prebuilt chips): put them at their input positions
     const have = new Set(leverList.map((l) => l.bit));
-    for (const [b, p] of Object.entries(lay.inputs)) if (!have.has(b) && !/^HOLD_/.test(b)) leverList.push({ x: p[0], y: p[1], z: p[2], bit: b });
+    for (const [b, p] of Object.entries(lay.inputs)) if (!have.has(b) && !/^HOLD_/.test(b)) leverList.push({ x: p[0], y: p[1], z: p[2], bit: b, s: "lever[face=floor,facing=north]" });
+
+    // textured mode: one instanced mesh per distinct block state, built from its real Minecraft model
+    const mcMesh = (state: string, at: { x: number; y: number; z: number }[]): THREE.InstancedMesh | null => {
+      const baked = this.mc && this.mats ? bakeState(this.mc, state) : null;
+      if (!baked) return null;
+      const mesh = new THREE.InstancedMesh(baked.geometry, baked.textures.map((t) => this.mats!.get(t)), Math.max(1, at.length));
+      const m = new THREE.Matrix4();
+      at.forEach((p, i) => mesh.setMatrixAt(i, m.makeTranslation(p.x - cx, p.y, p.z - cz)));
+      mesh.count = at.length;
+      mesh.frustumCulled = false;
+      this.add(mesh);
+      return mesh;
+    };
+    for (const [st, at] of byState) {
+      if (mcMesh(st, at.map(([x, y, z]) => ({ x, y, z })))) continue;
+      const l = look(st);                                         // a block the asset set does not cover
+      if (l) for (const [x, y, z] of at) solid.push({ x, y, z, c: l.color, h: l.h, w: l.w });
+    }
 
     const box = new THREE.BoxGeometry(1, 1, 1);
     box.translate(0, 0.5, 0);                                    // instances stand on their y
@@ -102,7 +173,16 @@ export class Redstone3D {
     solidMesh.count = solid.length;
     this.add(solidMesh);
 
-    const glow = new THREE.MeshBasicMaterial();
+    if (this.mc) {
+      const at = (l: { x: number; y: number; z: number }[]) => l.map((p) => new THREE.Vector3(p.x - cx, p.y, p.z - cz));
+      const lampOff = mcMesh("redstone_lamp[lit=false]", lampList), lampOn = mcMesh("redstone_lamp[lit=true]", lampList);
+      if (lampOff && lampOn) this.mcLamps = new Toggle(lampOff, lampOn, at(lampList));
+      const lever = leverList[0]?.s ?? "lever[face=floor,facing=north]";   // the bridge gives every lever the same facing
+      const leverOff = mcMesh(withProp(lever, "powered", "false"), leverList), leverOn = mcMesh(withProp(lever, "powered", "true"), leverList);
+      if (leverOff && leverOn) this.mcLevers = new Toggle(leverOff, leverOn, at(leverList));
+    }
+
+    const glow = new THREE.MeshBasicMaterial({ visible: !this.mcLamps });
     const lampMesh = new THREE.InstancedMesh(box, glow, Math.max(1, lampList.length));
     lampList.forEach((b, i) => { place(lampMesh, i, b.x, b.y, b.z, 1, 1); lampMesh.setColorAt(i, col.setHex(LAMP_OFF)); });
     lampMesh.count = lampList.length;
@@ -115,7 +195,7 @@ export class Redstone3D {
       if (best >= 0 && bd <= 4) this.lamps.set(bit, { mesh: lampMesh, idx: [best] });
     }
 
-    const leverMesh = new THREE.InstancedMesh(box, new THREE.MeshBasicMaterial(), Math.max(1, leverList.length));
+    const leverMesh = new THREE.InstancedMesh(box, new THREE.MeshBasicMaterial({ visible: !this.mcLevers }), Math.max(1, leverList.length));   // still the click target
     leverList.forEach((b, i) => { place(leverMesh, i, b.x, b.y, b.z, 0.7, 0.7); leverMesh.setColorAt(i, col.setHex(LEVER_OFF)); });
     leverMesh.count = leverList.length;
     this.add(leverMesh);
@@ -145,6 +225,15 @@ export class Redstone3D {
 
   /** Paint live state: lit lamps and thrown levers. */
   paint(outputs: Record<string, number>, inputs: Record<string, number>) {
+    this.painted = [outputs, inputs];
+    if (this.mcLamps) {
+      for (const [bit, l] of this.lamps) for (const i of l.idx) this.mcLamps.set(i, !!outputs[bit]);
+      this.mcLamps.flush();
+    }
+    if (this.mcLevers && this.levers) {
+      this.levers.bits.forEach((b, i) => this.mcLevers!.set(i, !!inputs[b]));
+      this.mcLevers.flush();
+    }
     const col = new THREE.Color();
     for (const [bit, l] of this.lamps) {
       for (const i of l.idx) l.mesh.setColorAt(i, col.setHex(outputs[bit] ? LAMP_ON : LAMP_OFF));

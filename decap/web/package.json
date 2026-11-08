@@ -11,6 +11,7 @@
     "golden": "tsx scripts/golden.ts",
     "check-data": "tsx scripts/check-data.ts",
     "sync-data": "node scripts/sync-data.mjs",
+    "mc-assets": "node scripts/mc-assets.mjs",
     "stage-data": "../.venv/bin/python -I ../ingest/liberty.py && ../.venv/bin/python -I ../ingest/ingest_gds.py --all",
     "stage-data:warmup": "../.venv/bin/python -I ../ingest/liberty.py && ../.venv/bin/python -I ../ingest/ingest_def.py"
   },
