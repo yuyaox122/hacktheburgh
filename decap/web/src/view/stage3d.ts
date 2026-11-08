@@ -45,8 +45,12 @@ const VIA: Record<string, { g: Group; y: number; s: number }> = {
 const isClockNet = (n: string) => /^(clk|clknet_)/.test(n);
 /** Microns each layer group lifts per EXPLODE_IDX step when the layers are fully separated. */
 const LIFT = 7;
+/** Top surface of each layer group above the die (before separation): the orbit point and the camera stay clear of these. */
+const TOP: Record<Group, number> = { pkg: 0.16, sub: 0.1, cell: Y.cellTop + 0.07, m1: Y.m1 + 0.03, via: Y.via + 0.08, m2: Y.m2 + 0.03, via2: Y.via2 + 0.08, m3: Y.m3 + 0.03, via3: Y.via3 + 0.08, m4: Y.m4 + 0.03, power: Y.m5 + 0.06 };
 /** Layer groups that get a glass plate and a label when the stack is separated. */
 const PLATES: [Group, string][] = [["cell", "Cells and transistors"], ["m1", "Metal 1 \u00b7 power rails, local wires"], ["m2", "Metal 2 \u00b7 vertical wires"], ["m3", "Metal 3 \u00b7 long wires"], ["m4", "Metal 4"]];
+/** Lowest the camera may orbit, as a polar angle from straight down (keepAboveStack lowers it close up). */
+const MAX_POLAR = Math.PI * 0.48;
 /** Default hero angle: the overview direction turned a little, so the die reads in three-quarter view. */
 const HERO_DIR = new THREE.Vector3(-0.3, 0.8, 0.62).normalize();
 
@@ -182,7 +186,9 @@ export class Stage3D {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
     this.controls = new OrbitControls(this.camera, r.domElement);
-    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, maxPolarAngle: Math.PI * 0.48, minDistance: 4, maxDistance: 420, autoRotateSpeed: 0.4 });
+    // Closest zoom: about three cell rows in view, so one cell still fills a good part of the screen but the camera
+    // never ends up a few microns off a single rail. Zooming in heads for the chip point under the pointer (bindPointer).
+    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, maxPolarAngle: MAX_POLAR, minDistance: 3 * RH, maxDistance: 420, autoRotateSpeed: 0.4 });
     const lab = document.createElement("div"); lab.className = "labels"; this.host.append(lab);
     this.labels = new CSS2DRenderer({ element: lab });
     this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4 }));
@@ -397,10 +403,10 @@ export class Stage3D {
     const beamGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 1, true); beamGeo.translate(0, 0.5, 0);
     this.beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
-      uniforms: { uCol: { value: new THREE.Color(css("--accent")).lerp(new THREE.Color(0xffffff), 0.25).multiplyScalar(2.4) }, uTime: this.uTime },
+      uniforms: { uCol: { value: new THREE.Color(css("--accent")).lerp(new THREE.Color(0xffffff), 0.25).multiplyScalar(2.4) }, uTime: this.uTime, uFade: { value: 1 } },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 uCol; uniform float uTime; varying vec2 vUv;
-        void main() { float a = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.2) * (0.55 + 0.15 * sin(uTime * 3.0 - vUv.y * 12.0)); gl_FragColor = vec4(uCol * a, a); }`,
+      fragmentShader: `uniform vec3 uCol; uniform float uTime; uniform float uFade; varying vec2 vUv;
+        void main() { float a = uFade * pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.2) * (0.55 + 0.15 * sin(uTime * 3.0 - vUv.y * 12.0)); gl_FragColor = vec4(uCol * a, a); }`,
     }));
     this.beam.visible = false; this.beam.renderOrder = 2; this.G.cell.add(this.beam);
     this.chip.traverse((o) => {
@@ -692,7 +698,30 @@ export class Stage3D {
       return null;
     };
     el.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; this.lastInput = performance.now(); if (this.intro.on) this.endIntro(); });
-    el.addEventListener("wheel", () => { this.lastInput = performance.now(); if (this.intro.on) this.endIntro(); }, { passive: true });
+    // Wheel in over the drawn chip (cells, wires, rails): zoom towards the point under the pointer, so what you point at
+    // comes closer. Over bare die, the package or the background, zoom towards the orbit point instead: zooming at
+    // nothing would drag the view off the drawn area.
+    // The capture listener on the host runs before OrbitControls' own wheel handler, the one on the canvas after it.
+    let zoomAt: { p: THREE.Vector3; r: number } | null = null;
+    const shown = (o: THREE.Object3D | null) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+    this.host.addEventListener("wheel", (e) => {
+      zoomAt = null;
+      if (e.target !== el || e.deltaY >= 0 || this.intro.on || this.fly.t < 1) return;
+      const r = el.getBoundingClientRect();
+      ray.setFromCamera(ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+      const targets = [this.mLogic, this.mPhys, ...this.G.m1.children, ...[...this.wires.values()].map((w) => w.base)];
+      const hit = ray.intersectObjects(targets.filter((o) => o instanceof THREE.Mesh && !o.userData.plate && shown(o)), false)[0];
+      if (hit) zoomAt = { p: hit.point, r: this.camera.position.distanceTo(this.controls.target) };
+    }, { capture: true, passive: true });
+    el.addEventListener("wheel", () => {
+      this.lastInput = performance.now(); if (this.intro.on) this.endIntro();
+      if (!zoomAt) return;
+      // OrbitControls has just scaled the distance by s about the orbit point; shifting camera and orbit point by
+      // (1 - s) of the way to the hit point makes that a zoom about the hit point instead.
+      const t = this.controls.target, s = this.camera.position.distanceTo(t) / zoomAt.r;
+      if (s < 1) { const d = zoomAt.p.sub(t).multiplyScalar(1 - s); t.add(d); this.camera.position.add(d); }
+      zoomAt = null;
+    }, { passive: true });
     el.addEventListener("pointerup", (e) => {
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
       const t0 = performance.now();
@@ -782,11 +811,49 @@ export class Stage3D {
     }
     if (this.selBox.visible) (this.selBox.material as THREE.LineBasicMaterial).color.copy(new THREE.Color(css("--accent"))).multiplyScalar(1.8 + Math.sin(now / 260) * 0.6);
     this.controls.autoRotate = !reduceMotion() && !this.intro.on && this.fly.t >= 1 && now - this.lastInput > 45000;
+    if (!this.intro.on) this.keepAboveStack();
     this.controls.update();
+    if (!this.intro.on) this.keepTargetOnChip();
+    if (this.beam.visible) {
+      // The beacon is for finding the cell from afar; close up it would wash the cell out, so fade it as the camera nears.
+      const d = this.camera.position.distanceTo(this.beam.getWorldPosition(this.tmp)), m = this.controls.minDistance;
+      (this.beam.material as THREE.ShaderMaterial).uniforms.uFade.value = THREE.MathUtils.smoothstep(d, m, 2 * m);
+    }
     this.composer.render();
     this.labels.render(this.scene, this.camera);
     if (this.frame++ % 6 === 0) this.declutterPins();
   };
+
+  private tmp = new THREE.Vector3();
+  /** Keep the orbit point over the drawn area, between the die surface and the highest layer shown. Pans and zooms
+   *  can otherwise drag it off the die, under it or into empty air above it, and the camera then orbits nothing.
+   *  Moving the camera by the same amount makes this a pan that stops at the edge, not a jump in view angle. */
+  private keepTargetOnChip() {
+    const t = this.controls.target, o = this.chip.position, V = this.V, clamp = THREE.MathUtils.clamp;
+    const tops = this.layerTops(), top = tops.length ? tops[tops.length - 1] : o.y;
+    const d = this.tmp.set(
+      clamp(t.x, o.x + V.x0, o.x + V.x1) - t.x,
+      clamp(t.y, o.y, Math.max(o.y, top)) - t.y,
+      clamp(t.z, o.z + this.sz(V.y1), o.z + this.sz(V.y0)) - t.z);
+    if (d.lengthSq() > 1e-10) { t.add(d); this.camera.position.add(d); }
+  }
+  /** World heights of the top surfaces of the layers shown, lowest first. */
+  private layerTops() {
+    return (Object.keys(TOP) as Group[]).filter((g) => this.G[g].visible).map((g) => this.chip.position.y + this.G[g].position.y + TOP[g]).sort((a, b) => a - b);
+  }
+  /** Close up from a low angle the camera would sit inside the 2 um layer stack and see it edge-on (a smear, or a
+   *  white-out from the bloom). So lower the polar limit until the camera stays 0.6 um above the top of the stack
+   *  (layers less than 1 um apart) that holds the orbit point, or the next one above it when the layers are separated
+   *  and the orbit point is in the gap. Further out the limit relaxes back to MAX_POLAR. */
+  private keepAboveStack() {
+    const tops = this.layerTops(), t = this.controls.target, r = this.camera.position.distanceTo(t);
+    let lim = MAX_POLAR;
+    for (let j = 0; j < tops.length; j++) {
+      while (j + 1 < tops.length && tops[j + 1] - tops[j] < 1) j++;
+      if (tops[j] + 0.6 > t.y) { lim = Math.min(lim, Math.acos(Math.min(1, (tops[j] + 0.6 - t.y) / r))); break; }
+    }
+    this.controls.maxPolarAngle = lim;
+  }
 
   private frame = 0;
   /** Hide pin labels that would overlap one already placed (lit pins win), so names never print over each other. */
