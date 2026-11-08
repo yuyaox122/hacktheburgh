@@ -36,6 +36,16 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); f
 #vfStrip { width: 100%; height: 64px; display: block; }
 .vf-now { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 1.2em; }
 
+.vf-pipe { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vf-pipe li { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; font-size: 13px; color: var(--faint); transition: color .25s; }
+.vf-pipe li b { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--panel-3); font-size: 11px; }
+.vf-pipe li small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.vf-pipe li em { font-style: normal; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--add); padding-top: 2px; }
+.vf-pipe li.on { color: var(--fg); }
+.vf-pipe li.on b { background: var(--accent); color: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); animation: vfPulse 0.9s ease-in-out infinite; }
+.vf-pipe li.done { color: var(--fg); }
+.vf-pipe li.done b { background: color-mix(in srgb, var(--add) 30%, transparent); color: var(--add); }
+@keyframes vfPulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 8%, transparent); } }
 .vf-sus ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .vf-sus li { display: grid; grid-template-columns: 42px 66px 1fr 38px 44px; align-items: center; gap: 8px; font-size: 12px; padding: 4px 6px; border-radius: 8px; cursor: pointer; transition: background .2s; }
 .vf-sus li:hover, .vf-sus li.sel { background: rgba(255,255,255,.07); }
