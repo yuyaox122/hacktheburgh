@@ -1,8 +1,11 @@
 // Verification engine for the verify page, built to scale with gate count rather than with cells x patterns.
 //
-// 1. Bit-parallel simulation: every net holds W 32-bit words, one test pattern per bit, so a single pass over
-//    the netlist evaluates 32 patterns per word (512 patterns = 16 words). Flops: one clock from reset.
-// 2. Compare with the spec: per output bit, a mismatch mask.
+// 0. Sample: draw SAMPLES random input vectors (seeded, uniform over every input bit). Big chips have 2^n
+//    inputs, far too many to try, so the page predicts from a sample instead of enumerating.
+// 1. Bit-parallel simulation: every net holds W 32-bit words, one test vector per bit, so a single pass over
+//    the netlist evaluates 32 vectors per word (1000 vectors = 32 words). Flops: one clock from reset.
+// 2. Compare with the spec: per output bit, a mismatch mask. The wrong fraction predicts the failure rate
+//    over the whole input space (Wilson 95% interval; rule of three when nothing fails).
 // 3. Trace back (critical path tracing): one reverse pass per output pin. A gate passes observability to an
 //    input where its Boolean difference is 1 (flipping that input flips the output). At fanout stems the
 //    branches are OR-ed, which can over-approximate on reconvergent paths, so:
@@ -16,6 +19,9 @@ import type { Design, Lib } from "../data/types";
 import { parse, type Expr } from "../sim/expr";
 
 const EPS = 0.05;
+/** Random test vectors per run. The prediction's interval narrows with more, the cost grows linearly. */
+export const SAMPLES = 1000;
+const SEED = 0x5eed;
 const CONFIRM = 5;
 /** Cells that are wiring or clocking, not logic a bug could live in. */
 const notCandidate = (t: string) => /^(conb|clkbuf|clkinv|decap|fill|tap)/.test(t);
@@ -32,7 +38,10 @@ interface Gate {
 export interface Suspect { id: string; type: string; explains: number; p: number; confirmed: boolean }
 export interface Timing { simMs: number; traceMs: number; confirmMs: number }
 export interface Result {
-  patterns: number; words: number; wrong: number;
+  /** Random vectors simulated, of `space` possible inputs. */
+  patterns: number; space: number; words: number; wrong: number;
+  /** Predicted failure rate over every input, with a 95% interval, and the failing inputs that implies. */
+  rate: number; rateLo: number; rateHi: number; predictedWrong: number;
   /** Per pattern: true when every output matched the spec. */
   ok: boolean[];
   examples: { ins: Record<string, number>; got: number; want: number }[];
@@ -136,18 +145,22 @@ class Netlist {
   }
 }
 
-/** Every combination of the chip's named inputs (a, b, ci: 512 for the CLA). */
-export function allInputs(d: Design): Record<string, number>[] {
+/** Number of possible inputs: 2^(named input bits). */
+export const inputSpace = (d: Design) => 2 ** (d.io?.in ?? []).reduce((a, f) => a + f.bits.length, 0);
+
+/** `n` random input vectors, uniform over every named input bit, reproducible from `seed` (mulberry32). */
+export function sampleInputs(d: Design, n = SAMPLES, seed = SEED): Record<string, number>[] {
+  let t = seed >>> 0;
+  const rnd = () => { t = (t + 0x6d2b79f5) >>> 0; let x = Math.imul(t ^ (t >>> 15), 1 | t); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
   const fs = d.io?.in ?? [];
-  const total = fs.reduce((a, f) => a + f.bits.length, 0);
-  const out: Record<string, number>[] = [];
-  for (let x = 0; x < 1 << total; x++) {
-    const v: Record<string, number> = {};
-    let sh = 0;
-    for (const f of fs) { v[f.name] = (x >> sh) & ((1 << f.bits.length) - 1); sh += f.bits.length; }
-    out.push(v);
-  }
-  return out;
+  return Array.from({ length: n }, () => Object.fromEntries(fs.map((f) => [f.name, Math.floor(rnd() * 2 ** f.bits.length)])));
+}
+
+/** 95% interval for a rate from k of n: Wilson, or the rule of three (0 to 3/n) when k = 0. */
+function interval(k: number, n: number): [number, number] {
+  if (!k) return [0, Math.min(1, 3 / n)];
+  const z = 1.96, p = k / n, d = 1 + (z * z) / n, c = (p + (z * z) / (2 * n)) / d, h = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return [Math.max(0, c - h), Math.min(1, c + h)];
 }
 
 /** The spec: a + b + ci, as {s, co}. */
@@ -158,8 +171,8 @@ export function claSpec(ins: Record<string, number>): Record<string, number> {
 
 const popcount = (x: number) => { x -= (x >>> 1) & 0x55555555; x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24; };
 
-export function verify(d: Design, lib: Lib, spec = claSpec): Result {
-  const pats = allInputs(d);
+export function verify(d: Design, lib: Lib, spec = claSpec, samples = SAMPLES): Result {
+  const pats = sampleInputs(d, samples);
   const P = pats.length;
   const N = new Netlist(d, lib, P), W = N.W;   // compiling the netlist is one-off set-up, not timed
   const inBits = (d.io?.in ?? []).flatMap((f) => f.bits.map((b, i) => ({ f: f.name, i, net: N.nets.get(b) })));
@@ -216,7 +229,7 @@ export function verify(d: Design, lib: Lib, spec = claSpec): Result {
   const ks = new Map(cands.map((g) => [g.id, wrong ? count(g.id) : 0]));
   const traceMs = performance.now() - t1;
 
-  // Confirm the top suspects exactly: invert the cell's output and re-simulate every pattern.
+  // Confirm the top suspects: invert the cell's output and re-simulate the sampled vectors.
   const t2 = performance.now();
   const confirmed = new Set<string>();
   if (wrong) {
@@ -241,12 +254,17 @@ export function verify(d: Design, lib: Lib, spec = claSpec): Result {
 
   const ok = pats.map((_, k) => !((fail[k >> 5] >>> (k & 31)) & 1));
   const val = (out: Int32Array | null, k: number) => outBits.reduce((acc, o, j) => acc | ((((out ? out[o.net * W + (k >> 5)] : want[j][k >> 5]) >>> (k & 31)) & 1) << j), 0);
-  const examples = pats.map((p, k) => ({ p, k })).filter(({ k }) => !ok[k]).slice(0, 3).map(({ p, k }) => ({ ins: p, got: val(v, k), want: val(null, k) }));
+  const examples: Result["examples"] = [], seenEx = new Set<string>();   // distinct inputs (random draws can repeat)
+  for (let k = 0; k < P && examples.length < 3; k++) {
+    const key = JSON.stringify(pats[k]);
+    if (!ok[k] && !seenEx.has(key)) { seenEx.add(key); examples.push({ ins: pats[k], got: val(v, k), want: val(null, k) }); }
+  }
   const sampleK = Math.max(0, ok.findIndex((x) => !x));
   const sample = (n: string) => { const i = N.nets.get(n); return i === undefined ? 0 : (v[i * W + (sampleK >> 5)] >>> (sampleK & 31)) & 1; };
   const levels = [...N.gates].sort((a, b) => a.level - b.level).map((g) => ({ id: g.id, level: g.level }));
+  const space = inputSpace(d), [rateLo, rateHi] = interval(wrong, P);
   return {
-    patterns: P, words: W, wrong, ok, examples, suspects, levels, maxLevel: Math.max(1, ...levels.map((l) => l.level)),
+    patterns: P, space, words: W, wrong, rate: wrong / P, rateLo, rateHi, predictedWrong: Math.round((wrong / P) * space), ok, examples, suspects, levels, maxLevel: Math.max(1, ...levels.map((l) => l.level)),
     tracedNets: N.names.filter((_, i) => traced[i]), sample,
     timing: { simMs, traceMs, confirmMs }, gateEvals: N.gates.length * W * 2,
   };

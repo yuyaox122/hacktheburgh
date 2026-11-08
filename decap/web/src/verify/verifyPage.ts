@@ -1,15 +1,15 @@
 // Verify page (#/verify, the "Verify" button in the header): the 4-bit CLA verified on its real 3D layout, the way it scales to big chips.
-// Step 1: the taped-out chip. Every input pattern at once (bit-parallel simulation), compared with a + b + ci,
-//         plus the bench's Yosys proof.
+// Step 1: the taped-out chip. 1000 random input vectors at once (bit-parallel simulation), compared with
+//         a + b + ci, giving a predicted failure rate over every input; the bench's Yosys proof backs it.
 // Step 2: "rev B", the same layout with one gate changed (a seeded bug). Wrong outputs are traced back through
-//         the netlist in one pass; the top suspects are confirmed by re-simulation. The heatmap is each cell's
+//         the netlist in one pass from the sampled failures; the top suspects are confirmed by re-simulation. The heatmap is each cell's
 //         fault probability (engine.ts has the model).
 
 import "./verify.css";
 import { loadDesign } from "../data/load";
 import type { Design, Lib } from "../data/types";
 import { Stage3D } from "../view/stage3d";
-import { verify, type Result } from "./engine";
+import { SAMPLES, verify, type Result } from "./engine";
 
 const CHIP = "tt_um_Electom_cla_4bits";
 const BUG = { cell: "c53", to: "and2_1" };   // rev B: one OR gate in the carry logic became an AND
@@ -21,6 +21,8 @@ const root = document.createElement("div");
 root.className = "vf";
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const pct = (p: number) => (p >= 0.995 ? "99" : p < 0.01 && p > 0 ? "<1" : String(Math.round(p * 100)));
+/** A rate as a percentage: one decimal, "<0.1" for tiny non-zero rates. */
+const rate = (x: number) => (x > 0 && x < 0.001 ? "<0.1" : (x * 100).toFixed(1).replace(/\.0$/, ""));
 const ms = (x: number) => (x < 0.1 ? "<0.1 ms" : `${x.toFixed(1)} ms`);
 
 /** Heat ramp for fault probability, on a log scale so 1% still glows. */
@@ -44,9 +46,11 @@ root.innerHTML = `
   <aside class="vf-panel">
     <section class="vf-spec"><span class="ey">Spec</span><code>{co, s} = a + b + ci</code><span class="muted" id="vfChip"></span></section>
     <section class="vf-count">
-      <div><b id="vfDone">0</b><span>/ <span id="vfTotal">512</span> patterns</span></div>
+      <div><b id="vfDone">0</b><span>/ <span id="vfTotal">1000</span> random vectors</span></div>
+      <small class="muted" id="vfSpace"></small>
       <div class="vf-pf"><span class="ok"><b id="vfPass">0</b> right</span><span class="bad"><b id="vfFail">0</b> wrong</span></div>
-      <canvas id="vfStrip" aria-label="Every input pattern, 32 per word: green right, red wrong"></canvas>
+      <canvas id="vfStrip" aria-label="Each sampled vector, 32 per word: green right, red wrong"></canvas>
+      <div class="vf-pred" id="vfPred" hidden></div>
     </section>
     <section><span class="ey">Pipeline</span><ol class="vf-pipe" id="vfPipe"></ol></section>
     <section class="vf-sus" id="vfSusSec" hidden>
@@ -78,10 +82,10 @@ const level = new Map<string, number>();
 
 interface Stage { key: string; name: string; detail: () => string; time: () => string }
 const STAGES: Stage[] = [
-  { key: "sim", name: "Simulate every pattern", detail: () => `${R!.patterns} patterns as ${R!.words} words × 32 lanes, one pass over the netlist`, time: () => ms(R!.timing.simMs) },
-  { key: "cmp", name: "Compare with the spec", detail: () => (R!.wrong ? `${R!.wrong} wrong` : "all match"), time: () => "" },
+  { key: "sim", name: `Simulate ${SAMPLES} random vectors`, detail: () => `${R!.patterns} of ${R!.space} possible inputs, as ${R!.words} words × 32 lanes, one pass over the netlist`, time: () => ms(R!.timing.simMs) },
+  { key: "cmp", name: "Compare with the spec, predict", detail: () => `${R!.wrong} of ${R!.patterns} wrong → failure rate ${predText()}`, time: () => "" },
   { key: "trace", name: "Trace back from wrong outputs", detail: () => `one reverse pass per output pin through ${R!.levels.length} cells`, time: () => ms(R!.timing.traceMs) },
-  { key: "confirm", name: "Confirm the top suspects", detail: () => `re-simulate ${R!.suspects.filter((s) => s.confirmed).length} cells with their output inverted`, time: () => ms(R!.timing.confirmMs) },
+  { key: "confirm", name: "Confirm the top suspects", detail: () => `re-simulate the sample with each of ${R!.suspects.filter((s) => s.confirmed).length} cells inverted`, time: () => ms(R!.timing.confirmMs) },
 ];
 
 function renderPipe(active: string | null, doneKeys: Set<string>) {
@@ -101,12 +105,14 @@ function setStep(n: 1 | 2) {
   for (const l of R.levels) level.set(l.id, l.level);
   shown = 0; selected = null; view.select(null);
   $("vfTotal").textContent = String(R.patterns);
+  $("vfSpace").textContent = `drawn at random from ${R.space} possible inputs (a big chip has 2^n, too many to try)`;
+  $("vfPred").hidden = true;
   $("vfChip").textContent = n === 1 ? "tt_um_Electom_cla_4bits · Tiny Tapeout 8" : "Same layout, same pins. Something inside changed.";
   $("vfSusSec").hidden = true; $("vfLogSec").hidden = true; $("vfInsp").hidden = true;
   $("vfVerdict").hidden = true; $("vfVerdict").className = "vf-verdict";
   $("vfNote").textContent = n === 1
-    ? "The real gate netlist from the GDS, one clock from reset. Each 32-bit word carries 32 patterns, so the cost is one pass over the gates per word, not one per pattern."
-    : `Fault model: one cell computes the wrong value. A cell explains a wrong pattern if inverting its output there fixes every output. Probabilities over ${R.suspects.length} logic cells, uniform prior. Every stage is a pass over the netlist, so the work grows with gate count.`;
+    ? `The real gate netlist from the GDS, one clock from reset. We don't try every input: ${R.patterns} random vectors predict the failure rate over all of them, the same way it works on a chip with 2^64 inputs. Each 32-bit word carries 32 vectors, so the cost is one pass over the gates per word.`
+    : `Fault model: one cell computes the wrong value. A cell explains a wrong vector if inverting its output there fixes every output. Probabilities over ${R.suspects.length} logic cells from the ${R.wrong} sampled failures, uniform prior. Every stage is a pass over the netlist, so the work grows with gate count and sample size, not with the input space.`;
   renderCounts(0); drawStrip(0); renderPipe(null, new Set());
   view.setMarks(null); view.setHighlight(null);
 }
@@ -164,7 +170,7 @@ function start() {
     } else if (t < ends.cmp) {
       stage = "cmp"; done.add("sim");
       for (const id of level.keys()) marks.set(id, GREEN);
-      renderCounts(1); drawStrip(1);
+      renderCounts(1); drawStrip(1); showPred();
       view.setHighlight(null);
       if (R!.wrong) showExamples();
     } else if (step === 2 && t < ends.trace) {
@@ -188,7 +194,7 @@ function start() {
       STAGES.forEach((s) => done.add(s.key));
       view.setMarks(finalMarks(sus));
       renderPipe(null, done);
-      renderCounts(1); drawStrip(1); if (R!.wrong) showExamples();
+      renderCounts(1); drawStrip(1); showPred(); if (R!.wrong) showExamples();
       finish(traced);
       return;
     }
@@ -203,6 +209,17 @@ function finalMarks(sus: Map<string, number>) {
   const m = new Map<string, string>();
   for (const id of level.keys()) { const p = step === 2 ? sus.get(id) ?? 0 : 0; m.set(id, p > 1e-3 ? heat(p) : step === 2 ? CLEAR : GREEN); }
   return m;
+}
+
+/** Failure rate predicted from the sample: "12.5% (95%: 10.6–14.7%)", or "< 0.3% (95%)" when nothing failed. */
+function predText() {
+  return R!.wrong ? `${rate(R!.rate)}% (95%: ${rate(R!.rateLo)}–${rate(R!.rateHi)}%)` : `< ${rate(R!.rateHi)}% (95%)`;
+}
+function showPred() {
+  const el = $("vfPred"); el.hidden = false;
+  el.innerHTML = R!.wrong
+    ? `Predicted: <b>${rate(R!.rate)}%</b> of all inputs fail <span class="muted">(95%: ${rate(R!.rateLo)}–${rate(R!.rateHi)}%, about ${R!.predictedWrong} of ${R!.space})</span>`
+    : `Predicted: <b>&lt; ${rate(R!.rateHi)}%</b> of inputs fail <span class="muted">(95%, from 0 of ${R!.patterns})</span>`;
 }
 
 function showExamples() {
@@ -232,8 +249,8 @@ function finish(traced: Set<string>) {
     const ok = R!.wrong === 0;
     V.className = `vf-verdict ${ok ? "good" : "bad"}`;
     const y = proof?.proven ? `<p>Yosys equivalence against the author's source: <b>proven</b>${proof.seconds != null ? ` in ${proof.seconds.toFixed(2)} s` : ""}.</p>` : "";
-    V.innerHTML = `<span class="ey">${ok ? "Verified" : "Mismatch"}</span><h2>${R!.patterns - R!.wrong} / ${R!.patterns} correct</h2>
-      <p>Every combination of a, b and ci gives a + b + ci. Checked in ${ms(total)}.</p>${y}`;
+    V.innerHTML = `<span class="ey">${ok ? "Predicted correct" : "Mismatch"}</span><h2>${R!.patterns - R!.wrong} / ${R!.patterns} random vectors correct</h2>
+      <p>Predicted failure rate over all ${R!.space} inputs of a, b and ci: ${predText()}. Checked in ${ms(total)}.</p>${y}`;
     btn("vfRevB").disabled = false;
     view.setHighlight(null);
     if (auto) setTimeout(() => { setStep(2); start(); }, 2500);
@@ -241,9 +258,10 @@ function finish(traced: Set<string>) {
     $("vfSusSec").hidden = false; renderSuspects(1);
     const s = R!.suspects[0], tied = R!.suspects.filter((x) => Math.abs(x.p - s.p) < 1e-6);
     V.className = "vf-verdict bad";
-    V.innerHTML = `<span class="ey">Fault found</span><h2>${R!.wrong} / ${R!.patterns} wrong</h2>
+    V.innerHTML = `<span class="ey">Fault found</span><h2>${rate(R!.rate)}% of inputs predicted wrong</h2>
+      <p>${R!.wrong} of ${R!.patterns} random vectors wrong: about ${R!.predictedWrong} of ${R!.space} inputs (95%: ${rate(R!.rateLo)}–${rate(R!.rateHi)}%).</p>
       <p>Most likely cell: <b class="mono">${tied.map((x) => esc(x.id)).join(", ")}</b> <span class="mono muted">${esc(s.type)}</span> at <b>${pct(s.p)}%</b>,
-      explaining all ${s.explains} wrong answers. Found in ${ms(total)}.</p>
+      explaining ${s.explains === R!.wrong ? "all " : ""}${s.explains} of the ${R!.wrong} sampled failures. Found in ${ms(total)}.</p>
       <p class="reveal" id="vfReveal" hidden>The seeded change: <b class="mono">${BUG.cell}</b> was an OR gate (${esc(bugFrom)}) in the taped-out chip and is an AND gate (${BUG.to}) in rev B. ${tied.some((x) => x.id === BUG.cell) ? `<span class="ok">Found ✓</span>` : `<span class="bad">Missed</span>`}</p>`;
     const hot = new Set(R!.suspects.filter((x) => x.p > 1e-3).map((x) => x.id));
     view.setHighlight(hot, new Set(design.cells.filter((c) => hot.has(c.id)).flatMap((c) => Object.values(c.pins)).filter((n) => traced.has(n))));
@@ -264,7 +282,7 @@ function select(id: string | null) {
   box.hidden = false;
   box.innerHTML = `<span class="ey">Cell <span class="mono">${esc(c.id)}</span> <span class="muted">· level ${level.get(c.id) ?? "?"}</span></span>
     <div class="mono">${type}</div>
-    ${s ? `<div>${step === 2 && R.wrong ? `Fault probability <b>${pct(s.p)}%</b>, explains ${s.explains} of ${R.wrong} wrong answers${s.confirmed ? " (confirmed by re-simulation)" : ""}.` : "Logic cell: a candidate if anything goes wrong."}</div>` : `<div class="muted">Wiring or clock cell, not scored.</div>`}`;
+    ${s ? `<div>${step === 2 && R.wrong ? `Fault probability <b>${pct(s.p)}%</b>, explains ${s.explains} of ${R.wrong} sampled failures${s.confirmed ? " (confirmed by re-simulation)" : ""}.` : "Logic cell: a candidate if anything goes wrong."}</div>` : `<div class="muted">Wiring or clock cell, not scored.</div>`}`;
   if (!$("vfSusSec").hidden) renderSuspects(1);
 }
 
