@@ -3,7 +3,7 @@
 **Prize:** 1st PS5; runners-up mechanical keyboards. Data can be anything, not just financial.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 01:00 (synced with main up to #74). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -45,6 +45,8 @@ Presenter mode (`D`), but click the steps **out of order**: Results first.
 **If Ian's held-out number isn't in by pitch time:** cut the 55–75 s beat to 10 s. Say "AI agents propose explanations and a proof scores every one; the full run is overnight", and give the time to the model card.
 
 **Minecraft honesty:** the redstone copy is pre-planted with **78** until Yuyao's live "judge's number in Minecraft" is rehearsed. Say so.
+
+**If the Minecraft client fails:** the website's Minecraft page (`#/minecraft`) shows the same build in 3D with real Minecraft block models (repeaters, comparators, dust, levers, lamps), and the levers and lamps toggle live. This needs `npm run mc-assets` once on the demo laptop, and the page served from `npm run dev`: the textures are loaded in dev only and stripped from builds (Mojang's assets stay off the public site, #72), so the public site shows flat colours.
 
 ## The prediction framing, honestly
 
@@ -98,3 +100,4 @@ Ask Ian for these three numbers:
 - [ ] Witness drawer (`A`) works on the chosen chip; a refuted claim with a counterexample is ready as a backup
 - [ ] Ian's three numbers in this file, or the beat shortened
 - [ ] Redstone planted 78 + clean built and settled
+- [ ] `npm run mc-assets` run once; web served with `npm run dev` (real block textures in the Minecraft page fallback)

@@ -3,7 +3,7 @@
 **Prize:** Nintendo Switch 2 + Mario Kart. **Our best-fit track.** The brief is nearly our product description.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 01:00 (synced with main up to #74). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -44,6 +44,8 @@ Run Presenter mode (`D`). Its step buttons can be clicked in any order. Minecraf
 | 85–90 s | **Close** | Lamp lit | "You can't review what you can't read. **Now you can read silicon.**" |
 
 **Minecraft honesty:** until Yuyao's "judge's number in Minecraft" lands, the redstone copy is pre-planted with **78** (on `uo_out[0]`; the honest sum at 78 is 18, bit 0 = 0, so the clean copy stays dark). Say: *"This one we planted earlier with 78. Yours is the one in the browser."* If the live version lands and has been rehearsed, use the judge's N.
+
+**If the Minecraft client fails:** the website's Minecraft page (`#/minecraft`) shows the same build in 3D with real Minecraft block models (repeaters, comparators, dust, levers, lamps), and the levers and lamps toggle live. This needs `npm run mc-assets` once on the demo laptop, and the page served from `npm run dev`: the textures are loaded in dev only and stripped from builds (Mojang's assets stay off the public site, #72), so the public site shows flat colours.
 
 ## The data story (say it if they ask, or use it to fill the 30–50 s beat)
 
@@ -88,6 +90,7 @@ Ian is running the Witness agent bench with DeepSeek: AI agents propose one-line
 ## Prep checklist
 
 - [ ] `flythrough.mp4` plays offline, cued to the first 3 s
+- [ ] `npm run mc-assets` run once; web served with `npm run dev` (real block textures in the Minecraft page fallback)
 - [ ] Showcase world loaded; `/function decap:tour/…` lands on the trojan annex
 - [ ] Redstone copies built and settled (planted 78 + clean); `/tick sprint` used to speed up settling
 - [ ] Judge's chip steered to `tt_um_emmyxu_obstacle_detection` (fallback: `tt_um_kb2ghz_xalu`, `tt_um_dpmu`); chip warmed

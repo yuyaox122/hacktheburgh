@@ -3,7 +3,7 @@
 **Prize:** 1st €350 per person; 2nd €150 per person. They will ask how we used AI.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 01:00 (synced with main up to #74). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -32,7 +32,7 @@ Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code
 | **AI editor** (hover → ideas → Apply → Yosys review) | Yuyao | Building: issue #68, branch `68-ideas-editor` (taken over 00:26; confirmed on the board at 00:34) | **Plan A only after one full rehearsal.** Otherwise Plan B |
 | **Witness drawer** (`A`): Explain / Suggest edit / Comment on Decompile lines | Ian, on main (#65) | Tested live on `cla_4bits`, all 4 flows work | Plan B hero |
 | **bASIC MCP in JetBrains Air/Junie** (`decap mcp`) | Alex or Ian | MCP server works (13 tools against the real core). **Not yet connected in Air** | Connect once, record 20 s. If it fails, cut it and say "MCP, works in Claude Code" |
-| **Build in Minecraft** from the Decompile page | Yuyao, on main (#60) | Works (Verilog path checked 40/40) | Keep |
+| **Build in Minecraft** from the Decompile page | Yuyao, on main (#60) | Works (Verilog path checked 40/40). Its 3D view now draws real Minecraft block models in dev (#72) | Keep. If the game client fails, use the in-browser view (`npm run mc-assets` once, then `npm run dev`) |
 
 Known agent quirk (Yuyao, #65): on a small output cone the agent proposed the same true XOR claim 5 times and got "restated" each time. Pick a demo region where this doesn't happen, and rehearse it.
 
@@ -62,12 +62,13 @@ Same hook and close. Replace 25–55 s with the **Witness drawer** (`A`):
 ## The agentic-process story (criterion 4)
 
 **What's true:**
-- Three humans: Yuyao (lead: core, web, redstone), Ian (agent layer), Alex (Minecraft, web polish). Each steers their own coding agent: Claude Code, Codex.
+- Three humans with equal say, and no team lead: decisions are made on the board, and work moves between people only with its owner's agreement. Yuyao (core, web, redstone), Ian (agent layer), Alex (Minecraft, web polish). Each steers their own coding agent: Claude Code, Codex.
 - They coordinate through **one pinned GitHub issue** (`tools/board`). Agents tag each other by login, hand work over, and need the owner's OK before editing someone else's folder (`AGENTS.md`).
 - **Real examples to show:**
   - Alex's agent measured in-world that trigger 77 is invisible on `uo_out[0]` (the honest sum bit is already 1). Yuyao's agent handed the fix back.
   - Yuyao's agent found Ian's branch had no shared history and would have undone the redesign, so it replayed only Ian's files onto main (#65).
   - Agents reviewed and merged each other's PRs (#53, #60, #61, #65).
+  - On this pitch's own PR (#69), Yuyao's agent checked every number against the spec and flagged the one it couldn't verify. Alex's agent then traced it to its source before merging.
 - The Witness design itself came from a multi-agent design tournament: 6 designs, 5 judges, a red team (`docs/decap/witness-plan.md`).
 
 **Be honest:**
