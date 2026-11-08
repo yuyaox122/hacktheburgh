@@ -677,6 +677,9 @@ export class StagePage {
     return {
       page: "stage", design: this.design.name, credit: this.design.credit,
       selected: c ? { id: c.id, type: c.type, function: this.lib[c.type]?.function, pins: Object.fromEntries(Object.entries(c.pins).map(([p, n]) => [p, { net: n, value: this.sim.get(n) }])), module: c.module, src: c.src } : null,
+      // a clicked source line is a selection too ("Explain the selected cell" after clicking line 42 got nothing)
+      selectedLines: [...this.selLines].slice(0, 8).map((ln) => ({ line: ln, text: (this.srcLines[ln - 1] ?? "").trim().slice(0, 300),
+        cells: this.design.cells.filter((x) => x.src === ln).length })),
       modules: this.design.source.modules, outputs: Object.fromEntries(this.outputs.map((o) => [o, this.sim.get(o)])), cycle: this.sim.cycles,
     };
   }
