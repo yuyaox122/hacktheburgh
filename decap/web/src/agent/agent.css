@@ -237,3 +237,8 @@ ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
 .ag-ed-out { flex: 0 0 auto; max-height: 42%; overflow: auto; padding: 8px 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; font-size: 13px; }
 .ag-ed-ideas { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
 .ag-ed-pre { margin: 4px 0; padding: 6px 8px; border-radius: 6px; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+
+/* Agent button pulses while a command runs, so a collapsed drawer still shows the agent is busy. */
+#btnAgent { position: relative; }
+#btnAgent.ag-running::after { content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); animation: ag-dots 1.2s ease-in-out infinite; }

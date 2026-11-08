@@ -76,6 +76,12 @@ export class AgentPanel {
     this.el.addEventListener("click", (e) => this.onClick(e));
     store.on((chip) => { if (chip === this.chip) this.schedule(); });
     document.addEventListener("agent:open", () => this.open());
+    // Auto-collapse: any press outside the drawer folds it away (runs keep streaming; the Agent button pulses meanwhile).
+    // The Agent button is skipped so its own toggle still works; triggers elsewhere re-open it on their click.
+    document.addEventListener("pointerdown", (e) => {
+      const t = e.target as Element | null;
+      if (this.isOpen && t && !this.el.contains(t) && !t.closest("#btnAgent")) this.close();
+    }, true);
     verilogIO.install();
     // Alex's verify view (or anything) can hand a faulty design to the agent: agent:repair -> ... -> agent:repaired
     document.addEventListener("agent:repair", (e) => {
@@ -117,6 +123,7 @@ export class AgentPanel {
     this.runSeq++;
     if (say) this.term.error(say);
     $("#agStop", this.el).hidden = true;
+    document.getElementById("btnAgent")?.classList.remove("ag-running");
   }
 
   /** CLI-style slash commands in the terminal: each maps onto the same agent calls as the buttons (no shell). */
@@ -155,13 +162,14 @@ export class AgentPanel {
     const seq = ++this.runSeq;
     const ctrl = this.ctrl = new AbortController();
     $("#agStop", this.el).hidden = false;
+    document.getElementById("btnAgent")?.classList.add("ag-running");
     this.term.begin(text);
     try {
       await command(chip, text, (e: TerminalEvent) => { if (seq === this.runSeq) this.term.event(e); }, ctrl.signal, upload);
     } catch (err) {
       if (seq === this.runSeq && (err as Error).name !== "AbortError") this.term.error((err as Error).message);
     } finally {
-      if (this.ctrl === ctrl) { this.ctrl = null; $("#agStop", this.el).hidden = true; }
+      if (this.ctrl === ctrl) { this.ctrl = null; $("#agStop", this.el).hidden = true; document.getElementById("btnAgent")?.classList.remove("ag-running"); }
     }
   }
 
