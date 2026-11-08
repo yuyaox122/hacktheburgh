@@ -1,6 +1,6 @@
-# HackTheBurgh 2026: Decap
+# HackTheBurgh 2026: bASIC
 
-**Decap: View Source for silicon.** Decap reads a real chip's gate-level netlist, with every internal name stripped, back into short Verilog a person can review. It then proves with Yosys that the Verilog is exactly the same circuit, and shows a trigger planted for the judge's number as a line of code. Measured on 18 held-out Tiny Tapeout 08 chips: 15 proven, and 16 of 16 planted triggers caught (with false alarms on 3 of 16 clean chips).
+**bASIC: View Source for silicon.** Decap reads a real chip's gate-level netlist, with every internal name stripped, back into short Verilog a person can review. It then proves with Yosys that the Verilog is exactly the same circuit, and shows a trigger planted for the judge's number as a line of code. Measured on 18 held-out Tiny Tapeout 08 chips: 15 proven, and 16 of 16 planted triggers caught (with false alarms on 3 of 16 clean chips).
 
 ## What's where
 
