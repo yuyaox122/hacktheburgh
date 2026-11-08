@@ -31,5 +31,11 @@
     "tt_um_wokwi_408216451206371329",
     "tt_um_wokwi_408231820749720577",
     "tt_um_wokwi_408237988946759681"
-  ]
+  ],
+  "witness_exclude": [
+    "tt_um_dpmu",
+    "tt_um_dpmunit",
+    "tt_um_sign_addsub"
+  ],
+  "witness_exclude_why": "Left out of the Witness agent bench only (decap bench --split test), not the decompiler bench: before the held-out guard existed the guide opened tt_um_sign_addsub and tt_um_dpmu (a decompile and one author-source check, 8 Nov ~08:00); tt_um_dpmunit is the identical design to tt_um_dpmu."
 }
