@@ -182,7 +182,10 @@ export class Stage3D {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
     this.controls = new OrbitControls(this.camera, r.domElement);
-    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, maxPolarAngle: Math.PI * 0.48, minDistance: 4, maxDistance: 420, autoRotateSpeed: 0.4 });
+    // Closest zoom: about three cell rows in view, so one cell still fills a good part of the screen but the camera
+    // never ends up a few microns off a single rail. The wheel zooms towards the pointer, not the orbit point (which
+    // can be empty filler, or empty air between separated layers).
+    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, maxPolarAngle: Math.PI * 0.48, minDistance: 3 * RH, maxDistance: 420, autoRotateSpeed: 0.4, zoomToCursor: true });
     const lab = document.createElement("div"); lab.className = "labels"; this.host.append(lab);
     this.labels = new CSS2DRenderer({ element: lab });
     this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4 }));
@@ -397,10 +400,10 @@ export class Stage3D {
     const beamGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 1, true); beamGeo.translate(0, 0.5, 0);
     this.beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
-      uniforms: { uCol: { value: new THREE.Color(css("--accent")).lerp(new THREE.Color(0xffffff), 0.25).multiplyScalar(2.4) }, uTime: this.uTime },
+      uniforms: { uCol: { value: new THREE.Color(css("--accent")).lerp(new THREE.Color(0xffffff), 0.25).multiplyScalar(2.4) }, uTime: this.uTime, uFade: { value: 1 } },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 uCol; uniform float uTime; varying vec2 vUv;
-        void main() { float a = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.2) * (0.55 + 0.15 * sin(uTime * 3.0 - vUv.y * 12.0)); gl_FragColor = vec4(uCol * a, a); }`,
+      fragmentShader: `uniform vec3 uCol; uniform float uTime; uniform float uFade; varying vec2 vUv;
+        void main() { float a = uFade * pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.2) * (0.55 + 0.15 * sin(uTime * 3.0 - vUv.y * 12.0)); gl_FragColor = vec4(uCol * a, a); }`,
     }));
     this.beam.visible = false; this.beam.renderOrder = 2; this.G.cell.add(this.beam);
     this.chip.traverse((o) => {
@@ -783,10 +786,30 @@ export class Stage3D {
     if (this.selBox.visible) (this.selBox.material as THREE.LineBasicMaterial).color.copy(new THREE.Color(css("--accent"))).multiplyScalar(1.8 + Math.sin(now / 260) * 0.6);
     this.controls.autoRotate = !reduceMotion() && !this.intro.on && this.fly.t >= 1 && now - this.lastInput > 45000;
     this.controls.update();
+    if (!this.intro.on) this.keepTargetOnChip();
+    if (this.beam.visible) {
+      // The beacon is for finding the cell from afar; close up it would wash the cell out, so fade it as the camera nears.
+      const d = this.camera.position.distanceTo(this.beam.getWorldPosition(this.tmp)), m = this.controls.minDistance;
+      (this.beam.material as THREE.ShaderMaterial).uniforms.uFade.value = THREE.MathUtils.smoothstep(d, m, 2 * m);
+    }
     this.composer.render();
     this.labels.render(this.scene, this.camera);
     if (this.frame++ % 6 === 0) this.declutterPins();
   };
+
+  private tmp = new THREE.Vector3();
+  /** Keep the orbit point over the drawn area and inside the layer stack. Pans and zooms can otherwise drag it off
+   *  the die or under it, and the camera then orbits empty space. Moving the camera by the same amount makes this
+   *  a pan that stops at the edge, not a jump in view angle. */
+  private keepTargetOnChip() {
+    const t = this.controls.target, o = this.chip.position, V = this.V, m = 8, clamp = THREE.MathUtils.clamp;
+    const top = Y.m5 + this.explodeCur * EXPLODE_IDX.power * LIFT;
+    const d = this.tmp.set(
+      clamp(t.x, o.x + V.x0 - m, o.x + V.x1 + m) - t.x,
+      clamp(t.y, o.y, o.y + top) - t.y,
+      clamp(t.z, o.z + this.sz(V.y1) - m, o.z + this.sz(V.y0) + m) - t.z);
+    if (d.lengthSq() > 1e-10) { t.add(d); this.camera.position.add(d); }
+  }
 
   private frame = 0;
   /** Hide pin labels that would overlap one already placed (lit pins win), so names never print over each other. */
