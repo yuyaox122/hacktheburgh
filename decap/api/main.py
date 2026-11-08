@@ -159,11 +159,17 @@ def chat_web(body: ChatIn = Body(default_factory=ChatIn)) -> dict:
     if not guide.available():
         raise HTTPException(503, "The guide needs an LLM key (ANTHROPIC_API_KEY) on the server.")
     chip = body.context.get("chip") or body.context.get("variant_id")
-    if not chip:
-        raise HTTPException(400, "context.chip is required")
-    v = _get(chip)
+    selection = body.context.get("selection")
+    design = body.context.get("design")
+    if not chip and isinstance(design, str) and service.parse_id(design)[0] in service.known_chips():
+        chip = design                 # Explore sends the chip it shows as `design`;
+        selection = body.context      # keep its live facts (selected cell, pin values, cycle) for the guide
     try:
-        return guide.ask(v.result, body.messages, body.context.get("selection"))
+        if not chip:   # Results, Compare, Minecraft, or a non-chip demo design: answer from the page's own facts
+            return guide.ask(None, body.messages, page=body.context)
+        return guide.ask(_get(chip).result, body.messages, selection)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:  # API errors: report, don't crash the page
