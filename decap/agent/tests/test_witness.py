@@ -303,3 +303,16 @@ def test_claim_parser_is_tolerant_of_loose_model_output():
     assert not E.holds(parse("(a + b)[7:1] == 3'd4"), {("sig", "a"): 0, ("sig", "b"): 10})  # sum 10 -> slice 5
     # a trailing == expression must NOT be stripped as prose
     assert unparse(parse("uo_out[1] == (count == 8'd200)")) == "uo_out[1] == (count == 8'd200)"
+
+
+def test_load_secrets_strips_inline_comments_and_quotes(tmp_path, monkeypatch):
+    from decap_agent.cli import load_secrets
+    f = tmp_path / "s.env"
+    f.write_text('DEEPSEEK_API_KEY=sk-abc123\nDECAP_GUIDE_CLI=1  # keep the claude CLI on\nQUOTED="val"  # trailing\n#FULL=comment\n')
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("DECAP_GUIDE_CLI", raising=False)
+    monkeypatch.delenv("QUOTED", raising=False)
+    loaded = load_secrets(str(f))
+    assert "DEEPSEEK_API_KEY" in loaded and os.environ["DEEPSEEK_API_KEY"] == "sk-abc123"
+    assert os.environ["DECAP_GUIDE_CLI"] == "1" and os.environ["QUOTED"] == "val"
+    assert "FULL" not in os.environ and "FULL" not in loaded
