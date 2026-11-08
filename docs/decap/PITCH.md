@@ -129,7 +129,7 @@ This file replaces `SPEC.md`. The planning parts of the spec (feature list, prio
 | **Leak:** TT08 netlists keep the author's internal wire names (`co`, `s_w[0]`). They are stripped (`rename -hide w:* c:*; opt_clean -purge`) before anything "blind" | Smoke test |
 | TT08 sizes (logic cells, excluding fill/tap/decap/diode/conb): 121 netlists fetched (14 failed, mostly analog/ROM projects); median 819; 20 Verilog/SystemVerilog chips with 20–300 logic cells, plus 6 Wokwi chips (28–168). Counts include buffers. | `gh api`, regex count, `info.yaml` |
 | A TT08 `commit_id.json` points to the author's repo + commit, and the source exists there (`tt_um_Electom_cla_4bits` → `Electom/tt08_CSA_4bits@213ea90`, `src/project.v`) | `gh api` |
-| TT08 GDS files keep each netlist instance name as GDS property 61, so netlist cells can be placed in 3D without a DEF (24 of 27 chips match fully; the two `micro_tiles` chips have an unpublished hard macro) | `ingest/ingest_gds.py` |
+| TT08 GDS files keep each netlist instance name as GDS property 61, so netlist cells can be placed in 3D without a DEF (25 of 27 chips match fully: every logic cell, 0 conflicts, no split nets. The other 2, the `micro_tiles` chips, are skipped: they contain an unpublished hard macro, so there is no decompile to place) | `ingest/ingest_gds.py` |
 | The warm-up: 79 logic cells, 16 types; die 100 × 100 µm; hierarchical instance names (`add0/_32_`), no `src` attributes | `01_netlist.v`, `klayout.db` |
 
 ## 6. Demo script (90 s) and judging moments
