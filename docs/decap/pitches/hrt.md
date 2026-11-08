@@ -87,11 +87,13 @@ Ask Ian for these three numbers:
 | "Is 3 out of 16 false positives good?" | "It's what a blind check can do without the author's intent. One of the three is a real combination lock, `input == 118`. With the author's source, the proof settles it: any difference fails with a counterexample." |
 | "Is your test set really held out?" | "Frozen before tuning; we tuned on 9 dev chips. We report the first scored run as well as the current one. The agent bench is hash-locked to the freeze and refuses to run if anything changed." |
 | "Does it scale?" | "Proofs take seconds on these sizes; the slowest whole chip took 73 s. Recognising blocks at millions of gates is the open problem." |
+| "Couldn't an LLM just read the netlist?" | "On small chips it often can. We ran Claude Opus on the stripped gates and Yosys checked each answer. It's sometimes confidently wrong, and it can't tell you when. bASIC is never wrong but marked proven, and it takes about 0.4 s a chip against 30-70 s for the LLM." *(Partial run so far: 9 proven, 1 wrong with a counterexample, several with no usable answer. Use the final numbers from #87 once merged.)* |
 | "Why does this matter?" | "Hardware can't be patched. Intel took a $475 million charge for one division bug in 1994. The cost of a wrong 'ship' is permanent." |
 
 ## Don't say
 
 - "Machine learning model" about the decompiler.
+- "LLMs can't do this." They partly can; the point is that they can't tell you when they're wrong.
 - "Real-time" (proofs take seconds to a minute).
 - "Predicts trojans in the wild." We plant the trigger ourselves, and we say so.
 
