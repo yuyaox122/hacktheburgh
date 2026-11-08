@@ -8,6 +8,7 @@ import { agentUp, command, type TerminalEvent } from "./api";
 import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
+import { Terminal } from "./terminal";
 
 const STEP: Record<string, (s: Run["steps"][number]) => string> = {
   get_region: () => "Read the region: its inputs, outputs and decompiled lines",
@@ -20,6 +21,8 @@ export class AgentPanel {
   private chip: string | null = null;
   private raf = 0;
   private verilog = new Map<string, string>();   // chip -> decompiled Verilog (for "Suggest as edit")
+  private term: Terminal;
+  private runSeq = 0;
 
   constructor() {
     this.el.className = "drawer ag-drawer";
@@ -29,12 +32,16 @@ export class AgentPanel {
         <button class="btn plain sm" type="button" id="agClear" title="Forget this chip's runs, edits and comments">Clear</button>
         <button class="btn plain icon" type="button" id="agClose" aria-label="Close the agent panel" title="Close (Esc)">${icon.close}</button></div>
       <div class="ag-intro" id="agIntro"></div>
-      <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
-        placeholder="Command the chip agent… e.g. “is anything hidden?”" aria-label="Command the chip agent">
-        <button class="btn primary" type="submit">Run</button></form>
-      <div class="ag-term" id="agTerm" hidden></div>
+      <div class="ag-termbox">
+        <div class="ag-term" id="agTerm" hidden></div>
+        <div class="ag-status" id="agStatus"><span class="ag-state ready">ready</span><span class="ag-elapsed"></span></div>
+        <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
+          placeholder="Type a message…" aria-label="Command the chip agent">
+          <button class="btn primary" type="submit">Run</button></form>
+      </div>
       <div class="ag-runs" id="agRuns" aria-live="polite"></div>`;
     document.body.append(this.el);
+    this.term = new Terminal($("#agTerm", this.el), $("#agStatus", this.el));
     $("#agClose", this.el).addEventListener("click", () => this.close());
     $("#agClear", this.el).addEventListener("click", () => { if (this.chip) store.clear(this.chip); });
     $("#agCmd", this.el).addEventListener("submit", (e) => {
@@ -62,26 +69,13 @@ export class AgentPanel {
   private async runCommand(text: string) {
     if (!this.chip) return;
     this.open();
-    const term = $("#agTerm", this.el);
-    term.hidden = false;
-    term.innerHTML = `<div class="ag-trow me">${esc(text)}</div><div class="ag-trow spin"><span class="spin"></span> thinking…</div>`;
-    const row = (cls: string, html: string) => term.insertAdjacentHTML("beforeend", `<div class="ag-trow ${cls}">${html}</div>`);
+    const seq = ++this.runSeq;
+    this.term.begin(text);
     try {
-      await command(this.chip, text, (e: TerminalEvent) => {
-        if (e.kind === "tool") row("tool", `<b>▶ ${esc(e.tool)}</b>`);
-        else if (e.kind === "claim") {
-          row("claim", `<b>${e.first_draft ? "First draft" : `Refine ${e.attempt}`}</b> ${pill(e.verdict)}<code>${esc(e.claim ?? "")}</code>${e.verdict === "refuted" ? cexHtml(e.counterexample) : ""}`);
-        } else if (e.kind === "done") {
-          const d = e as Record<string, unknown>;
-          if (d.intent === "hunt") row("done", `Verdict: <b>${esc(String(d.verdict))}</b>${d.counterexample ? cexHtml(d.counterexample as Record<string, number>) : ""}`);
-          else if (d.intent === "explain") row("done", `${pill(String(d.verdict))}<code>${esc(String(d.claim ?? ""))}</code>`);
-          else if (d.intent === "guide") row("done", esc(String(d.answer ?? "")));
-        } else if (e.kind === "error") row("err", esc(String(e.error)));
-      });
+      await command(this.chip, text, (e: TerminalEvent) => { if (seq === this.runSeq) this.term.event(e); });
     } catch (err) {
-      row("err", esc((err as Error).message));
+      if (seq === this.runSeq) this.term.error((err as Error).message);
     }
-    term.querySelector(".spin")?.remove();
   }
 
   private schedule() { cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(() => this.render()); }

@@ -82,16 +82,39 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .ag-stagebtn { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) { .ag-hover { transition: none; } }
 
-/* ---------- terminal command bar + stream ---------- */
-.ag-cmd { display: flex; gap: 6px; padding: 8px 14px 0; }
+/* ---------- terminal: command bar, live transcript, status line ---------- */
+.ag-drawer { --ag-teal: #6ae5cf; }   /* DimOS's accent teal, used only by the terminal stream */
+.ag-termbox { display: flex; flex-direction: column; flex: 0 0 auto; border-bottom: 1px solid var(--line); }
+.ag-term { flex: 0 1 auto; overflow-y: auto; min-height: 0; max-height: 320px; padding: 10px 14px 2px;
+  display: flex; flex-direction: column; gap: 2px; }
+.ag-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 14px 0;
+  font: 11px/1.4 var(--font-mono); color: var(--muted); }
+.ag-status .ag-state.working { color: var(--ag-teal); }
+.ag-status .ag-state.done { color: var(--add); }
+.ag-status .ag-state.error { color: var(--del); }
+.ag-status .ag-elapsed { color: var(--faint); font-variant-numeric: tabular-nums; }
+.ag-cmd { display: flex; gap: 6px; padding: 8px 14px 10px; }
 .ag-cmd input { flex: 1; min-width: 0; font: 13px/1.5 var(--font-body); }
-.ag-term { padding: 10px 14px 0; display: grid; gap: 6px; }
-.ag-trow { font: 12.5px/1.5 var(--font-mono); padding: 6px 9px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--line); word-break: break-word; }
-.ag-trow.me { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
-.ag-trow.tool { color: var(--muted); }
-.ag-trow.tool b { color: var(--info); font-weight: 600; }
-.ag-trow.claim code { display: block; margin-top: 4px; white-space: pre-wrap; font: 12px/1.5 var(--font-mono); }
-.ag-trow.done { border-color: color-mix(in srgb, var(--add) 40%, var(--line)); }
-.ag-trow.done code { display: block; margin-top: 4px; white-space: pre-wrap; font: 12px/1.5 var(--font-mono); }
-.ag-trow.err { border-color: color-mix(in srgb, var(--del) 40%, var(--line)); color: var(--del); }
-.ag-trow.spin { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+
+.ag-line { display: flex; align-items: baseline; font: 12.5px/1.6 var(--font-mono); word-break: break-word; }
+.ag-line .ag-who { flex: 0 0 36px; text-align: right; color: var(--faint); font-size: 11px; padding-right: 8px; user-select: none; }
+.ag-line .ag-sep { flex: 0 0 14px; color: var(--line-2); text-align: center; user-select: none; }
+.ag-line .ag-body { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; }
+.ag-line .ag-meta { flex: 0 0 auto; color: var(--faint); font-size: 11px; padding-left: 10px; font-variant-numeric: tabular-nums; }
+
+.ag-line.ag-user .ag-body { color: var(--fg); }
+.ag-line.ag-think .ag-body { color: var(--muted); font-style: italic; }
+.ag-line.ag-tool .ag-body { color: var(--ag-teal); }
+.ag-line.ag-tool.err .ag-body { color: var(--del); }
+.ag-line.ag-result .ag-body { color: var(--muted); }
+.ag-line.ag-err .ag-body { color: var(--del); }
+
+.ag-thinkdots::after { content: "…"; animation: ag-dots 1.4s ease-in-out infinite; }
+@keyframes ag-dots { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+.ag-outcome { display: grid; gap: 6px; padding: 9px 11px; margin: 4px 0 2px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font: 12px/1.5 var(--font-body); }
+.ag-outcome .ag-sub { color: var(--muted); }
+.ag-outcome .ag-answer { color: var(--fg); white-space: pre-wrap; }
+.ag-outcome code { display: block; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 var(--font-mono); color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { .ag-thinkdots::after { animation: none; } }
