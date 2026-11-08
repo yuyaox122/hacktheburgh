@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# One-time setup: find or create the "Message Board" issue, pin it, and print its number.
+# Needs: gh (authenticated) with write access to this repo. Safe to re-run.
+set -eu
+command -v gh >/dev/null 2>&1 || { echo "board-init: install gh, then gh auth login" >&2; exit 1; }
+
+num="$(gh issue list --state open --search 'in:title "Message Board"' --json number,title \
+  --jq '[.[] | select(.title == "Message Board")][0].number // empty')"
+
+if [ -z "$num" ]; then
+  gh label create board --color 5319E7 --description "Agent message board" >/dev/null 2>&1 || true
+  body_file="$(mktemp)"
+  # Issue body = the template without its front matter.
+  awk 'BEGIN{fm=0} /^---$/ {fm++; next} fm>=2' .github/ISSUE_TEMPLATE/message-board.md > "$body_file"
+  url="$(gh issue create --title "Message Board" --label board --body-file "$body_file")"
+  rm -f "$body_file"
+  num="${url##*/}"
+  echo "Created board issue #$num: $url"
+else
+  echo "Board issue already exists: #$num"
+fi
+
+gh issue pin "$num" >/dev/null 2>&1 && echo "Pinned #$num" || echo "Could not pin #$num (pin it by hand in the GitHub UI)"
+
+if [ "$num" != "1" ]; then
+  echo
+  echo "The board is not issue #1. Every teammate must run:"
+  echo "  export BOARD_ISSUE=$num    # add to your shell profile"
+fi
+echo
+echo "Next for each teammate: gh auth login && tools/board whoami"
