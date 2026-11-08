@@ -19,6 +19,15 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** One lane of the logic analyser: a single wire, or a named number drawn as a bus. */
 interface Lane { label: string; bits: string[]; out: boolean }
 
+const CUSTOM_KEY = (chip: string) => `basic.customInputs.${chip}`;
+function loadCustomInputs(chip: string): IoField[] {
+  try { const v = JSON.parse(localStorage.getItem(CUSTOM_KEY(chip)) ?? "[]"); return Array.isArray(v) ? v.filter((f) => f && typeof f.name === "string" && Array.isArray(f.bits)) : []; }
+  catch { return []; }
+}
+function saveCustomInputs(chip: string, fields: IoField[]) {
+  try { localStorage.setItem(CUSTOM_KEY(chip), JSON.stringify(fields)); } catch { /* private mode: custom inputs last for this visit only */ }
+}
+
 export class StagePage {
   readonly el: HTMLElement;
   view: Stage3D | null = null;
@@ -42,6 +51,12 @@ export class StagePage {
   private srcLines: string[];
   /** Named numbers from the chip's pinout (Tiny Tapeout): the sim bar shows these instead of one button per pin. */
   private io: { in: IoField[]; out: IoField[] } | null;
+  /** Input pins the gates read that the author's pinout doesn't name (e.g. I2S-to-PWM names none of its 3). */
+  private extraIns: string[] = [];
+  /** Inputs the user defined: a name over any input bits, LSB first; saved per chip in this browser. */
+  private custom: IoField[] = [];
+  private insDirty = true;
+  private netSet = new Set<string>();
   private waveSigs: string[];
   private lanes: Lane[];
 
@@ -68,6 +83,12 @@ export class StagePage {
     }
     this.buses = [...groups].filter(([, b]) => b.length >= 2).slice(0, 4).map(([name, b]) => ({ name, bits: b.sort((x, y) => x - y).map((i) => `${name}[${i}]`) }));
     this.io = design.io && (design.io.in.length || design.io.out.length) ? design.io : null;
+    const covered = new Set([...(this.io?.in ?? []).flatMap((f) => f.bits), ...this.inputs]);
+    const busIdx = (n: string) => { const m = /^(\w+)\[(\d+)\]$/.exec(n); return m ? [m[1], +m[2]] as const : [n, 0] as const; };
+    this.extraIns = [...this.sim.names].filter((n) => /^(ui_in|uio_in)\[\d+\]$/.test(n) && !covered.has(n))
+      .sort((a, b) => { const [x, i] = busIdx(a), [y, j] = busIdx(b); return x === y ? i - j : x < y ? -1 : 1; });
+    this.netSet = new Set(this.sim.names);
+    this.custom = loadCustomInputs(design.name).filter((f) => f.bits.every((b) => this.netSet.has(b)));
     if (this.io) {
       this.lanes = [...this.io.in.map((f) => ({ label: f.name, bits: f.bits, out: false })), ...this.io.out.map((f) => ({ label: f.name, bits: f.bits, out: true }))];
     } else {
@@ -226,7 +247,11 @@ export class StagePage {
       if (f) this.setField(f.dataset.io!, +f.value);
     });
     $("#stIns", el).addEventListener("click", (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-in]");
+      const t = e.target as HTMLElement;
+      if (t.closest("#stCiAdd")) { this.addCustomInput(); return; }
+      const del = t.closest<HTMLElement>("[data-ci-del]");
+      if (del) { e.preventDefault(); this.custom = this.custom.filter((f) => f.name !== del.dataset.ciDel); saveCustomInputs(this.design.name, this.custom); this.insDirty = true; this.after(); return; }
+      const b = t.closest<HTMLElement>("[data-in]");
       if (!b) return;
       const n = b.dataset.in!;
       this.sim.apply({ [n]: this.sim.get(n) ^ 1 });
@@ -298,10 +323,32 @@ export class StagePage {
   }
   /** Set a named input number (from the pinout) on its pins. */
   setField(name: string, value: number) {
-    const f = this.io?.in.find((x) => x.name === name);
+    const f = [...(this.io?.in ?? []), ...this.custom].find((x) => x.name === name);
     if (!f) return;
     const v = Math.max(0, Math.min((1 << f.bits.length) - 1, Math.floor(value) || 0));
     this.sim.apply(Object.fromEntries(f.bits.map((b, k) => [b, (v >> k) & 1])));
+    this.after();
+  }
+  /** "+ Custom input": a name over any input bits ("ui_in[2]", "ui_in[7:4]", "ui_in[0], uio_in[3]"), LSB first. */
+  private addCustomInput() {
+    const name = ($<HTMLInputElement>("#stCiName", this.el).value || "").trim();
+    const spec = ($<HTMLInputElement>("#stCiBits", this.el).value || "").trim();
+    const msg = $("#stCiMsg", this.el);
+    const bits: string[] = [];
+    for (const part of spec.split(",").map((x) => x.trim()).filter(Boolean)) {
+      const m = /^(\w+)\[(\d+)(?::(\d+))?\]$/.exec(part);
+      if (!m) { msg.textContent = `Can't read "${part}": use ui_in[2] or ui_in[7:4]`; return; }
+      const hi = +m[2], lo = m[3] !== undefined ? +m[3] : hi;
+      for (let k = Math.min(lo, hi); k <= Math.max(lo, hi); k++) bits.push(`${m[1]}[${k}]`);
+    }
+    const missing = bits.filter((b) => !this.netSet.has(b));
+    if (!name || !bits.length) { msg.textContent = "Give it a name and at least one bit"; return; }
+    if (missing.length) { msg.textContent = `This chip's gates don't use ${missing.slice(0, 3).join(", ")}`; return; }
+    if (bits.length > 16) { msg.textContent = "At most 16 bits"; return; }
+    if ([...(this.io?.in ?? []), ...this.custom].some((f) => f.name === name)) { msg.textContent = `"${name}" already exists`; return; }
+    this.custom = [...this.custom, { name, bits }];
+    saveCustomInputs(this.design.name, this.custom);
+    this.insDirty = true;
     this.after();
   }
   private fieldVal(f: { bits: string[] }) { return f.bits.reduce((s, n, i) => s + (this.sim.get(n) << i), 0); }
@@ -542,18 +589,36 @@ export class StagePage {
   private get logicCount() { return Number(this.design.counts?.logic_cells ?? this.design.cells.length); }
   private renderInputs() {
     const host = $("#stIns", this.el);
+    const fieldHtml = (f: IoField, custom: boolean) => `<label class="field" title="${esc(f.name)}: ${esc(f.bits.join(", "))} (${f.bits.length} bit${f.bits.length === 1 ? "" : "s"}, 0 to ${(1 << f.bits.length) - 1})">${esc(f.name)}
+          <input class="num" type="number" min="0" max="${(1 << f.bits.length) - 1}" data-io="${esc(f.name)}" value="0" aria-label="Input ${esc(f.name)}">${custom
+            ? `<button type="button" class="linkbtn" data-ci-del="${esc(f.name)}" title="Remove this custom input" aria-label="Remove ${esc(f.name)}">×</button>` : ""}</label>`;
+    const bitBtn = (n: string) => { const v = this.sim.get(n); return `<button type="button" class="inbtn${v ? " on" : ""}" data-in="${esc(n)}" title="Toggle ${esc(n)} (not named in the author's pinout)">${esc(n)} <span class="bit${v ? " on" : ""}">${v}</span></button>`; };
+    const addForm = `<details class="ins-add" style="flex-basis:100%"><summary class="muted" style="cursor:pointer">+ Custom input</summary>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">
+            <input class="text" id="stCiName" placeholder="Name, e.g. Serial data" style="width:9em" aria-label="Custom input name">
+            <input class="text" id="stCiBits" placeholder="Bits, e.g. ui_in[2] or ui_in[7:4]" style="width:14em" aria-label="Custom input bits">
+            <button type="button" class="btn sm" id="stCiAdd">Add</button><span class="muted" id="stCiMsg"></span></div></details>`;
     if (this.io) {
-      if (!host.querySelector("[data-io]")) {
-        host.innerHTML = this.io.in.map((f) => `<label class="field" title="${esc(f.name)}: ${f.bits.length} bit${f.bits.length === 1 ? "" : "s"}, 0 to ${(1 << f.bits.length) - 1}">${esc(f.name)}
-          <input class="num" type="number" min="0" max="${(1 << f.bits.length) - 1}" data-io="${esc(f.name)}" value="0" aria-label="Input ${esc(f.name)}"></label>`).join("") || `<span class="muted">None</span>`;
+      const fields = [...this.io.in, ...this.custom];
+      if (this.insDirty || !host.querySelector("[data-io],[data-in]")) {
+        this.insDirty = false;
+        host.innerHTML = fields.map((f) => fieldHtml(f, this.custom.includes(f))).join("") +
+          (this.extraIns.length ? `<span class="eyebrow" style="flex-basis:100%;margin-top:6px">Other input pins</span>${this.extraIns.map(bitBtn).join("")}` : "") +
+          (fields.length || this.extraIns.length ? "" : `<span class="muted">None</span>`) + addForm;
       }
       host.querySelectorAll<HTMLInputElement>("[data-io]").forEach((inp) => {
-        const f = this.io!.in.find((x) => x.name === inp.dataset.io);
+        const f = fields.find((x) => x.name === inp.dataset.io);
         if (f && document.activeElement !== inp) inp.value = String(this.fieldVal(f));
+      });
+      host.querySelectorAll<HTMLElement>("[data-in]").forEach((b) => {
+        const v = this.sim.get(b.dataset.in!);
+        b.classList.toggle("on", !!v);
+        const bit = b.querySelector(".bit"); if (bit) { bit.textContent = String(v); bit.classList.toggle("on", !!v); }
       });
       return;
     }
-    host.innerHTML = this.inputs.filter((n) => n !== this.clk).map((n) => {
+    if (host.querySelector("#stCiName") && host.contains(document.activeElement)) return;   // don't wipe a half-typed custom input
+    host.innerHTML = [...this.inputs.filter((n) => n !== this.clk), ...this.extraIns].map((n) => {
       const v = this.sim.get(n);
       return `<button type="button" class="inbtn${v ? " on" : ""}" data-in="${esc(n)}" title="Toggle ${esc(n)}">${esc(n)} <span class="bit${v ? " on" : ""}">${v}</span></button>`;
     }).join("");
