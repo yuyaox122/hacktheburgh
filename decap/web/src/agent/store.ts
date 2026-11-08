@@ -2,7 +2,7 @@
 // Verilog, and comment threads on lines. Kept in localStorage per browser (a hackathon demo, not shared state), and
 // broadcast to whichever view is open so the Verilog pane and the 3D Stage repaint together.
 
-import type { Attempt, Plain, Scope, ToolStep } from "./api";
+import type { Attempt, IdeaOut, Plain, Review, Scope, ToolStep } from "./api";
 
 export type Origin = "line" | "edit" | "block" | "stage" | "comment" | "palette";
 
@@ -36,8 +36,45 @@ export interface Edit {
   original: string[];
   replacement: string[];
   claim: string;
-  state: "suggested" | "accepted" | "dismissed";
+  // "reviewing" / "reviewed": an applied idea waiting for Yosys, then for Keep or Undo
+  state: "suggested" | "accepted" | "dismissed" | "reviewing" | "reviewed";
   cells: string[];
+  kind?: "idea";            // from the Ideas thread (otherwise from a proven claim)
+  ideaId?: string;
+  title?: string;
+  intent?: IdeaOut["intent"];
+  review?: Review;          // the core's verdict on the whole module with this edit and the kept ones before it
+  error?: string;           // the review didn't run
+  stale?: boolean;          // a kept edit it was reviewed with has since been undone (or replaced)
+  basis?: string;           // ids of the kept edits the review ran with (Keep reviews again if they changed)
+  at?: number;              // when Yosys reviewed it
+  keptAt?: number;
+}
+
+/** An idea as shown in a thread: what the agent answered plus where it lands in the decompiled (original) lines. */
+export interface Idea extends IdeaOut {
+  orig: [number, number] | null;   // original line numbers, null when it rewrites lines of a kept edit
+  original: string[];              // the lines it replaces, as they read when it was proposed
+  problem?: string;                // why it can't be applied (shown instead of Apply)
+}
+
+export interface IdeaMsg {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+  ts: number;
+  ideas?: Idea[];
+  model?: string;
+  pending?: boolean;
+  error?: boolean;
+}
+
+export interface IdeaThread {
+  id: string;
+  chip: string;             // the variant shown: "tt_um_x" or "tt_um_x+t137"
+  line: number;             // the hovered line (original numbering)
+  lines: [number, number];  // the region it covers (original numbering)
+  msgs: IdeaMsg[];
 }
 
 export interface Comment {
@@ -54,7 +91,7 @@ export interface Comment {
   pending?: boolean;
 }
 
-interface Saved { runs: Run[]; edits: Edit[]; comments: Comment[] }
+interface Saved { runs: Run[]; edits: Edit[]; comments: Comment[]; ideas: IdeaThread[] }
 const KEY = "decap.agent.v1";
 
 function load(): Saved {
@@ -63,10 +100,14 @@ function load(): Saved {
     if (s && Array.isArray(s.runs)) {
       // a run that was streaming when the page closed never finished: say so instead of spinning forever
       for (const r of s.runs) if (r.status === "running") { r.status = "error"; r.error = "Interrupted (the page was reloaded)."; }
-      return { runs: s.runs, edits: s.edits ?? [], comments: s.comments ?? [] };
+      const edits = s.edits ?? [];
+      for (const e of edits) if (e.state === "reviewing") { e.state = "reviewed"; e.error = "Interrupted (the page was reloaded). Review it again."; }
+      const ideas = s.ideas ?? [];
+      for (const t of ideas) for (const m of t.msgs) if (m.pending) { m.pending = false; m.error = true; m.text = "Interrupted (the page was reloaded). Ask again."; }
+      return { runs: s.runs, edits, comments: s.comments ?? [], ideas };
     }
   } catch { /* private window or blocked storage: start empty */ }
-  return { runs: [], edits: [], comments: [] };
+  return { runs: [], edits: [], comments: [], ideas: [] };
 }
 
 class Store {
@@ -76,6 +117,7 @@ class Store {
   on(f: (chip: string) => void) { this.subs.add(f); return () => this.subs.delete(f); }
   changed(chip: string) {
     try { localStorage.setItem(KEY, JSON.stringify(this.s)); } catch { /* storage full or blocked: keep in memory */ }
+    chip = chip.replace(/\+t\d+$/, "");   // a planted copy's ideas repaint the chip's page
     for (const f of this.subs) f(chip);
   }
 
@@ -88,10 +130,24 @@ class Store {
     this.s.edits = this.s.edits.filter((x) => !(x.chip === e.chip && x.lines[0] === e.lines[0] && x.state === "suggested"));
     this.s.edits.push(e); this.changed(e.chip);
   }
+  edit(id: string) { return this.s.edits.find((x) => x.id === id); }
+  updateEdit(id: string, patch: Partial<Edit>) {
+    const e = this.edit(id);
+    if (e) { Object.assign(e, patch); this.changed(e.chip); }
+  }
   setEdit(id: string, state: Edit["state"]) {
     const e = this.s.edits.find((x) => x.id === id);
     if (!e) return;
-    if (state === "accepted") for (const o of this.s.edits) if (o.chip === e.chip && o !== e && o.state === "accepted" && overlaps(o.lines, e.lines)) o.state = "dismissed";
+    const gone: Edit[] = [];   // kept edits that stop being kept: undone, or replaced by an overlapping one
+    if (e.state === "accepted" && state !== "accepted") gone.push(e);
+    if (state === "accepted") {
+      e.keptAt = Date.now();
+      for (const o of this.s.edits) if (o.chip === e.chip && o !== e && o.state === "accepted" && overlaps(o.lines, e.lines)) { o.state = "dismissed"; gone.push(o); }
+    }
+    // the verdicts of ideas kept after them were computed with them in place
+    for (const g of gone) for (const o of this.s.edits) {
+      if (o !== e && o !== g && o.state === "accepted" && o.kind === "idea" && (o.at ?? 0) > (g.keptAt ?? 0)) o.stale = true;
+    }
     e.state = state; this.changed(e.chip);
   }
 
@@ -100,6 +156,23 @@ class Store {
   updateComment(id: string, patch: Partial<Comment>) {
     const c = this.s.comments.find((x) => x.id === id);
     if (c) { Object.assign(c, patch); this.changed(c.chip); }
+  }
+
+  ideaThreads(chip: string) { return this.s.ideas.filter((t) => t.chip === chip); }
+  ideaThread(id: string) { return this.s.ideas.find((t) => t.id === id); }
+  addIdeaThread(t: IdeaThread) { this.s.ideas.push(t); this.changed(t.chip); return t; }
+  removeIdeaThread(id: string) {
+    const t = this.ideaThread(id);
+    if (t) { this.s.ideas = this.s.ideas.filter((x) => x !== t); this.changed(t.chip); }
+  }
+  pushIdeaMsg(threadId: string, m: IdeaMsg) {
+    const t = this.ideaThread(threadId);
+    if (t) { t.msgs.push(m); this.changed(t.chip); }
+    return m;
+  }
+  updateIdeaMsg(threadId: string, id: string, patch: Partial<IdeaMsg>) {
+    const t = this.ideaThread(threadId), m = t?.msgs.find((x) => x.id === id);
+    if (t && m) { Object.assign(m, patch); this.changed(t.chip); }
   }
 
   /** Cell colours for the 3D Stage and the netlist graph: the latest finished run per region decides. */
@@ -115,9 +188,11 @@ class Store {
   }
 
   clear(chip: string) {
+    const mine = (c: string) => c === chip || c.startsWith(`${chip}+`);   // the chip and its planted copies
     this.s.runs = this.s.runs.filter((r) => r.chip !== chip);
-    this.s.edits = this.s.edits.filter((r) => r.chip !== chip);
+    this.s.edits = this.s.edits.filter((r) => !mine(r.chip));
     this.s.comments = this.s.comments.filter((r) => r.chip !== chip);
+    this.s.ideas = this.s.ideas.filter((r) => !mine(r.chip));
     this.changed(chip);
   }
 }

@@ -107,3 +107,73 @@ export async function formalise(chip: string, sentence: string, scope: Scope, ch
 export async function agentUp(): Promise<boolean> {
   try { return (await fetch("/witness/healthz")).ok; } catch { return false; }
 }
+
+// ---------- Ideas: the agent proposes edits to a region, the core's Yosys reviews the edited module ----------
+
+export interface IdeaOut {
+  id: string; title: string; why: string;
+  intent: "same" | "change";          // "same": should keep behaviour (refactor); "change": a deliberate new behaviour
+  lines: [number, number];            // in the Verilog that was sent (1-based, inclusive)
+  replacement: string[];
+}
+export interface IdeasReply { reply: string; ideas: IdeaOut[]; model: string }
+export interface IdeasAsk {
+  chip: string; line: number; lines: [number, number]; verilog: string; ask: string;
+  history: { role: "user" | "agent"; text: string }[];
+}
+
+/** Why a request failed, in plain English: FastAPI's {detail}, else the status with a hint at which service is down. */
+async function failure(res: Response, down: string): Promise<Error> {
+  let detail = "";
+  try {
+    const j = await res.json() as { detail?: unknown };
+    detail = typeof j.detail === "string" ? j.detail : j.detail ? JSON.stringify(j.detail) : "";
+  } catch { /* not JSON */ }
+  if (detail) return new Error(detail);
+  return new Error(res.status >= 500 ? down : `The server answered ${res.status}.`);
+}
+
+/** POST /witness/ideas: 2-3 concrete edits for lines `lines` of the current Verilog (kept edits applied). */
+export async function ideas(body: IdeasAsk, signal?: AbortSignal): Promise<IdeasReply> {
+  let res: Response;
+  try {
+    res = await fetch("/witness/ideas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    throw new Error("The agent service isn't reachable. Start it with 'decap serve --port 8791' (decap/agent).");
+  }
+  if (!res.ok) throw await failure(res, `The agent service answered ${res.status}. Is 'decap serve' running on port 8791?`);
+  return res.json();
+}
+
+export interface Verdict {
+  verdict: "same" | "tested_same" | "changed" | "broken";
+  headline: string;                   // written by the core's code, never by the LLM
+  detail: string;
+  counterexample: Record<string, number> | null;   // input values (+ optional `step`) where the edit behaves differently
+}
+export interface Review extends Verdict {
+  chip: string;
+  this_edit?: Verdict;                // with a baseline: this edit alone, compared with the text before it
+  seconds: number;
+}
+
+export const REVIEW_TIMEOUT_MS = 150_000;   // the core gives the review 90 s; allow for the request around it
+
+/** POST /api/chips/{chip}/review-edit: Yosys checks the full edited module against the chip's real gates, and (with
+ * `baseline`, the text before this edit) what this edit alone does. */
+export async function reviewEdit(chip: string, verilog: string, baseline?: string): Promise<Review> {
+  let res: Response;
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), REVIEW_TIMEOUT_MS);
+  try {
+    res = await fetch(`/api/chips/${encodeURIComponent(chip)}/review-edit`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(baseline != null ? { verilog, baseline } : { verilog }),
+      signal: ctl.signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw new Error(`Yosys didn't answer within ${REVIEW_TIMEOUT_MS / 1000} s. Review it again, or try a smaller edit.`);
+    throw new Error("Decap's core API isn't reachable, so Yosys can't review the edit. Start it on port 8000.");
+  } finally { clearTimeout(t); }
+  if (!res.ok) throw await failure(res, `Decap's core API answered ${res.status}. Is it running on port 8000?`);
+  return res.json();
+}

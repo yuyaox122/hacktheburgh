@@ -100,7 +100,7 @@ export class AgentPanel {
   private render() {
     const intro = $("#agIntro", this.el);
     if (!intro.querySelector(".bad")) {
-      intro.innerHTML = `<p class="muted">Ask about this chip below, or hover a line of code and press <b>Explain</b>. The agent writes the explanation. Yosys decides whether it's true.</p>`;
+      intro.innerHTML = `<p class="muted">Ask about this chip below, or hover a line of code and press <b>Explain</b> or <b>Ideas</b> (suggested edits, checked by Yosys when you apply them). The agent writes the explanation. Yosys decides whether it's true.</p>`;
     }
     const runs = this.chip ? store.runs(this.chip) : [];
     $("#agRuns", this.el).innerHTML = runs.length ? runs.map((r) => this.card(r)).join("")
