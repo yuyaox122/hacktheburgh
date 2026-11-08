@@ -8,11 +8,13 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { Design, DesignCell, Lib } from "../data/types";
 import { category, CATEGORY_VAR, type Category } from "./describe";
 import { css, reduceMotion } from "../ui/dom";
-import { cellBox, OVERVIEW_DIR, Y, usedArea, type Rect } from "./geometry";
+import { cellBox, Y, usedArea, type Rect } from "./geometry";
 
 export type LayerKey = "pkg" | "cell" | "m1" | "via" | "m2" | "m3" | "m4" | "power";
 export const LAYERS: { key: LayerKey; label: string; colour: string; on: boolean }[] = [
@@ -41,6 +43,28 @@ const VIA: Record<string, { g: Group; y: number; s: number }> = {
   via4: { g: "via3", y: Y.via3, s: 0.36 },
 };
 const isClockNet = (n: string) => /^(clk|clknet_)/.test(n);
+/** Microns each layer group lifts per EXPLODE_IDX step when the layers are fully separated. */
+const LIFT = 7;
+/** Layer groups that get a glass plate and a label when the stack is separated. */
+const PLATES: [Group, string][] = [["cell", "Cells and transistors"], ["m1", "Metal 1 \u00b7 power rails, local wires"], ["m2", "Metal 2 \u00b7 vertical wires"], ["m3", "Metal 3 \u00b7 long wires"], ["m4", "Metal 4"]];
+/** Default hero angle: the overview direction turned a little, so the die reads in three-quarter view. */
+const HERO_DIR = new THREE.Vector3(-0.3, 0.8, 0.62).normalize();
+
+/** Fullscreen finish after bloom: a soft vignette and a whisper of grain (hides gradient banding). */
+const FinishShader = {
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, uTime: { value: 0 }, uVignette: { value: 0.42 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVignette; varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime) * 43758.5453); }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec2 d = vUv - 0.5; d.x *= 1.25;
+      c.rgb *= mix(1.0, 1.0 - smoothstep(0.18, 0.85, length(d)), uVignette);
+      c.rgb += (hash(vUv * 1000.0) - 0.5) * 0.012;
+      gl_FragColor = c;
+    }`,
+};
 
 export interface StageCallbacks {
   onCell(id: string | null): void;
@@ -94,8 +118,15 @@ export class Stage3D {
   private prev = new Map<string, number>();
   private flash = new Map<string, number>();
   private explode = 0; private explodeCur = 0;
+  /** Lift of the stack centre already applied to the camera (so separating the layers keeps them in frame). */
+  private liftApplied = 0;
+  private plates: { g: Group; mat: THREE.MeshBasicMaterial; edge: THREE.LineBasicMaterial; label: HTMLElement }[] = [];
+  private finish!: ShaderPass;
+  /** Shared time uniform for the moving pulses on wires that carry a 1. */
+  private uTime = { value: 0 };
+  private beam!: THREE.Mesh;
   private fly = { t: 1, fromP: new THREE.Vector3(), toP: new THREE.Vector3(), fromT: new THREE.Vector3(), toT: new THREE.Vector3(), dur: 0.035 };
-  private intro = { on: false, t0: 0, dur: 2600, fromP: new THREE.Vector3(), toP: new THREE.Vector3(), toT: new THREE.Vector3() };
+  private intro = { on: false, t0: 0, dur: 3200, fromP: new THREE.Vector3(), toP: new THREE.Vector3(), toT: new THREE.Vector3() };
   private dirtyColours = true;
   private running = false;
   private lastInput = performance.now();
@@ -142,36 +173,55 @@ export class Stage3D {
     const r = this.renderer;
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.25;
     const bg = new THREE.Color(css("--bg") || "#0b0b0d");
-    this.scene.background = bg; this.scene.fog = new THREE.FogExp2(bg, 0.0028);
+    // Studio backdrop: a soft cool pool of light behind the chip, falling off to the page colour at the edges.
+    this.scene.background = this.backdrop(bg);
+    this.scene.fog = new THREE.FogExp2(bg.clone().lerp(new THREE.Color(0x1a2233), 0.35), 0.0022);
     const pmrem = new THREE.PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
     this.controls = new OrbitControls(this.camera, r.domElement);
     Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, maxPolarAngle: Math.PI * 0.48, minDistance: 4, maxDistance: 420, autoRotateSpeed: 0.4 });
     const lab = document.createElement("div"); lab.className = "labels"; this.host.append(lab);
     this.labels = new CSS2DRenderer({ element: lab });
     this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4 }));
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.7, 0.45, 1.0);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.75, 0.5, 0.95);
     this.composer.addPass(this.bloom);
+    this.finish = new ShaderPass(FinishShader);
+    this.composer.addPass(this.finish);
     this.composer.addPass(new OutputPass());
 
-    this.scene.add(new THREE.AmbientLight(0x9fb2d6, 0.3));
-    const key = new THREE.DirectionalLight(0xfff1dc, 1.75); key.position.set(-70, 130, 90);
+    this.scene.add(new THREE.HemisphereLight(0xa8c0ff, 0x1a1410, 0.45));
+    const key = new THREE.DirectionalLight(0xfff1dc, 2.1); key.position.set(-70, 130, 90);
     key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
-    Object.assign(key.shadow.camera, { left: -110, right: 110, top: 110, bottom: -110, near: 20, far: 400 });
-    key.shadow.camera.updateProjectionMatrix(); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.05;
+    Object.assign(key.shadow.camera, { left: -130, right: 130, top: 130, bottom: -130, near: 20, far: 420 });
+    key.shadow.camera.updateProjectionMatrix(); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.05; key.shadow.radius = 4;
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x6a8cff, 0.6); rim.position.set(90, 40, -110); this.scene.add(rim);
-    const desk = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.6, metalness: 0.45, envMapIntensity: 0.3 }));
-    desk.rotation.x = -Math.PI / 2; desk.position.y = -4; desk.receiveShadow = true; this.scene.add(desk);
+    // A cool rim from behind picks out the package edges and the bond wires; a warm fill keeps the front from going flat.
+    const rim = new THREE.DirectionalLight(0x6a8cff, 1.1); rim.position.set(90, 40, -110); this.scene.add(rim);
+    const fill = new THREE.DirectionalLight(0xffc89a, 0.35); fill.position.set(110, 30, 80); this.scene.add(fill);
+    this.scene.add(this.floor(Math.max(W, H)));
 
     this.chip.position.set(-xc, 0, -zc); this.scene.add(this.chip);
     for (const k of Object.keys(EXPLODE_IDX) as Group[]) { this.G[k] = new THREE.Group(); this.chip.add(this.G[k]); }
     const box = new THREE.BoxGeometry(1, 1, 1);
     const std = (o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.1, envMapIntensity: 0.55, ...o });
     const irid = (o: THREE.MeshPhysicalMaterialParameters = {}) => new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.85, roughness: 0.25, iridescence: 0.9, iridescenceIOR: 1.5, iridescenceThicknessRange: [180, 640], envMapIntensity: 0.95, ...o });
-    const glow = () => new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    // Wires that carry a 1 glow, with bright pulses travelling along them (frozen when the viewer asks for less motion).
+    const uTime = this.uTime;
+    const glow = (pulse = false) => {
+      const m = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+      if (pulse) m.onBeforeCompile = (sh) => {
+        sh.uniforms.uTime = uTime;
+        sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vW;")
+          .replace("#include <project_vertex>", "#include <project_vertex>\nvW = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;");
+        sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vW; uniform float uTime;")
+          .replace("vec4 diffuseColor = vec4( diffuse, opacity );", "vec4 diffuseColor = vec4( diffuse, opacity );\nfloat ph = fract((vW.x + vW.z) * 0.09 - uTime * 0.55);\ndiffuseColor.rgb *= 0.7 + 1.5 * pow(smoothstep(0.0, 0.92, ph) * (1.0 - smoothstep(0.92, 1.0, ph)), 5.0);");
+      };
+      return m;
+    };
     const add = (g: THREE.Object3D, mat: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z: number) => {
       const m = new THREE.Mesh(box, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); g.add(m); return m;
     };
@@ -182,7 +232,12 @@ export class Stage3D {
     /* package: epoxy, cavity, lead frame, gold bond wires */
     // A snug package: leads start LEAD um beyond the die edge and run LEN um out.
     const LEAD = 8, LEN = 8;
-    add(this.G.pkg, std({ color: 0x0b0e13, roughness: 0.86, metalness: 0, envMapIntensity: 0.25 }), W + 2 * (LEAD + LEN + 2), 3, H + 2 * (LEAD + LEN + 2), xc, -2.2, zc);
+    // Moulded epoxy body with softened edges, so the rim light can catch them; a pin-1 dimple in one corner.
+    const PW = W + 2 * (LEAD + LEN + 2), PD = H + 2 * (LEAD + LEN + 2);
+    const body = new THREE.Mesh(new RoundedBoxGeometry(PW, 3, PD, 3, 1.1), new THREE.MeshPhysicalMaterial({ color: 0x0d1117, roughness: 0.62, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.55, envMapIntensity: 0.5 }));
+    body.position.set(xc, -2.2, zc); this.G.pkg.add(body);
+    const dimple = new THREE.Mesh(new THREE.CircleGeometry(1.6, 32), std({ color: 0x07090c, roughness: 0.9, metalness: 0 }));
+    dimple.rotation.x = -Math.PI / 2; dimple.position.set(xc - PW / 2 + 4.5, -0.69, zc - PD / 2 + 4.5); this.G.pkg.add(dimple);
     add(this.G.pkg, std({ color: 0x161b23, roughness: 0.95, metalness: 0 }), W + 2 * (LEAD - 1), 0.05, H + 2 * (LEAD - 1), xc, -0.68, zc);
     add(this.G.pkg, std({ color: 0x8b919b, metalness: 0.9, roughness: 0.35 }), W + 6, 0.08, H + 6, xc, -0.62, zc);
     const leadMat = std({ color: 0xc2ab84, metalness: 0.9, roughness: 0.3 });
@@ -222,7 +277,7 @@ export class Stage3D {
 
     /* die: oxide-coated silicon, seal ring, rows of wells, met1 power rails */
     add(this.G.sub, new THREE.MeshPhysicalMaterial({ color: 0x151d29, metalness: 0.5, roughness: 0.3, iridescence: 1, iridescenceIOR: 1.9, iridescenceThicknessRange: [280, 1150], envMapIntensity: 1 }), W, 0.4, H, xc, -0.2, zc);
-    const seal = irid({ color: 0x9aa4b4 });
+    const seal = irid({ color: 0xb8c2d2, emissive: new THREE.Color(0x3a4a66), emissiveIntensity: 0.35 });
     add(this.G.sub, seal, W - 1, 0.1, 0.5, xc, 0.05, z0 + 1); add(this.G.sub, seal, W - 1, 0.1, 0.5, xc, 0.05, z0 + H - 1);
     add(this.G.sub, seal, 0.5, 0.1, H - 1, x0 + 1, 0.05, zc); add(this.G.sub, seal, 0.5, 0.1, H - 1, x0 + W - 1, 0.05, zc);
     const die = this.design.core ?? { x0: 0, y0: 0, x1: this.W, y1: this.H };
@@ -244,10 +299,11 @@ export class Stage3D {
 
     /* cells: body, diffusion, poly fingers, top strip that glows when the output is 1 */
     const n = this.cells.length;
-    this.mLogic = inst(box, new THREE.MeshPhysicalMaterial({ roughness: 0.45, metalness: 0.1, clearcoat: 0.7, clearcoatRoughness: 0.25, envMapIntensity: 0.6 }), n, this.G.cell);
+    this.mLogic = inst(box, new THREE.MeshPhysicalMaterial({ roughness: 0.38, metalness: 0.08, clearcoat: 0.9, clearcoatRoughness: 0.18, sheen: 0.4, sheenRoughness: 0.4, envMapIntensity: 0.75 }), n, this.G.cell);
     this.mTop = inst(box, glow(), n, this.G.cell);
-    this.mDiff = inst(box, std({ roughness: 0.5, metalness: 0.05, color: 0x6f5a3a }), n * 2, this.G.cell);
-    this.mPoly = inst(box, std({ roughness: 0.35, metalness: 0.2, color: new THREE.Color(css("--poly")) }), n * 30, this.G.cell);
+    // Diffusion takes a darker shade of its cell's colour (set in refreshColours), so cells read by function from afar.
+    this.mDiff = inst(box, std({ roughness: 0.5, metalness: 0.05 }), n * 2, this.G.cell);
+    this.mPoly = inst(box, std({ roughness: 0.3, metalness: 0.35, color: new THREE.Color(css("--poly")).lerp(new THREE.Color(0xffffff), 0.15) }), n * 30, this.G.cell);
     this.physShown = this.design.phys.filter((p) => p.x >= V.x0 && p.x + p.w <= V.x1 && inV(p.y) && inV(p.y + RH));
     this.mPhys = inst(box, std({ roughness: 0.8 }), this.physShown.length, this.G.cell);
     let pi = 0, di = 0;
@@ -257,7 +313,7 @@ export class Stage3D {
       setBox(this.mLogic, i, b.x, b.y, b.z, b.sx, b.sy, b.sz);
       for (const s of [-1, 1]) setBox(this.mDiff, di++, cx, Y.cellTop + 0.008, cz + s * dz * 0.22, w - 0.3, 0.016, dz * 0.3);
       const nf = Math.max(2, Math.min(28, Math.round(c.w / 0.92)));
-      for (let f = 0; f < nf; f++) setBox(this.mPoly, pi++, c.x + ((f + 0.5) * c.w) / nf, Y.cellTop + 0.03, cz, 0.09, 0.04, RH - 0.9);
+      for (let f = 0; f < nf; f++) setBox(this.mPoly, pi++, c.x + ((f + 0.5) * c.w) / nf, Y.cellTop + 0.03, cz, 0.07, 0.04, RH - 1.1);
     });
     this.mLogic.count = n; this.mDiff.count = di; this.mPoly.count = pi;
     this.physShown.forEach((p, i) => {
@@ -286,7 +342,7 @@ export class Stage3D {
       const spec = WIRE[layer];
       // Slightly see-through metal, so the cells underneath stay readable.
       const base = inst(box, irid({ color: new THREE.Color(css(spec.v)), transparent: true, opacity: layer === "met1" ? 0.62 : 0.78 }), segs.length, this.G[spec.g]);
-      const gl = inst(box, glow(), segs.length, this.G[spec.g]);
+      const gl = inst(box, glow(true), segs.length, this.G[spec.g]);
       segs.forEach((s, i) => {
         const horiz = Math.abs(s.x2 - s.x1) >= Math.abs(s.z2 - s.z1);
         const len = Math.abs(horiz ? s.x2 - s.x1 : s.z2 - s.z1) + spec.w;
@@ -320,10 +376,33 @@ export class Stage3D {
     this.hovBox.visible = false; this.G.cell.add(this.hovBox);
     const tagEl = document.createElement("div"); tagEl.className = "celltag"; tagEl.hidden = true;
     this.tagObj = new CSS2DObject(tagEl); this.G.cell.add(this.tagObj);
-    for (const [g, text, y] of [["cell", "Cells and transistors", Y.cellTop], ["m1", "Metal 1: power rails, local wires", Y.m1], ["m2", "Metal 2: vertical wires", Y.m2], ["m3", "Metal 3: long wires", Y.m3], ["m4", "Metal 4", Y.m4]] as [Group, string, number][]) {
-      const el = document.createElement("div"); el.className = "layerlabel"; el.textContent = text; el.style.opacity = "0";
-      const o = new CSS2DObject(el); o.position.set(this.V.x0 - 3, y, this.sz(this.V.y0 + (this.V.y1 - this.V.y0) * 0.45)); o.userData.layerLabel = true; this.G[g].add(o);
+    // Separated view: each layer floats on a faint glass plate with its name at the front-left corner.
+    const plateGeo = new THREE.PlaneGeometry(W + 4, H + 4); plateGeo.rotateX(-Math.PI / 2);
+    const plateEdges = new THREE.EdgesGeometry(plateGeo);
+    const tint: Partial<Record<Group, string>> = { cell: "--adder", m1: "--met1", m2: "--met2", m3: "--met3", m4: "--met4" };
+    for (const [g, text] of PLATES) {
+      const y = g === "cell" ? Y.cellBot - 0.02 : (WIRE[{ m1: "met1", m2: "met2", m3: "met3", m4: "met4" }[g as "m1"]]?.y ?? 0) - 0.05;
+      const col = new THREE.Color(css(tint[g]!) || "#888");
+      const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+      const plate = new THREE.Mesh(plateGeo, mat); plate.position.set(xc, y, zc); plate.visible = false; plate.renderOrder = -1; this.G[g].add(plate);
+      const edge = new THREE.LineBasicMaterial({ color: col.clone().multiplyScalar(1.6), transparent: true, opacity: 0, toneMapped: false });
+      const ln = new THREE.LineSegments(plateEdges, edge); ln.position.copy(plate.position); ln.visible = false; this.G[g].add(ln);
+      plate.userData.plate = ln.userData.plate = true;
+      const el = document.createElement("div"); el.className = "layerlabel"; el.style.opacity = "0";
+      el.innerHTML = `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${css(tint[g]!)}"></i>${text}`;
+      const o = new CSS2DObject(el); o.position.set(x0 + Math.min(14, W * 0.12), y, z0 + H + 3); this.G[g].add(o);
+      this.plates.push({ g, mat, edge, label: el });
     }
+    // Selection beacon: a soft column of light above the selected cell, so it can be found from any distance.
+    const beamGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 1, true); beamGeo.translate(0, 0.5, 0);
+    this.beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
+      uniforms: { uCol: { value: new THREE.Color(css("--accent")).lerp(new THREE.Color(0xffffff), 0.25).multiplyScalar(2.4) }, uTime: this.uTime },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform vec3 uCol; uniform float uTime; varying vec2 vUv;
+        void main() { float a = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.2) * (0.55 + 0.15 * sin(uTime * 3.0 - vUv.y * 12.0)); gl_FragColor = vec4(uCol * a, a); }`,
+    }));
+    this.beam.visible = false; this.beam.renderOrder = 2; this.G.cell.add(this.beam);
     this.chip.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh || Array.isArray(m.material) || !(m.material as THREE.MeshStandardMaterial).isMeshStandardMaterial || (m.material as THREE.Material).transparent) return;
@@ -333,8 +412,47 @@ export class Stage3D {
 
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(this.host); this.resize();
     this.bindPointer();
-    this.flyTo(null, { dir: new THREE.Vector3(...OVERVIEW_DIR).normalize(), instant: true });
+    this.flyTo(null, { dir: HERO_DIR.clone(), instant: true });
     this.startIntro();
+  }
+
+  /** A radial gradient for the scene background (drawn screen-space, so it never moves with the camera). */
+  private backdrop(bg: THREE.Color): THREE.Texture {
+    const cv = document.createElement("canvas"); cv.width = 512; cv.height = 512;
+    const g = cv.getContext("2d")!;
+    const hex = (c: THREE.Color) => `#${c.getHexString()}`;
+    const grad = g.createRadialGradient(256, 210, 10, 256, 256, 380);
+    grad.addColorStop(0, hex(bg.clone().lerp(new THREE.Color(0x2a3550), 0.55)));
+    grad.addColorStop(0.45, hex(bg.clone().lerp(new THREE.Color(0x182033), 0.5)));
+    grad.addColorStop(1, hex(bg));
+    g.fillStyle = grad; g.fillRect(0, 0, 512, 512);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  /** The bench the package sits on: a dark plane that takes the shadow, with a fine dot grid that fades out with distance. */
+  private floor(size: number): THREE.Object3D {
+    const g = new THREE.Group();
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.ShadowMaterial({ opacity: 0.55 }));
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = -3.69; shadow.receiveShadow = true; g.add(shadow);
+    const R = Math.max(140, size * 1.6);
+    const grid = new THREE.Mesh(new THREE.PlaneGeometry(R * 2, R * 2), new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { uR: { value: R }, uCol: { value: new THREE.Color(0x7d95c8) } },
+      vertexShader: `varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform float uR; uniform vec3 uCol; varying vec2 vP;
+        void main() {
+          vec2 cell = abs(fract(vP / 6.0) - 0.5) * 6.0;
+          float dotm = 1.0 - smoothstep(0.14, 0.3, length(cell));
+          vec2 line = abs(fract(vP / 30.0) - 0.5) * 30.0;
+          float major = 1.0 - smoothstep(0.04, 0.16, min(line.x, line.y));
+          float fade = 1.0 - smoothstep(uR * 0.25, uR, length(vP));
+          gl_FragColor = vec4(uCol, (dotm * 0.22 + major * 0.07) * fade);
+        }`,
+    }));
+    grid.rotation.x = -Math.PI / 2; grid.position.y = -3.7; g.add(grid);
+    return g;
   }
 
   private colourFor(c: DesignCell): THREE.Color {
@@ -371,8 +489,11 @@ export class Stage3D {
       if (this.highlight && !this.highlight.has(c.id)) tmp.lerp(dim, 0.82);
       else if (this.highlight) tmp.multiplyScalar(1.25);
       this.mLogic.setColorAt(i, tmp);
+      tmp.multiplyScalar(0.62);
+      this.mDiff.setColorAt(2 * i, tmp); this.mDiff.setColorAt(2 * i + 1, tmp);
     });
     this.mLogic.instanceColor!.needsUpdate = true;
+    this.mDiff.instanceColor!.needsUpdate = true;
     for (const w of this.wires.values()) {
       w.segs.forEach((s, i) => {
         const on = !this.hlNets || this.hlNets.has(s.net);
@@ -409,7 +530,7 @@ export class Stage3D {
         setBox(w.glow, k, (s.x1 + s.x2) / 2, spec.y + 0.012, (s.z1 + s.z2) / 2, horiz ? len : spec.w + 0.04, 0.07, horiz ? spec.w + 0.04 : len);
         const f = this.flash.get(s.net);
         const boost = f ? Math.max(0, 1 - (now - f) / 600) : 0;
-        col.copy(isClockNet(s.net) ? clk : high).multiplyScalar(1.6 + boost * 3.2);
+        col.copy(isClockNet(s.net) ? clk : high).multiplyScalar(1.3 + boost * 3);
         w.glow.setColorAt(k++, col);
         w.glowSegs.push(s);
       }
@@ -456,7 +577,10 @@ export class Stage3D {
       const c = this.cells[this.cellIdx.get(id)!];
       el.innerHTML = `${c.id}<small>${c.type}</small>`; el.hidden = false;
       this.tagObj.position.set(c.x + c.w / 2, Y.cellTop + 0.6, this.sz(c.y + this.RH / 2));
-    } else el.hidden = true;
+      this.beam.position.set(c.x + c.w / 2, Y.cellTop, this.sz(c.y + this.RH / 2));
+      this.beam.scale.set(Math.max(c.w, 1.4) * 0.75, 18, (this.RH - 0.5) * 0.75);
+      this.beam.visible = true;
+    } else { el.hidden = true; this.beam.visible = false; }
   }
 
   private placeOutline(obj: THREE.LineSegments, id: string | null, pad: number) {
@@ -494,25 +618,49 @@ export class Stage3D {
     }
     if (box.isEmpty()) return;
     const c = box.getCenter(new THREE.Vector3()).add(this.chip.position);
-    c.y += this.explodeCur * 6;
+    c.y += this.liftApplied;
     const size = box.getSize(new THREE.Vector3());
     const vt = Math.tan((this.camera.fov * Math.PI) / 360), ht = vt * this.camera.aspect;
     const fit = Math.max(size.x / (2 * ht), (size.z * 0.85) / (2 * vt), 7);
-    const dist = fit * (ids?.length ? 1.3 : 1.05) + 4 + this.explodeCur * 30;
+    const dist = fit * (ids?.length ? 1.3 : 1.05) + 4 + this.explodeCur * LIFT * 5;
     const dir = opts.dir ?? this.camera.position.clone().sub(this.controls.target).normalize();
     if (dir.y < 0.45) { dir.y = 0.75; dir.normalize(); }
+    if (this.intro.on && !opts.dir) {
+      // Still flying in: land the intro on this framing instead of starting a second move afterwards.
+      const d = this.intro.toP.clone().sub(this.intro.toT).normalize();
+      this.intro.toT.copy(c); this.intro.toP.copy(c).addScaledVector(d, dist);
+      return;
+    }
     this.fly.fromP.copy(this.camera.position); this.fly.fromT.copy(this.controls.target);
     this.fly.toT.copy(c); this.fly.toP.copy(c).addScaledVector(dir, dist);
     this.fly.t = 0;
     if (opts.instant || reduceMotion()) { this.camera.position.copy(this.fly.toP); this.controls.target.copy(this.fly.toT); this.fly.t = 1; }
   }
 
+  /** Opening shot: the camera swings in from high and to the side while the layers settle onto the die one by one. */
   startIntro() {
     if (reduceMotion()) return;
     this.intro.toP.copy(this.camera.position); this.intro.toT.copy(this.controls.target);
-    this.intro.fromP.copy(this.intro.toT).add(new THREE.Vector3(0.1, 1, 0.25).normalize().multiplyScalar(this.intro.toP.distanceTo(this.intro.toT) * 2.1));
+    const off = this.intro.toP.clone().sub(this.intro.toT);
+    const sp = new THREE.Spherical().setFromVector3(off);
+    sp.theta += 0.9; sp.phi = Math.max(0.12, sp.phi * 0.35); sp.radius *= 2.3;
+    this.intro.fromP.copy(this.intro.toT).add(new THREE.Vector3().setFromSpherical(sp));
     this.camera.position.copy(this.intro.fromP);
     this.intro.on = true; this.intro.t0 = performance.now() + 150;
+  }
+  private introPose(u: number) {
+    const e = ease(u);
+    const a = new THREE.Spherical().setFromVector3(this.intro.fromP.clone().sub(this.intro.toT));
+    const b = new THREE.Spherical().setFromVector3(this.intro.toP.clone().sub(this.intro.toT));
+    let dt = b.theta - a.theta; if (dt > Math.PI) dt -= 2 * Math.PI; if (dt < -Math.PI) dt += 2 * Math.PI;
+    const s = new THREE.Spherical(a.radius + (b.radius - a.radius) * e, a.phi + (b.phi - a.phi) * e, a.theta + dt * e);
+    this.camera.position.copy(this.intro.toT).add(new THREE.Vector3().setFromSpherical(s));
+    this.controls.target.copy(this.intro.toT);
+    // Layers drop into place bottom-up, each a beat after the one below it.
+    for (const [k, i] of Object.entries(EXPLODE_IDX)) {
+      const lu = Math.min(1, Math.max(0, (u - 0.1 - i * 0.045) / 0.5));
+      this.G[k as Group].position.y = (1 - ease(lu)) * i * LIFT * 1.6;
+    }
   }
 
   private resize() {
@@ -584,23 +732,47 @@ export class Stage3D {
   private endIntro() {
     if (!this.intro.on) return;
     this.intro.on = false; this.camera.position.copy(this.intro.toP); this.controls.target.copy(this.intro.toT);
+    this.applyExplode(true);
+  }
+
+  /** Lift each layer group by the current separation, fade the glass plates in, and keep the stack centred in view. */
+  private applyExplode(force = false) {
+    const x = this.explodeCur;
+    for (const [k, i] of Object.entries(EXPLODE_IDX)) this.G[k as Group].position.y = x * i * LIFT;
+    const a = Math.min(1, x * 2.5);
+    for (const p of this.plates) {
+      p.mat.opacity = a * 0.07; p.edge.opacity = a * 0.55;
+      const vis = a > 0.01;
+      this.G[p.g].children.forEach((o) => { if (o.userData.plate) o.visible = vis; });
+      p.label.style.opacity = String(a);
+    }
+    // Raise the camera and its target with the middle of the stack, and back off so the taller stack still fits.
+    const lift = x * LIFT * 4.5;
+    const d = lift - this.liftApplied;
+    if (Math.abs(d) > 1e-4 || force) {
+      const back = this.camera.position.clone().sub(this.controls.target).normalize().multiplyScalar(d * 2.4);
+      this.camera.position.y += d; this.controls.target.y += d;
+      this.camera.position.add(back);
+      this.liftApplied = lift;
+    }
   }
 
   private tick = () => {
     const now = performance.now();
+    if (!reduceMotion()) { this.uTime.value = now / 1000; this.finish.uniforms.uTime.value = (now / 1000) % 10; }
     if (this.intro.on) {
       const u = Math.min(1, Math.max(0, (now - this.intro.t0) / this.intro.dur));
-      this.camera.position.lerpVectors(this.intro.fromP, this.intro.toP, ease(u));
-      if (u >= 1) this.intro.on = false;
+      this.introPose(u);
+      if (u >= 1) this.endIntro();
     } else if (this.fly.t < 1) {
       this.fly.t = Math.min(1, this.fly.t + this.fly.dur);
       const e = ease(this.fly.t);
       this.camera.position.lerpVectors(this.fly.fromP, this.fly.toP, e); this.controls.target.lerpVectors(this.fly.fromT, this.fly.toT, e);
     }
-    if (Math.abs(this.explode - this.explodeCur) > 0.001) {
-      this.explodeCur += (this.explode - this.explodeCur) * (reduceMotion() ? 1 : 0.12);
-      for (const [k, i] of Object.entries(EXPLODE_IDX)) this.G[k as Group].position.y = this.explodeCur * i * 4;
-      this.chip.traverse((o) => { if (o.userData.layerLabel) ((o as CSS2DObject).element.style.opacity = String(Math.min(1, this.explodeCur * 3))); });
+    if (!this.intro.on && Math.abs(this.explode - this.explodeCur) > 0.001) {
+      this.explodeCur += (this.explode - this.explodeCur) * (reduceMotion() ? 1 : 0.1);
+      if (Math.abs(this.explode - this.explodeCur) <= 0.001) this.explodeCur = this.explode;
+      this.applyExplode();
     }
     if (this.dirtyColours) { this.dirtyColours = false; this.refreshColours(); }
     if (this.flash.size) {
