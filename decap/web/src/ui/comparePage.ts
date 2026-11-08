@@ -16,7 +16,7 @@ export class ComparePage {
     const bench = await loadBench().catch(() => null);
     this.el.innerHTML = `
       <section class="headline"><span class="eyebrow">Compare</span><h1>Chips like yours.</h1>
-        <p>Paste a small design. Decap finds the real Tiny Tapeout chips built the most like it, and shows how they did it.</p></section>
+        <p>Paste a small design. bASIC finds the real Tiny Tapeout chips built the most like it, and shows how they did it.</p></section>
       <div class="card">
         <div class="acts">
           <div class="seg" role="group" aria-label="Input kind"><button type="button" data-kind="verilog" aria-pressed="true">Verilog</button><button type="button" data-kind="netlist" aria-pressed="false">Netlist</button></div>
@@ -61,7 +61,7 @@ export class ComparePage {
 
   private renderOut() {
     const out = $("#cmpOut", this.el);
-    if (this.err) { out.innerHTML = `<div class="callout bad"><b>Compare is not available right now.</b><span>It needs the Decap API with Yosys running. ${esc(this.err)}</span></div>`; return; }
+    if (this.err) { out.innerHTML = `<div class="callout bad"><b>Compare is not available right now.</b><span>It needs the bASIC API with Yosys running. ${esc(this.err)}</span></div>`; return; }
     const r = this.res;
     if (!r) { out.innerHTML = ""; return; }
     const fp = Object.entries(r.fingerprint ?? {}).filter(([, v]) => typeof v !== "object").map(([k, v]) => `<span class="pill">${esc(k)} ${esc(v)}</span>`).join(" ");

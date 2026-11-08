@@ -119,7 +119,7 @@ export class ChipPage {
           <h2>${esc(r.title || r.chip)} <small>${esc(r.chip)}</small></h2>
           <div class="badges">
             <span class="verdict ${r.verdict}" title="${esc(r.proof.detail ?? "")}">${verdictWord}</span>
-            <span class="pill" title="${r.split === "test" ? "Held out: never used for tuning" : "Used while tuning Decap"}">${r.split === "test" ? "Held-out test chip" : r.split === "dev" ? "Dev chip" : esc(r.split)}</span>
+            <span class="pill" title="${r.split === "test" ? "Held out: never used for tuning" : "Used while tuning bASIC"}">${r.split === "test" ? "Held-out test chip" : r.split === "dev" ? "Dev chip" : esc(r.split)}</span>
             ${this.source === "fixture" ? `<span class="pill warn">Sample data</span>` : ""}
           </div>
         </div>
@@ -139,7 +139,7 @@ export class ChipPage {
       </header>
       <div class="codes">
         <section class="pane p-dec" aria-label="Decompiled Verilog">
-          <div class="pane-h">Decompiled by Decap<span class="sub">${r.variant === "planted" ? "with trigger, names stripped" : "from the stripped netlist"}</span><span class="grow"></span><span class="sub">${r.decompiled.lines} lines</span><button class="btn plain sm" type="button" data-wrap aria-pressed="${wrapOn()}" title="Wrap long lines (W)">${icon.wrap}Wrap</button>${a ? `<button class="btn sm" type="button" data-auth="1" title="Show what the author wrote">Author's source</button>` : ""}</div>
+          <div class="pane-h">Decompiled by bASIC<span class="sub">${r.variant === "planted" ? "with trigger, names stripped" : "from the stripped netlist"}</span><span class="grow"></span><span class="sub">${r.decompiled.lines} lines</span><button class="btn plain sm" type="button" data-wrap aria-pressed="${wrapOn()}" title="Wrap long lines (W)">${icon.wrap}Wrap</button>${a ? `<button class="btn sm" type="button" data-auth="1" title="Show what the author wrote">Author's source</button>` : ""}</div>
           <div class="pane-b"><ol class="code click" id="cpCode"></ol></div>
         </section>
         <section class="pane p-auth" aria-label="Author source">
@@ -238,7 +238,7 @@ export class ChipPage {
     if (p) {
       const saved = this.plantSource === "preplanted" && p.plant?.n !== this.n;
       const hit = p.flags.find((f) => new RegExp(`(^|[^0-9])${p.plant?.n ?? -1}([^0-9]|$)`).test(f.condition));
-      res = `${saved ? `<div class="callout warn"><b>Live planting is unavailable, so this is a saved copy with ${p.plant?.n}, not your number.</b><span>${esc(this.err ?? "The Decap API did not answer.")}</span></div>` : ""}
+      res = `${saved ? `<div class="callout warn"><b>Live planting is unavailable, so this is a saved copy with ${p.plant?.n}, not your number.</b><span>${esc(this.err ?? "The bASIC API did not answer.")}</span></div>` : ""}
         <div class="callout ${hit ? "good" : "bad"}">
           <b>${hit ? `Found it. ${saved ? "The planted number" : "Your number"} ${p.plant?.n} came back as a line of code.` : p.flags.length ? `Flagged ${p.flags.length} line${p.flags.length === 1 ? "" : "s"}, but none mentions ${p.plant?.n}.` : "Missed. Nothing was flagged."}</b>
           ${p.plant ? `<span>A hidden check for ${p.plant.n} was added to ${esc(p.plant.target)} (${p.plant.inserted_cells.length} cells), then every name was stripped.${this.plantSource === "fixture" ? " Sample result." : ""}</span>` : ""}</div>
@@ -248,7 +248,7 @@ export class ChipPage {
     }
     return `<div class="sect">
         <h4>Hide a trigger, then find it</h4>
-        <p>Pick a number from 0 to 255. Decap hides a check for it inside this chip, strips every name, then reads the chip back blind and flags logic that almost never fires.</p>
+        <p>Pick a number from 0 to 255. bASIC hides a check for it inside this chip, strips every name, then reads the chip back blind and flags logic that almost never fires.</p>
         <div class="acts"><input class="num" id="cpN" type="number" min="0" max="255" value="${this.n}" aria-label="Number to hide">
           <button class="btn primary" type="button" id="cpPlant" ${busy ? "disabled" : ""}>${busy ? `<span class="spin"></span>Planting <span id="cpT">0</span> s` : "Hide and find"}</button>
           ${p ? `<button class="btn" type="button" id="cpCone">Light the trigger</button>` : ""}</div>

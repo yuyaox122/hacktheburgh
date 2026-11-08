@@ -25,5 +25,5 @@ export const icon = {
   textSize: svg(`<path d="M2 12.5 5 4.5l3 8M3.1 10h3.8M9.5 12.5l2.25-6 2.25 6M10.3 10.5h2.9"/>`),
   wrap: svg(`<path d="M2.5 4h11M2.5 8h9a2 2 0 0 1 0 4H8.5M2.5 12h3"/><path d="m10 10.5-1.5 1.5 1.5 1.5"/>`),
   upload: svg(`<path d="M8 10.5V2.8M4.8 6 8 2.8 11.2 6"/><path d="M2.5 10.5v1.7a1.3 1.3 0 0 0 1.3 1.3h8.4a1.3 1.3 0 0 0 1.3-1.3v-1.7"/>`),
-  logo: `<svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9a9aa2"/></linearGradient></defs><rect x="3" y="3" width="18" height="18" rx="5" fill="url(#lg)"/><path d="M8.5 7.5v9M12 7.5v9M15.5 7.5v9" stroke="#0b0b0d" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  logo: `<svg class="logo" viewBox="0 0 120 120" width="24" height="24" aria-hidden="true"><rect width="120" height="120" rx="20" fill="#0E0F12"/><path d="M60 60L104 84L60 108L16 84Z" fill="#2A2D33"/><path d="M60 44L104 68L60 92L16 68Z" fill="#E8893A"/><path d="M60 20L104 44L60 68L16 44Z" fill="#0E0F12" stroke="#C6FF3D" stroke-width="5" stroke-linejoin="round"/><path d="M60 32L82 44L60 56L38 44Z" fill="#C6FF3D"/></svg>`,
 };
