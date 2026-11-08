@@ -5,8 +5,8 @@ projectors), Tiger Data (Stream Deck Mini), Solana (assorted), Vultr (portable s
 headphones), DEV Writing Challenge ($100). Tick each one we enter on Devpost.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 09:15, written by Ian's agent from what is on main (#99). No held-out Witness number anywhere
-(board, 08:33). Any Witness number is labelled **dev**.
+Status: 8 Nov 2026, 09:00, written by Ian's agent from what is on main (#104). The held-out Witness bench is running
+(`bench-freeze`); its number goes in only from `witness-summary.json`. Any other Witness number is labelled **dev**.
 
 ## What MLH sponsor judges want
 
@@ -22,7 +22,7 @@ real. So for every track below, the pitch shows the sponsor's product carrying w
 
 ## Which tracks, and why
 
-| Track | Fit | Status at 09:15 | Enter? |
+| Track | Fit | Status at 09:00 | Enter? |
 |---|---|---|---|
 | **Gemini API** | The agent's model is one flag. Because every claim is proven by Yosys, a fast Flash model is safe to use: the proof catches what it gets wrong | Support installed (pydantic-ai `google` extra, on main); needs a key from mlh.link/aistudio, then a switch and one rehearsal (about 15 min) | **Yes, if the key works by 10:30** |
 | **Entire** | "The Git forge for agent-human collaboration" is literally how we built this: three humans, three coding agents, one board. Entire links each commit to the agent session that made it | Not set up: the CLI isn't installed and no commit has a checkpoint yet. About 20 min to enable and make real commits through it | **Yes, if set up by 10:30** |
@@ -38,14 +38,15 @@ real. So for every track below, the pitch shows the sponsor's product carrying w
 1. Open a real chip's decompiled code (`tt_um_clock_divider_arghunter`, dev chip). Hover a messy line → **Explain**.
    In about 5 s: *"Three-bit counter gated by enable t5…"*, read from code Yosys already proved equal to the
    gates.
-2. Agent drawer → **Red-team drill**: a trigger at a secret random value, found blind, exact input in about 10 s.
+2. Decompile → **Plant/Find** with the judge's number (safe), or the Agent drawer's **Red-team drill** once a
+   teammate has seen it work after the #104 fix.
 3. Close: *"Agents propose, a proof scores every claim."*
 
 ## Per-track beats (10–20 s each, after the shared demo)
 
 ### Gemini API
 - **Do:** restart the agent with `decap serve --port 8791 --model google-gla:gemini-flash-latest`
-  (`GOOGLE_API_KEY` in `~/.config/decap/secrets.env`, never in the repo). Run Explain and the drill on Gemini.
+  (`GOOGLE_API_KEY` in `~/.config/decap/secrets.env`, never in the repo). Run Explain on Gemini.
 - **Say:** "This is Gemini Flash. We can use a fast, cheap model because nothing it says reaches you unchecked:
   Yosys proves or refutes every claim. The proof is also how we compare models: on our dev chips it showed which
   model's first drafts were wrong."
@@ -87,13 +88,13 @@ Working title: *"We let AI agents explain computer chips, and made a theorem pro
 
 ## Don't say
 
-- Any held-out Witness number, or "___ of ___".
+- A held-out Witness number that didn't come from `witness-summary.json`, or a partial run quoted as the result.
 - That a chip is "clean" when the hunt said "inconclusive".
 - That we used a sponsor's product for something we didn't.
 
 ## Prep checklist
 
-- [ ] Gemini key from mlh.link/aistudio in `~/.config/decap/secrets.env`; one Explain + one drill rehearsed on Gemini
+- [ ] Gemini key from mlh.link/aistudio in `~/.config/decap/secrets.env`; one Explain rehearsed on Gemini
 - [ ] Entire installed and enabled; at least two real commits carry a checkpoint; one opened in Entire
 - [ ] Devpost: tick Gemini, Entire, DEV (and ElevenLabs/Vultr only if built)
 - [ ] The shared 30-second demo rehearsed on `tt_um_clock_divider_arghunter` (dev chip)

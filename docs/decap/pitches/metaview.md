@@ -3,7 +3,7 @@
 **Prize:** $500 per team member. No set challenge: "show a creative project", any track or none.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 01:05 (synced with main and the board up to Ian's 00:47 model decision). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 09:00 (synced with main through #104; the held-out Witness bench is running at `bench-freeze` e7708d6). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -49,7 +49,7 @@ A creative project that clearly works. "Best overall" judges are generalists: th
   - the redstone is checked in vanilla Minecraft against the chip's netlist (sign_addsub: 200/200 vectors; cla_4bits: 60/60 cycles);
   - the layout world matches the reference simulation 30/30.
 - **Measured honestly:** 18 held-out chips, split frozen before tuning; failures shown in red; both scored runs reported.
-- **AI with a referee:** the Witness agents propose explanations, and a claim counts only once a proof passes. Ian's held-out number goes here if it lands after the 02:30 freeze.
+- **AI with a referee:** agents propose, a proof scores every claim. The held-out number goes here once `witness-summary.json` lands. Live, either way: hover any line and the agent explains it in plain English in a few seconds, read from code Yosys already proved.
 - **Built by agents, steered by humans:** three people, each with their own coding agent, coordinating through one GitHub issue.
 
 ## Likely questions
