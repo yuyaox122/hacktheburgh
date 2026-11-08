@@ -49,7 +49,7 @@ A creative project that clearly works. "Best overall" judges are generalists: th
   - the redstone is checked in vanilla Minecraft against the chip's netlist (sign_addsub: 200/200 vectors; cla_4bits: 60/60 cycles);
   - the layout world matches the reference simulation 30/30.
 - **Measured honestly:** 18 held-out chips, split frozen before tuning; failures shown in red; both scored runs reported.
-- **AI with a referee:** the Witness agents propose explanations, and a claim counts only once a proof passes. Ian's held-out number goes here if it lands after the 02:30 freeze.
+- **AI with a referee:** the Witness agents propose explanations, and a claim counts only once a proof passes. No held-out Witness number (the run timed out on most regions); show it live.
 - **Built by agents, steered by humans:** three people, each with their own coding agent, coordinating through one GitHub issue.
 
 ## Likely questions

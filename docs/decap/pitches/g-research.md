@@ -24,7 +24,7 @@ G-Research are quant researchers. Expect them to probe two things:
 - **Built on their three questions.** We say "hidden", "find" and "do" out loud, as section headers.
 - **The visual carries the most weight.** Minecraft here is the *layout* world (Alex's showcase: the real GDS as blocks, wires that glow, the trojan as a red annex). It shows the hidden structure, not just a lamp.
 - **The data story is explicit:** where the data comes from (TT08 netlists, GDS property 61, `commit_id.json` answer keys), how we collected it, and the held-out split.
-- **Two headline numbers:** the decompiler's (ready now), and Ian's Witness number, *if* the held-out run lands (see below).
+- **One headline number:** the decompiler's. The Witness held-out number is cut (see below).
 
 ## The hook (0–15 s)
 
@@ -57,20 +57,17 @@ Run Presenter mode (`D`). Its step buttons can be clicked in any order. Minecraf
 | **Evaluation** | 27 chips: 9 dev, 18 test, **split frozen before tuning**. Both scored runs reported (first run: 15/18 proven, 15/16 caught). |
 | **Grouping, beyond correctness** | A gate-by-gate copy would pass the proof trivially, so we also report the share of gates grouped into named blocks (counters, adders…): 52% of logic cells (mean; 37% weighted). Every line is decompiled and proven either way; this number is only about grouping, so don't headline it or call it a readability score. The decompile is also shorter than the author's code on all 9 test chips with hand-written Verilog (480 vs 1,307 lines). |
 
-## Ian's Witness number (pending: plug in or drop)
+## Witness number: cut (decided 09:43)
 
-Ian is running the Witness agent bench with **Claude Sonnet** (`cli:sonnet`, the model every demo result was made with): AI agents propose one-line claims about a chip region, and each counts only if Yosys proves it.
-- Dev bench (9 chips): running now.
-- Held-out bench: runs after the **02:30 freeze**.
-- A demo result to show while we wait: on the dev chip `kapilan_alarm`, the agent's proven claim for the alarm latch is about 5× shorter than the decompile. Label it "dev chip".
+The held-out Witness run finished but isn't usable: 18 of 21 regions hit the Claude CLI's 360 s timeout, so only 3 claims were scored. The timeout lives in code covered by the freeze hash, so fixing it would mean re-freezing. **Don't quote any Witness number.** Show Witness live instead (drill / Explain / Plant+Find), and if asked: "The held-out agent run timed out on most regions, so we don't report a number from it. Every claim you see live is proven by Yosys."
 
-**If the held-out number lands,** add one line in the "How we find it" beat:
-> "And AI agents explained ___ of ___ regions on chips they'd never seen, in one-line claims, every one proven."
+- A demo result you can still show: on the dev chip `kapilan_alarm`, the agent's proven claim for the alarm latch is about 5× shorter than the decompile. Label it "dev chip".
 
 **Don't quote:**
-- the dev number as a held-out result;
-- the old dev 80% (the API cap made it error on 19 of 27 regions; unusable). A clean Sonnet dev re-run is going now, but it is still a dev number;
-- DeepSeek results (a tested fallback, but weak: 65% of parseable first drafts wrong, 37% unparseable). If the overnight run ends up finishing on DeepSeek, say so.
+- the 3 scored held-out claims (1/3 first draft, 3.2% coverage): too few to mean anything;
+- any dev number as a held-out result;
+- the old dev 80% (the API cap made it error on 19 of 27 regions; unusable);
+- DeepSeek results (a tested fallback, but weak: 65% of parseable first drafts wrong, 37% unparseable).
 
 ## Likely questions
 
@@ -95,4 +92,4 @@ Ian is running the Witness agent bench with **Claude Sonnet** (`cli:sonnet`, the
 - [ ] Showcase world loaded; `/function decap:tour/…` lands on the trojan annex
 - [ ] Redstone copies built and settled (planted 78 + clean); `/tick sprint` used to speed up settling
 - [ ] Judge's chip steered to `tt_um_emmyxu_obstacle_detection` (fallback: `tt_um_kb2ghz_xalu`, `tt_um_dpmu`); chip warmed
-- [ ] Ian's held-out number: in, or cut
+- [x] Ian's held-out number: cut (09:43); Witness shown live only
