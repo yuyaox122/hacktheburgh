@@ -56,6 +56,8 @@ class CommandIn(BaseModel):
     command: str = Field(description="A natural-language command: 'is anything hidden?', 'what does block b0 do?', ...")
     verilog: str | None = Field(None, description="Your own Verilog: check whether this chip implements it")
     filename: str | None = None
+    repair: bool = Field(False, description="With verilog: the agent fixes it until Yosys proves it equal to the chip")
+    suspects: list[dict] | None = Field(None, description="Fault-localiser output: [{cell|line, p, explains?, confirmed?}]")
     max_refine: int = Field(2, ge=0, le=4)
 
 
@@ -79,6 +81,10 @@ def tool_summary(tool: str, r: Any) -> str | None:
         if tool == "critical_path":
             d = r.get("delay_ns_estimate")
             return f"~{d} ns to {r.get('ends_at', '?')}" if d is not None else None
+        if tool == "simulate":
+            last = (r.get("trace") or [{}])[-1]
+            ins = r.get("inputs") or {}
+            return f"real chip: ui_in={ins.get('ui_in')} -> uo_out={last.get('uo_out')}"
         if tool == "list_chips":
             return f"{len(r.get('chips') or r)} chips" if isinstance(r.get("chips"), list) else None
     except Exception:
@@ -193,7 +199,7 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, read
         async def go():
             try:
                 res = await run_command(server, body.chip, body.command, transcript=t, model=model, max_refine=body.max_refine,
-                                        verilog=body.verilog, filename=body.filename)
+                                        verilog=body.verilog, filename=body.filename, repair=body.repair, suspects=body.suspects)
                 await queue.put({"kind": "done", **res})
             except Exception as e:
                 await queue.put({"kind": "error", "error": f"{type(e).__name__}: {str(e)[:400]}"})

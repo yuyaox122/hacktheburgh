@@ -47,6 +47,7 @@ export class AgentPanel {
           <button type="button" class="ag-next" data-cmd="Audit this chip: what are its parts, and is the unrecognised logic doing anything odd?">Audit this chip</button>
           <button type="button" class="ag-next" data-cmd="Is anything hidden in this chip?">Is anything hidden?</button>
           <button type="button" class="ag-next" data-cmd="Red-team drill: plant a hidden trigger and find it blind">Red-team drill</button>
+          <button type="button" class="ag-next" data-cmd="Fault drill: switch one gate, then find and fix it" title="Switch one gate at random, then the agent finds and fixes it; Yosys checks">Fault drill</button>
           <button type="button" class="ag-next" data-cmd="What is the slowest path, and what does the block on it do?">Slowest path</button>
           <button type="button" class="ag-next" data-cmd="What do we already know about this chip? Review memory and fill one gap.">What do we know?</button>
           <button type="button" class="ag-next" data-vio="up" title="Upload a .v file; Yosys checks whether this chip implements it">Check my Verilog…</button>
@@ -67,8 +68,16 @@ export class AgentPanel {
     store.on((chip) => { if (chip === this.chip) this.schedule(); });
     document.addEventListener("agent:open", () => this.open());
     verilogIO.install();
+    // Alex's verify view (or anything) can hand a faulty design to the agent: agent:repair -> ... -> agent:repaired
+    document.addEventListener("agent:repair", (e) => {
+      const d = (e as CustomEvent<{ chip: string; verilog: string; suspects?: unknown[]; filename?: string }>).detail;
+      if (!d?.chip || !d.verilog) return;
+      void this.runCommand(`Fix this design (${d.suspects?.length ?? 0} suspect${d.suspects?.length === 1 ? "" : "s"} from the fault localiser)`,
+        { verilog: d.verilog, filename: d.filename ?? "faulty.v", repair: true, suspects: d.suspects }, d.chip);
+    });
     document.addEventListener("agent:upload", (e) => {
       const d = (e as CustomEvent<{ chip: string; filename: string; text: string }>).detail;
+      this.lastUpload = { chip: d.chip, filename: d.filename, verilog: d.text };
       void this.runCommand(`Check my file ${d.filename} (${d.text.split("\n").length} lines) against this chip`,
         { verilog: d.text, filename: d.filename }, d.chip);
     });
@@ -89,6 +98,7 @@ export class AgentPanel {
 
   /** The terminal: run one natural-language command and stream its tool calls + result into the drawer. */
   private ctrl: AbortController | null = null;
+  private lastUpload: { chip: string; filename: string; verilog: string } | null = null;
 
   /** Stop the running command (Stop button, a new command, or switching chips). */
   private cancel(say?: string) {
@@ -100,7 +110,7 @@ export class AgentPanel {
     $("#agStop", this.el).hidden = true;
   }
 
-  private async runCommand(text: string, upload?: { verilog: string; filename: string }, chip = this.chip) {
+  private async runCommand(text: string, upload?: { verilog: string; filename?: string; repair?: boolean; suspects?: unknown[] }, chip = this.chip) {
     if (!chip) return;
     this.open();
     this.cancel();
@@ -125,8 +135,15 @@ export class AgentPanel {
       intro.innerHTML = `<p class="muted">Ask about this chip below, or hover a line of code and press <b>Explain</b> or <b>Ideas</b> (suggested edits, checked by Yosys when you apply them). The agent writes the explanation. Yosys decides whether it's true.</p>`;
     }
     const runs = this.chip ? store.runs(this.chip) : [];
-    $("#agRuns", this.el).innerHTML = runs.length ? runs.map((r) => this.card(r)).join("")
+    const host = $("#agRuns", this.el);
+    const top = host.scrollTop;
+    const open = new Set([...host.querySelectorAll<HTMLDetailsElement>("details[open]")].map((d) => `${d.closest<HTMLElement>("[data-run]")?.dataset.run}|${d.className}`));
+    host.innerHTML = runs.length ? runs.map((r) => this.card(r)).join("")
       : `<div class="empty"><p>No agent runs on ${esc(this.chip ?? "this page")} yet.</p></div>`;
+    host.querySelectorAll<HTMLDetailsElement>("details").forEach((d) => {
+      if (open.has(`${d.closest<HTMLElement>("[data-run]")?.dataset.run}|${d.className}`)) d.open = true;
+    });
+    host.scrollTop = top;
   }
 
   private card(r: Run): string {
@@ -167,6 +184,16 @@ export class AgentPanel {
   }
 
   private onClick(e: MouseEvent) {
+    const t = e.target as HTMLElement;
+    if (t.closest("[data-repair-last]") && this.lastUpload) {
+      const u = this.lastUpload;
+      void this.runCommand(`Fix ${u.filename} so it matches this chip`, { verilog: u.verilog, filename: u.filename, repair: true }, u.chip);
+      return;
+    }
+    if (t.closest("[data-fixed-dl]") && this.term.lastRepair) {
+      verilogIO.saveText(`${this.term.lastRepair.chip}_repaired.v`, this.term.lastRepair.verilog);
+      return;
+    }
     const cmd = (e.target as HTMLElement).closest<HTMLElement>("[data-cmd]");
     if (cmd?.dataset.cmd) { void this.runCommand(cmd.dataset.cmd); return; }
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-run-act]");

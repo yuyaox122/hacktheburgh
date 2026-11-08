@@ -74,15 +74,38 @@ export class Terminal {
   private busy = false;
   private pending: Array<{ name: string; row: HTMLElement; args?: Record<string, unknown> }> = [];
 
+  lastRepair: { chip: string; verilog: string } | null = null;
+  private stick = true;            // follow new lines only while the reader is at the bottom
+  private jump: HTMLButtonElement;
+
   constructor(term: HTMLElement, status: HTMLElement) {
     this.el = term;
     this.state = status.querySelector<HTMLElement>(".ag-state") ?? status;
     this.elapsed = status.querySelector<HTMLElement>(".ag-elapsed") ?? status;
+    this.jump = document.createElement("button");
+    this.jump.type = "button";
+    this.jump.className = "ag-jump";
+    this.jump.textContent = "↓ latest";
+    this.jump.hidden = true;
+    this.jump.addEventListener("click", () => { this.stick = true; this.follow(); });
+    term.insertAdjacentElement("afterend", this.jump);
+    term.addEventListener("scroll", () => {
+      this.stick = term.scrollHeight - term.scrollTop - term.clientHeight < 32;
+      if (this.stick) this.jump.hidden = true;
+    }, { passive: true });
+  }
+
+  /** Scroll to the newest line if the reader is following; otherwise offer a "↓ latest" button. */
+  private follow() {
+    if (this.stick) { this.el.scrollTop = this.el.scrollHeight; this.jump.hidden = true; }
+    else this.jump.hidden = false;
   }
 
   /** Start a fresh transcript for one command. */
   begin(text: string) {
     this.stop();
+    this.stick = true;
+    this.jump.hidden = true;
     this.el.hidden = false;
     this.el.innerHTML = "";
     this.pending = [];
@@ -181,7 +204,25 @@ export class Terminal {
   private outcome(d: DoneShape) {
     const block = document.createElement("div");
     block.className = "ag-outcome";
-    if (d.intent === "check_source") {
+    if (d.intent === "repair") {
+      const ok = d.verdict === "fixed";
+      const diff = (d.diff ?? []) as Array<{ line: number; before: string[]; after: string[] }>;
+      const inj = d.injected as { line: number; before: string; after: string } | undefined;
+      block.innerHTML = `<span class="pill ${ok ? "ok" : d.verdict === "already matches" ? "ok" : "bad"}">${esc(String(d.verdict))}</span>` +
+        `<span class="ag-sub">${ok ? "Yosys proved the repaired design equal to the chip's gates." :
+          d.verdict === "already matches" ? "This design already matches the chip: nothing to fix." :
+          d.verdict === "unchecked" ? esc(String(d.detail ?? "The design couldn't be checked.")) :
+          "No edit the agent tried made Yosys say \"match\"."}</span>` +
+        (diff.length ? `<div class="ag-diff">${diff.map((r) => r.before.map((t) => `<div class="del"><span>−</span>${esc(t.trim())}   <i>line ${r.line}</i></div>`).join("") +
+          r.after.map((t) => `<div class="add"><span>+</span>${esc(t.trim())}</div>`).join("")).join("")}</div>` : "") +
+        (d.why ? `<span class="ag-answer">${esc(String(d.why))}</span>` : "") +
+        (d.method ? `<span class="ag-sub">${esc(String(d.method))}</span>` : "") +
+        (inj ? `<span class="ag-sub">Reveal: we had switched line ${inj.line} from <code>${esc(inj.before)}</code> to <code>${esc(inj.after)}</code>. ` +
+          `${d.found_injected ? "The agent fixed that exact line." : "The agent fixed it a different way; Yosys still proved it equal to the chip."}</span>` : "") +
+        (ok ? `<div class="ag-nexts"><button type="button" class="ag-next" data-fixed-dl>Download fixed .v</button></div>` : "");
+      this.lastRepair = ok ? { chip: String(d.chip ?? ""), verilog: String(d.verilog ?? "") } : null;
+      document.dispatchEvent(new CustomEvent("agent:repaired", { detail: { chip: d.chip, verdict: d.verdict, verilog: d.verilog, diff, proof: d.proof } }));
+    } else if (d.intent === "check_source") {
       const v = String(d.verdict), file = esc(String(d.filename ?? "your file"));
       const cex = d.counterexample as Record<string, number> | null | undefined;
       const said: Record<string, string> = {
@@ -193,6 +234,7 @@ export class Terminal {
       block.innerHTML = `<span class="pill ${v === "proven" ? "ok" : v === "failed" ? "bad" : "warn"}">${v === "proven" ? "match" : v === "failed" ? "differs" : v === "tested" ? "no difference found" : "couldn't check"}</span>` +
         `<span class="ag-answer">${said[v] ?? esc(v)}</span>` +
         (d.renamed_from ? `<span class="ag-sub">Your top module ${esc(String(d.renamed_from))} was matched up with the chip's ${esc(String(d.top))}.</span>` : "") +
+        (v === "failed" ? `<div class="ag-nexts"><button type="button" class="ag-next" data-repair-last>Fix it with the agent</button></div>` : "") +
         (v === "failed" && cex ? `${cexHtml(Object.fromEntries(Object.entries(cex).filter(([k]) => k !== "step")))}<span class="ag-sub">Inputs at that step. On clocked logic the cause can be an earlier input that a register is still holding.</span>` : "");
     } else if (d.intent === "drill") {
       const ok = d.verdict === "caught";
@@ -238,7 +280,7 @@ export class Terminal {
     div.className = `ag-line ${cls}`;
     div.innerHTML = `<span class="ag-who">${esc(who)}</span><span class="ag-sep">│</span><span class="ag-body">${body}</span>${meta ? `<span class="ag-meta">${meta}</span>` : ""}`;
     this.el.append(div);
-    this.el.scrollTop = this.el.scrollHeight;
+    this.follow();
     return div;
   }
 
@@ -256,7 +298,7 @@ export class Terminal {
   private showThinking() {
     if (!this.busy || this.el.querySelector(".ag-think")) return;
     this.line("agent", `<span class="ag-thinkdots">thinking</span>`, "ag-think");
-    this.el.scrollTop = this.el.scrollHeight;
+    this.follow();
   }
 
   private setState(word: string) {

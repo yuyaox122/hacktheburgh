@@ -27,6 +27,7 @@ class Transcript:
         self.run_id = run_id or uuid.uuid4().hex[:12]
         self.events: list[dict[str, Any]] = []
         self.listeners: list = []   # callables fed every event as it is recorded (live streams)
+        self.muted = 0              # > 0: tool calls aren't recorded (e.g. a repair search's many candidate checks)
         if self.path:
             self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -95,6 +96,8 @@ class TranscriptMiddleware(Middleware):
         self.transcript = transcript
 
     async def on_call_tool(self, context, call_next):
+        if getattr(self.transcript, "muted", 0):
+            return await call_next(context)
         params = context.message
         name = getattr(params, "name", "?")
         args = dict(getattr(params, "arguments", None) or {})
