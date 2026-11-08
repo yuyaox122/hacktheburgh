@@ -289,3 +289,17 @@ def test_witness_api_formalise_confirm_step(tmp_path):
     out = client.post("/witness/formalise", json={"chip": CHIP, "sentence": "LED 1 is on exactly when the count is 200",
                                                    "scope": HIT}).json()
     assert out["claim"] == "uo_out[1] == (count == 8'd200)" and out["english"] and "verdict" not in out
+
+
+def test_claim_parser_is_tolerant_of_loose_model_output():
+    from decap_agent.claim_expr import Evaluator, parse, unparse
+    # comma -> &&, bit-select after a sub-expression, trailing prose stripped
+    assert unparse(parse("next(a) == 1, next(b) == 0")) == "(next(a) == 1) && (next(b) == 0)"
+    assert unparse(parse("uo_out == (ui_in + uio_in)[7:1]")) == "uo_out == ((ui_in + uio_in)[7:1])"
+    assert unparse(parse("uo_out[7:1] == (ui_in + uio_in)[7:1]  (i.e. out = in + 1)")) == "uo_out[7:1] == ((ui_in + uio_in)[7:1])"
+    # the slice is a real shift+mask, not a width truncation
+    E = Evaluator({"a": 8, "b": 8})
+    assert E.holds(parse("(a + b)[7:1] == 3'd4"), {("sig", "a"): 0, ("sig", "b"): 9})      # sum 9 -> slice 4
+    assert not E.holds(parse("(a + b)[7:1] == 3'd4"), {("sig", "a"): 0, ("sig", "b"): 10})  # sum 10 -> slice 5
+    # a trailing == expression must NOT be stripped as prose
+    assert unparse(parse("uo_out[1] == (count == 8'd200)")) == "uo_out[1] == (count == 8'd200)"
