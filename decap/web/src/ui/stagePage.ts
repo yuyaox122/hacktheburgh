@@ -11,6 +11,7 @@ import { parse, evalExpr, vars } from "../sim/expr";
 import { $, $$, codeText, css, esc, wrapOn } from "./dom";
 import { icon } from "./icons";
 import { app } from "./state";
+import * as stageAgent from "../agent/stageAgent";
 
 const SPEEDS: [number, string][] = [[900, "0.5×"], [450, "1×"], [120, "4×"]];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -154,6 +155,7 @@ export class StagePage {
         onNet: (n) => this.selectNet(n),
         onPort: (p) => this.selectPort(p),
         onPhys: (p) => this.showPhys(p),
+        onHoverCell: (id, x, y) => stageAgent.hover(this.chipName, id, x, y),
       });
       this.bind();
       $<HTMLCanvasElement>("#stWave", this.el).style.height = `${Math.max(46, Math.min(112, this.lanes.length * 17))}px`;
@@ -164,7 +166,7 @@ export class StagePage {
     }
     this.view.start();
   }
-  unmount() { this.view?.stop(); this.pause(); }
+  unmount() { this.view?.stop(); this.pause(); stageAgent.hide(); }
   /** The chip on show (design.json name). */
   get chipName() { return this.design.name; }
 

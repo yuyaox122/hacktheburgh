@@ -48,6 +48,8 @@ export interface StageCallbacks {
   onPort(name: string): void;
   onPhys(p: Design["phys"][number]): void;
   onHover?(text: string | null): void;
+  /** The logic cell under the pointer (or null), with viewport coords — the Witness agent hover toolbar. */
+  onHoverCell?(id: string | null, x: number, y: number): void;
 }
 
 interface Seg { net: string; x1: number; z1: number; x2: number; z2: number; layer: string }
@@ -561,6 +563,7 @@ export class Stage3D {
         const h = pick(last);
         el.style.cursor = h ? "pointer" : "grab";
         this.setHover(h?.kind === "cell" ? h.id : null);
+        this.cb.onHoverCell?.(h?.kind === "cell" ? h.id : null, last.clientX, last.clientY);
         if (h) {
           let t = "";
           if (h.kind === "cell") { const c = this.cells[this.cellIdx.get(h.id)!]; const o = this.outNet.get(c.id); t = `<span>${c.id}</span><small>${c.type}</small>${o ? `<small>out</small><b>${this.value(o)}</b>` : ""}`; }
