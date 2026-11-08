@@ -3,7 +3,7 @@
 **Prize:** $500 per team member. No set challenge: "show a creative project", any track or none.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 01:00 (synced with main up to #74). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -37,6 +37,8 @@ A creative project that clearly works. "Best overall" judges are generalists: th
 
 **Minecraft honesty:** the redstone copy is pre-planted with **78** until Yuyao's live "judge's number in Minecraft" has been rehearsed. Say: *"This one we planted earlier, with 78."* If the live version is ready, use the judge's own N here. It's the strongest possible ending for this track.
 
+**If the Minecraft client fails:** the website's Minecraft page (`#/minecraft`) shows the same build in 3D with real Minecraft block models (repeaters, comparators, dust, levers, lamps), and the levers and lamps toggle live. This needs `npm run mc-assets` once on the demo laptop, and the page served from `npm run dev`: the textures are loaded in dev only and stripped from builds (Mojang's assets stay off the public site, #72), so the public site shows flat colours.
+
 **Encore (Q&A, or if 10 s spare):** the tiny FPGA in redstone. It has 2 logic blocks, and "its 30-bit bitstream is a bank of levers: reprogram a chip by flipping switches". 126 primitives, 149k blocks.
 
 ## Why it's impressive (say it in Q&A, not in the 90 s)
@@ -66,6 +68,7 @@ A creative project that clearly works. "Best overall" judges are generalists: th
 
 ## Prep checklist
 
+- [ ] `npm run mc-assets` run once; web served with `npm run dev` (real block textures in the Minecraft page fallback)
 - [ ] Fly-through video cued; the Minecraft client at the lever bank, both copies settled (`/tick sprint`)
 - [ ] Presenter mode on the judge's chip; planting returns within 15 s
 - [ ] FPGA build pre-placed, if doing the encore
