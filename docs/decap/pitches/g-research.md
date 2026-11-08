@@ -3,7 +3,7 @@
 **Prize:** Nintendo Switch 2 + Mario Kart. **Our best-fit track.** The brief is nearly our product description.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 01:05 (synced with main and the board up to Ian's 00:47 model decision). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 09:15 (synced with main through #99 and the board's 08:33 decision: no held-out Witness number in any pitch). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -22,9 +22,9 @@ G-Research are quant researchers. Expect them to probe two things:
 ## How this pitch is different from the others
 
 - **Built on their three questions.** We say "hidden", "find" and "do" out loud, as section headers.
-- **The visual carries the most weight.** Minecraft here is the *layout* world (Alex's showcase: the real GDS as blocks, wires that glow, the trojan as a red annex). It shows the hidden structure, not just a lamp.
+- **The visual carries the most weight.** Minecraft here is the *layout* world (Alex's showcase: the real GDS as blocks, wires that glow, the trojan as a red annex). It shows the hidden structure, and the lamp too.
 - **The data story is explicit:** where the data comes from (TT08 netlists, GDS property 61, `commit_id.json` answer keys), how we collected it, and the held-out split.
-- **Two headline numbers:** the decompiler's (ready now), and Ian's Witness number, *if* the held-out run lands (see below).
+- **One headline number:** the decompiler's. The AI gets a live moment instead of a number (see Witness below).
 
 ## The hook (0–15 s)
 
@@ -57,20 +57,37 @@ Run Presenter mode (`D`). Its step buttons can be clicked in any order. Minecraf
 | **Evaluation** | 27 chips: 9 dev, 18 test, **split frozen before tuning**. Both scored runs reported (first run: 15/18 proven, 15/16 caught). |
 | **Grouping, beyond correctness** | A gate-by-gate copy would pass the proof trivially, so we also report the share of gates grouped into named blocks (counters, adders…): 52% of logic cells (mean; 37% weighted). Every line is decompiled and proven either way; this number is only about grouping, so don't headline it or call it a readability score. The decompile is also shorter than the author's code on all 9 test chips with hand-written Verilog (480 vs 1,307 lines). |
 
-## Ian's Witness number (pending: plug in or drop)
+## Witness: what to say (decided on the board, 08:33)
 
-Ian is running the Witness agent bench with **Claude Sonnet** (`cli:sonnet`, the model every demo result was made with): AI agents propose one-line claims about a chip region, and each counts only if Yosys proves it.
-- Dev bench (9 chips): running now.
-- Held-out bench: runs after the **02:30 freeze**.
-- A demo result to show while we wait: on the dev chip `kapilan_alarm`, the agent's proven claim for the alarm latch is about 5× shorter than the decompile. Label it "dev chip".
+There is **no held-out Witness number**: the bench was not run, so no "___ of ___" beat anywhere. Say instead:
+**"Agents propose, a proof scores every claim"**, and show one live example. Any Witness number you quote must be
+labelled **dev** (it comes from the 9 dev chips), never held-out.
 
-**If the held-out number lands,** add one line in the "How we find it" beat:
-> "And AI agents explained ___ of ___ regions on chips they'd never seen, in one-line claims, every one proven."
+What the agent does live, on main (pick one for the demo):
+- **Explain** (hover a line, or a cell in 3D): a plain-English explanation in about 3 to 6 s, read from the
+  decompiled code, which Yosys has already proven equal to the gates. If the agent also finds a short formula
+  Yosys can prove, that replaces it with a green "proven" card. Dev sweep: 93 of 98 blocks on 9 dev chips got an
+  explanation, median 2.6 s.
+- **Red-team drill** (Agent drawer): it plants a trigger at a secret random value, then hunts it blind. It passes
+  only if the proof's counterexample is exactly that value. Rehearsed: secret 192, found `ui_in = 192` in 9.5 s.
+- **Check my Verilog:** upload your own `.v` and Yosys says whether this chip implements it, or the input where
+  they differ. Round trip on `cla_4bits`: download the decompiled Verilog, upload it back, "match", 0.4 s.
+- **Audit this chip:** the agent writes a plan, gives a reason before each step, and ends with findings tagged by
+  their evidence (`yosys`, `proof`, `code`, `structure`).
 
-**Don't quote:**
-- the dev number as a held-out result;
-- the old dev 80% (the API cap made it error on 19 of 27 regions; unusable). A clean Sonnet dev re-run is going now, but it is still a dev number;
-- DeepSeek results (a tested fallback, but weak: 65% of parseable first drafts wrong, 37% unparseable). If the overnight run ends up finishing on DeepSeek, say so.
+Honest lines if asked:
+- The live website agent runs on **DeepSeek** for speed (the dev bench used Claude Sonnet). The model can be
+  swapped (Gemini is one flag); the verdict never depends on it.
+- A hunt on a real chip with no planted trigger comes back **"inconclusive"** (a 20-cycle bounded check passed,
+  which is not a proof). Don't call it "clean".
+- Interactive agents can't touch the held-out chips at all: the agent layer refuses them (added 08:20).
+
+**For G-Research, use the drill.** It answers "how do we find it?" with a fresh secret the team didn't choose:
+> "We just hid a backdoor at a number none of us picked. The agent found the exact input that wakes it, from a
+> proof, not from a guess."
+
+Don't say "a proof behind every chip we ship": the proof shows the code equals the gates, not that a chip has no
+trojan.
 
 ## Likely questions
 
@@ -95,4 +112,4 @@ Ian is running the Witness agent bench with **Claude Sonnet** (`cli:sonnet`, the
 - [ ] Showcase world loaded; `/function decap:tour/…` lands on the trojan annex
 - [ ] Redstone copies built and settled (planted 78 + clean); `/tick sprint` used to speed up settling
 - [ ] Judge's chip steered to `tt_um_emmyxu_obstacle_detection` (fallback: `tt_um_kb2ghz_xalu`, `tt_um_dpmu`); chip warmed
-- [ ] Ian's held-out number: in, or cut
+- [ ] Witness: no held-out number (08:33). Drill rehearsed on the demo chip; one Explain card ready

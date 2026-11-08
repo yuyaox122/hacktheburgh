@@ -3,7 +3,7 @@
 **Prize:** 1st €350 per person; 2nd €150 per person. They will ask how we used AI.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 01:05 (synced with main and the board up to Ian's 00:47 model decision). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 09:15 (synced with main through #99 and the board's 08:33 decision: no held-out Witness number in any pitch). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -29,12 +29,12 @@ Status: 8 Nov 2026, 01:05 (synced with main and the board up to Ian's 00:47 mode
 
 | Piece | Owner | Status | Rule |
 |---|---|---|---|
-| **AI editor** (hover → ideas → Apply → Yosys review) | Yuyao | Building: issue #68, branch `68-ideas-editor` (taken over 00:26; confirmed on the board at 00:34) | **Plan A only after one full rehearsal.** Otherwise Plan B |
-| **Witness drawer** (`A`): Explain / Suggest edit / Comment on Decompile lines | Ian, on main (#65) | Tested live on `cla_4bits`, all 4 flows work | Plan B hero |
-| **bASIC MCP in JetBrains Air/Junie** (`decap mcp`) | Alex or Ian | MCP server works (13 tools against the real core). **Not yet connected in Air** | Connect once, record 20 s. If it fails, cut it and say "MCP, works in Claude Code" |
+| **AI editor** (hover → ideas → Apply → Yosys review) | Yuyao | PR #89, rebased onto main after #95; 71 agent tests pass, merges cleanly (08:28). Not merged yet | **Plan A only after one full rehearsal.** Otherwise Plan B |
+| **Witness drawer** (`A`): Explain / Suggest edit / Comment, plus the terminal (Audit, Red-team drill, Check my Verilog) | Ian, on main (#65, #95, #99) | Explain now always answers (plain English from the proven decompiled code, about 3 to 6 s); checked in Chrome on 4 dev chips | Plan B hero |
+| **bASIC MCP in JetBrains Air/Junie** (`decap mcp`) | Alex or Ian | MCP server works against the real core; `.mcp.json` is committed (its paths are for Ian's Mac). **Not yet recorded in Air** | Connect once on Ian's laptop, record 20 s. If it fails, cut it and say "MCP, works in Claude Code" |
 | **Build in Minecraft** from the Decompile page | Yuyao, on main (#60) | Works (Verilog path checked 40/40). Its 3D view now draws real Minecraft block models in dev (#72) | Keep. If the game client fails, use the in-browser view (`npm run mc-assets` once, then `npm run dev`) |
 
-Known agent quirk (Yuyao, #65): on a small output cone the agent proposed the same true XOR claim 5 times and got "restated" each time. Pick a demo region where this doesn't happen, and rehearse it.
+Known agent quirk (Yuyao, #65): on a small output cone the agent can propose the same true claim repeatedly and get "restated". Since #99 the card still shows a plain explanation in that case, so it no longer looks like a failure. Still rehearse the demo region.
 
 ## The hook (0–15 s)
 
@@ -54,10 +54,10 @@ Known agent quirk (Yuyao, #65): on a small output cone the agent proposed the sa
 ## Plan B script (editor not rehearsed), 90 s
 
 Same hook and close. Replace 25–55 s with the **Witness drawer** (`A`):
-1. Click a line in the decompile → "Explain".
-2. The agent proposes a one-line claim, and it's proven (green) or refuted with a counterexample (red).
-3. "Suggest edit" shows the agent's proposal.
-4. Say: "The agent can say anything. It only counts once Yosys proves it."
+1. Hover a line in the decompile → "Explain". A plain-English explanation appears in a few seconds, read from code Yosys already proved.
+2. If the agent finds a short formula, Yosys proves it (green) or refutes it with the input that breaks it.
+3. "Check my Verilog": download the decompiled file, upload it back, and Yosys says "match" (0.4 s on `cla_4bits`). Change one operator and it says "differs", with the input.
+4. Say: "Agents propose, a proof scores every claim."
 
 ## The agentic-process story (criterion 4)
 
@@ -80,7 +80,7 @@ Same hook and close. Replace 25–55 s with the **Witness drawer** (`A`):
 | They'll ask | We answer |
 |---|---|
 | "Isn't this a prompt wrapper?" | "The AI has no say in the verdict. Yosys proves every claim or edit against the circuit, for every input. The model is replaceable; the proof isn't." |
-| "Which model?" | "Witness runs on Claude Sonnet. We also tried DeepSeek: the proof showed most of its first drafts were wrong, so the checker is also how we pick a model. The guide is model-agnostic through pydantic-ai. The decompiler and the proof use no AI at all." |
+| "Which model?" | "The live agent runs on DeepSeek for speed; our dev bench used Claude Sonnet, and Gemini is one flag away. It's model-agnostic through pydantic-ai, and the proof is how we compare models: on dev chips it showed most of DeepSeek's first drafts were wrong. The decompiler and the proof use no AI at all." |
 | "How does this fit my workflow?" | "It's MCP, so it's in whichever agent you already use: Air, Claude Code, Cursor. And there's a web app for reviewing." |
 | "Why hardware?" | "Because a bug there is permanent. You can patch software tomorrow. A chip, never." |
 | "Who's the user?" | "An engineer editing a block they didn't write, or reviewing an AI's edit to one." |
