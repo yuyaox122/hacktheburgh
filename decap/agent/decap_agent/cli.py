@@ -176,6 +176,10 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("ask", help="ask the guide agent")
     a.add_argument("question")
     a.add_argument("--model", help="e.g. anthropic:claude-haiku-5-5 (default: $DECAP_GUIDE_MODEL)")
+    t = sub.add_parser("agent-send", help="the terminal: a natural-language command for the chip agent")
+    t.add_argument("command")
+    t.add_argument("--chip", help="chip to act on (default: first dev chip)")
+    t.add_argument("--model", help="default: $DECAP_WITNESS_MODEL")
     w = sub.add_parser("explain", help="Witness region agent: look, claim, check, refine")
     w.add_argument("chip")
     _scope_args(w)
@@ -278,6 +282,10 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "ask":
         from .guide import ask
         print(asyncio.run(ask(args.question, server, transcript, model=args.model)))
+    elif args.cmd == "agent-send":
+        from .terminal import run_command
+        chip = args.chip or asyncio.run(_call(server, "list_chips", {}))[0]["chip"]
+        _print(asyncio.run(run_command(server, chip, args.command, transcript=transcript, model=args.model)))
     elif args.cmd == "explain":
         from .witness import explain_region
         run = asyncio.run(explain_region(args.chip, _scope(args), server, model=args.model, transcript=transcript,
