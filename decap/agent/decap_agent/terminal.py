@@ -45,7 +45,7 @@ async def _hunt(client: Client, chip: str, transcript: Transcript | None) -> dic
         proof = {"error": str(proof)}
     found = proof.get("verdict") in ("failed", "refuted")
     if transcript is not None:
-        transcript.record("note", kind="terminal", intent="hunt", chip=chip,
+        transcript.record("note", intent="hunt", chip=chip,
                           flags=[r.get("condition") for r in rows],
                           result={"verdict": proof.get("verdict"), "counterexample": proof.get("counterexample")})
     return {"intent": "hunt", "chip": chip, "flags": rows,
