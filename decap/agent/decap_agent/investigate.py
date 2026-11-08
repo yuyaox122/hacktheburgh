@@ -181,6 +181,13 @@ def build_investigator(model: Any = None) -> Agent[Deps, Report]:
             return {"error": f"no block {block}; known: {', '.join(list(ctx.deps.blocks)[:30])}"}
         ctx.deps.explains += 1
         from .witness import explain_region
+        try:
+            return await _explain_block(ctx, block)
+        except Exception as e:   # one bad block must not abort the whole investigation
+            return {"block": block, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+    async def _explain_block(ctx: RunContext[Deps], block: str) -> dict:
+        from .witness import explain_region
         from .scoping import best_attempt, mcp_caller, narrow_scope
         scope, aimed = await narrow_scope(mcp_caller(ctx.deps.client), ctx.deps.chip, {"cone_of": block})
         if aimed:
@@ -213,8 +220,10 @@ def build_investigator(model: Any = None) -> Agent[Deps, Report]:
         res = await _hunt(ctx.deps.client, ctx.deps.chip, None)
         meaning = {"found": "Hidden logic exists: the counterexample is the input that wakes it.",
                    "clean": "Proven equivalent to the author's source: no hidden logic.",
-                   "inconclusive": "NOT proven clean: only random testing passed, so a rare trigger could still hide. "
-                                   "Say this plainly; do not write 'no hidden logic'."}[res["verdict"]]
+                   "inconclusive": "NOT proven clean: only a 20-cycle bounded check passed, so a rare trigger could "
+                                   "still hide. Say this plainly; do not write 'no hidden logic'.",
+                   "unchecked": "NOTHING was checked against the author's source (no source, or an error). Make no "
+                                "claim about hidden logic either way."}.get(res["verdict"], "unknown result")
         out = {"verdict": res["verdict"], "meaning": meaning, "proof": res["proof"], "counterexample": res.get("counterexample"),
                "flags": [{k: f.get(k) for k in ("id", "condition", "rate", "line") if k in f} for f in res["flags"][:8]]}
         ctx.deps.trail.append({"hunt": out})
@@ -246,18 +255,22 @@ async def investigate(server: FastMCP, chip: str, request: str, *, transcript: T
     rep: Report = result.output
     # never let the report claim more than Yosys gave: downgrade 'yosys' findings with no matching verdict
     proven_blocks = {t["explain"]["block"] for t in deps.trail if "explain" in t and t["explain"]["verdict"] in ("proven", "inductive")}
+    hunt_ran = any("hunt" in t for t in deps.trail)
     findings = []
-    for f in rep.findings:
+    for f in rep.findings:   # a green pill must be backed by this run's tool results (review of #95)
         d = f.model_dump()
-        if d["evidence"] == "yosys" and d.get("block") and d["block"] not in proven_blocks and \
-                not any("explain" in t and t["explain"]["block"] == d["block"] for t in deps.trail):
+        if d["evidence"] == "yosys" and (d.get("block") not in proven_blocks if d.get("block") else not proven_blocks):
+            d["evidence"] = "unverified"
+        elif d["evidence"] == "proof" and not hunt_ran:
             d["evidence"] = "unverified"
         findings.append(d)
     hunt_v = next((t["hunt"]["verdict"] for t in deps.trail if "hunt" in t), None)
     summary = rep.summary
-    if hunt_v == "inconclusive":   # the model's prose may still round "tested" up to "clean": correct it, visibly
-        findings.append({"text": "The hidden-logic check is inconclusive: random testing passed, but no proof against "
-                                 "the author's source was possible, so a rare trigger is not ruled out.",
+    if hunt_v in ("inconclusive", "unchecked"):   # the model's prose may still round "tested" up to "clean": correct it, visibly
+        findings.append({"text": ("The hidden-logic check is inconclusive: a 20-cycle bounded check passed, but no proof "
+                                  "against the author's source was possible, so a rare trigger is not ruled out.")
+                         if hunt_v == "inconclusive" else
+                         "Hidden logic was not checked: there is no author source to compare against for this chip.",
                          "evidence": "proof", "block": None})
         honest = re.search(r"inconclusive|not proven|tested, not|only (random )?test", summary, re.I)
         if not honest and re.search(r"no hidden|clean|nothing hidden|no (extra|suspicious)|no .*payload", summary, re.I):

@@ -196,14 +196,19 @@ export class Terminal {
         (v === "failed" && cex ? `${cexHtml(Object.fromEntries(Object.entries(cex).filter(([k]) => k !== "step")))}<span class="ag-sub">Inputs at that step. On clocked logic the cause can be an earlier input that a register is still holding.</span>` : "");
     } else if (d.intent === "drill") {
       const ok = d.verdict === "caught";
+      const f = d.flag as { condition?: string; line?: number } | null | undefined;
       block.innerHTML = `<span class="pill ${ok ? "ok" : "bad"}">${ok ? "caught" : esc(String(d.verdict))}</span>` +
-        `<span class="ag-sub">${ok ? "We hid a backdoor in a copy of this chip; the agent found the exact input that wakes it — blind." : "The planted trigger was not recovered."}</span>` +
-        `<span class="ag-answer">${esc(String(d.note ?? ""))}</span>${cexHtml(d.counterexample ?? null)}`;
+        `<span class="ag-sub">${ok ? "We hid a trigger in a copy of this chip. The hunting tools never got the value, and they found it." : "The planted trigger was not recovered."}</span>` +
+        (f?.condition ? `<code>${esc(f.condition)}${f.line ? `   // line ${esc(f.line)}` : ""}</code>` : "") +
+        `<span class="ag-answer">${esc(String(d.note ?? ""))}</span>` +
+        (d.error ? `<span class="ag-sub">${esc(String(d.error))}</span>` : "");
     } else     if (d.intent === "hunt") {
       block.innerHTML = d.verdict === "found"
         ? `<span class="pill warn">found</span><span class="ag-sub">hidden logic — equivalence with the author's source fails</span>${cexHtml(d.counterexample ?? null)}`
         : d.verdict === "clean"
-          ? `<span class="pill ok">clean</span><span class="ag-sub">proven equivalent to the author's source — no hidden logic</span>`
+          ? `<span class="pill ok">clean</span><span class="ag-sub">proven equivalent to the author's source: no hidden logic</span>`
+        : d.verdict === "unchecked"
+          ? `<span class="pill">not checked</span><span class="ag-sub">${esc(d.note ?? "nothing could be checked against the author's source")}</span>`
           : `<span class="pill warn">inconclusive</span><span class="ag-sub">${esc(d.note ?? "only random testing passed; that is not a proof")}` +
             `${Array.isArray(d.flags) && d.flags.length ? ` · ${d.flags.length} rare condition${d.flags.length > 1 ? "s" : ""} still open` : ""}</span>`;
     } else if (d.intent === "investigate") {

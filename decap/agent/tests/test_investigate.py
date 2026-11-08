@@ -20,12 +20,16 @@ def test_intent_routing():
     assert _intent("what is the slowest path?") == "investigate"
     assert _intent("hello") == "guide"
     assert _intent("red-team drill: plant a trigger") == "drill"
+    # review of #95: questions about THIS chip's planted logic are hunts, not drills
+    assert _intent("was a backdoor planted in this chip?") == "hunt"
+    assert _intent("is anything planted here?") == "hunt"
+    assert _intent("implanted trigger?") == "hunt"
 
 
 def test_drill_catches_the_planted_value():
     from decap_agent.terminal import run_command
     res = asyncio.run(run_command(build_server(create_stub_app()), "stub_counter8", "red team drill"))
-    assert res["intent"] == "drill" and res["caught"] and res["found_value"] == res["secret"]
+    assert res["intent"] == "drill" and res["caught"] and str(res["secret"]) in res["flag"]["condition"]
 
 
 def _scripted(calls):
@@ -179,3 +183,39 @@ def test_number_guard_allows_neighbours_of_constants():
     m = "count0 <= (count0 == 6'd59) ? 6'd0 : count0 + 1'b1;"
     assert unsupported_numbers(Plain(headline="", explanation="It goes 0 to 59, so 60 steps; 58 then 59.", example=""), m) == []
     assert unsupported_numbers(Plain(headline="", explanation="It fires at 137.", example=""), m) == [137]
+
+
+def test_hunt_without_author_source_is_unchecked_not_tested(monkeypatch):
+    from decap_agent import terminal
+
+    async def fake_call(client, tool, **args):
+        return (False, {"flagged": []}) if tool == "find_rare_triggers" else (False, {"verdict": "unavailable", "detail": "no author source"})
+    monkeypatch.setattr(terminal, "_call", fake_call)
+    res = asyncio.run(terminal._hunt(None, "chip", None))
+    assert res["verdict"] == "unchecked" and "random" not in (res["note"] or "") and "no author source" in res["note"]
+
+
+def test_drill_is_not_fooled_by_a_last_step_counterexample(monkeypatch):
+    """Real core: the proof fails, but its counterexample is the last trace step (ui_in=23), not N."""
+    from decap_agent import terminal
+    import secrets
+    monkeypatch.setattr(secrets, "randbelow", lambda k: 162)          # N = 163
+
+    async def fake_call(client, tool, **args):
+        if tool == "plant_trigger":
+            return False, {"chip": "tt_um_mac+t163", "inserted_cells": 9}
+        if tool == "find_rare_triggers":
+            return False, {"flagged": [{"id": "f0", "condition": "ui_in == 8'd163", "line": 12}]}
+        return False, {"verdict": "failed", "counterexample": {"step": 20, "ui_in": 23, "ena": 0}}
+    monkeypatch.setattr(terminal, "_call", fake_call)
+    res = asyncio.run(terminal._drill(None, "tt_um_mac", None))
+    assert res["caught"] and res["flag"]["id"] == "f0"
+
+
+def test_lifecycle_keeps_stopped(tmp_path):
+    from decap_agent import lifecycle
+    p = tmp_path / "s.json"
+    sid = lifecycle.start("c", "hunt", "x", sessions_path=p)
+    lifecycle.stop(sid, sessions_path=p)
+    lifecycle.finish(sid, "done", sessions_path=p, verdict="clean")
+    assert lifecycle.get(sid, sessions_path=p)["status"] == "stopped"

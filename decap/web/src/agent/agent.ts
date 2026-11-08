@@ -99,6 +99,8 @@ export function suggestEditFrom(run: Run, verilog: string): boolean {
 
 /** A comment on a line. With `ask`, a claim is formalised + proved; a request ("check the logic") is explained. */
 const REQUEST = /\b(check|explain|what|how|why|is this|optimize|optimise|understand|review|verify|look at|tell me|describe|does this|can you|fix|improve)\b/i;
+/** "verify that X equals Y" / "check: X is high when Y" state a claim to prove, so they go to formalise + Yosys. */
+const CLAIMISH = /^\s*(verify|check|confirm|prove)\b\s*:?\s*(that\s+)?.*\b(equals?|==|!=|is (always|never|high|low|set|cleared|0|1)|goes (high|low)|when|whenever|implies|only if)\b/i;
 
 export async function comment(chip: string, line: number, text: string, ask: boolean, scope: Scope | null) {
   store.addComment({ id: uid(), chip, line, author: "you", text, ts: Date.now() });
@@ -106,7 +108,7 @@ export async function comment(chip: string, line: number, text: string, ask: boo
   const sentence = text.replace(/@agent\b/gi, "").trim();
 
   // A request/question ("check the logic of this part") → explain the region, not prove a vacuous tautology.
-  if (REQUEST.test(sentence)) {
+  if (REQUEST.test(sentence) && !CLAIMISH.test(sentence)) {
     if (!scope) return;
     const reply = store.addComment({ id: uid(), chip, line, author: "agent", text: "Explaining this part and asking Yosys to check the explanation…", ts: Date.now(), pending: true });
     try {
@@ -115,8 +117,8 @@ export async function comment(chip: string, line: number, text: string, ask: boo
       store.updateComment(reply.id, {
         pending: false,
         text: run.plain ? `${run.plain.headline}. ${run.plain.explanation}${run.plain.verdict === "proven" || run.plain.verdict === "inductive" || run.plain.source === "code" ? "" : ` (${verdictWords(run.plain.verdict)})`}`
-          : run.explained ? (last.english ?? last.claim ?? "") : verdictWords(run.final ?? "", true),
-        claim: last.claim ?? undefined, english: last.english, verdict: run.final, counterexample: last.counterexample ?? null,
+          : run.explained ? (last?.english ?? last?.claim ?? "") : verdictWords(run.final ?? "", true),
+        claim: last?.claim ?? undefined, english: last?.english, verdict: run.final, counterexample: last?.counterexample ?? null,
       });
     } catch (e) {
       store.updateComment(reply.id, { pending: false, text: (e as Error).message });

@@ -27,9 +27,10 @@ from fastmcp import Client, FastMCP
 from . import lifecycle
 from .transcript import Transcript, result_payload
 
-DRILL = re.compile(r"drill|red.?team|plant|test (yourself|the hunt)|prove it works", re.I)
+# Explicit drill wording only: "was a backdoor planted here?" is a hunt on THIS chip, not a drill (review of #95).
+DRILL = re.compile(r"\bdrill\b|red.?team|test (yourself|the hunt)|prove (that )?it works", re.I)
 HUNT = re.compile(r"hidden|trigger|trojan|suspicious|backdoor|planted|anything (extra|wrong|else|weird)", re.I)
-INVESTIGATE = re.compile(r"audit|investigat|review|report|overview|walk me|tour|everything|plan|deep|\bthen\b|\band\b.*\?|"
+INVESTIGATE = re.compile(r"audit|investigat|review|report|overview|walk me|tour|everything|\bplan\b|deep|\bthen\b|\band\b.*\?|"
                          r"slow|speed|timing|critical|faster|memory|remember|what do (you|we) know|"
                          r"\btest(ing)?\b|\bcheck\b|\bverify\b|analy[sz]|continue|keep going|next step", re.I)
 EXPLAIN = re.compile(r"explain|what does|optimize|optimise|suggest|understand|how does|summari", re.I)
@@ -50,10 +51,13 @@ async def _hunt(client: Client, chip: str, transcript: Transcript | None) -> dic
     rows = [] if err else flags.get("flagged", [])
     err2, proof = await _call(client, "prove_equiv", chip=chip, against="author_source")
     if err2:
-        proof = {"error": str(proof)}
-    found = proof.get("verdict") in ("failed", "refuted")
-    # 'clean' needs a proof. 'tested' is random simulation: a 1-in-2^17 trigger can slip past it, so say so.
-    verdict = "found" if found else "clean" if proof.get("verdict") in ("proven", "inductive") else "inconclusive"
+        proof = {"error": str(proof)[:300]}
+    v = proof.get("verdict")
+    found = v in ("failed", "refuted")
+    # clean needs a proof. 'tested' = a 20-cycle bounded check from reset (Yosys SAT), not a proof. 'unavailable' or
+    # an error means nothing was checked against the author's source at all, so make no testing claim.
+    verdict = ("found" if found else "clean" if v in ("proven", "inductive") else
+               "inconclusive" if v == "tested" else "unchecked")
     if transcript is not None:
         transcript.record("note", intent="hunt", chip=chip,
                           flags=[r.get("condition") for r in rows],
@@ -62,16 +66,21 @@ async def _hunt(client: Client, chip: str, transcript: Transcript | None) -> dic
             "verdict": verdict,
             "proof": proof.get("verdict", proof.get("error")),
             "counterexample": proof.get("counterexample"),
-            "note": ("a counterexample here is the exact input that wakes the hidden logic" if found else
+            "note": ("the proof failed: the chip does something its author's source doesn't" if found else
                      None if verdict == "clean" else
-                     "no proof was possible (only random testing passed); rare flags above are still open")}
+                     "only a 20-cycle bounded check from reset passed, which is not a proof; rare flags above are still open"
+                     if verdict == "inconclusive" else
+                     "nothing could be checked against the author's source (" + str(proof.get("detail") or proof.get("error")
+                     or "no source")[:160] + "); the rare flags above are unexamined")}
 
 
 async def _drill(client: Client, chip: str, transcript: Transcript | None) -> dict:
     """Red-team drill: plant a trigger at a secret random value in a copy of the chip, then hunt it blind.
 
-    The hunt never sees N: find_rare_triggers and prove_equiv only get the planted chip id (names are re-stripped,
-    so nothing marks the new cells). The drill passes only if the proof's counterexample is exactly N."""
+    The hunting tools never get N: find_rare_triggers and prove_equiv only get the planted chip id (names are
+    re-stripped, so nothing marks the new cells). Caught = the proof against the author's source FAILS (something
+    extra exists) AND a flagged rare condition names N. The proof's counterexample alone is not used: on real chips it
+    is the last step of a 20-cycle trace, not the trigger value (review of #95: tt_um_mac+t163 gave ui_in=23)."""
     import secrets
     n = secrets.randbelow(254) + 1
     if "+t" in chip:
@@ -82,14 +91,20 @@ async def _drill(client: Client, chip: str, transcript: Transcript | None) -> di
     target = planted["chip"]
     if transcript is not None:
         transcript.record("thought", step="drill", why=f"planted a hidden trigger in a copy ({target.split('+')[0]}+t?, "
-                                                        f"{planted.get('inserted_cells')} cells, value sealed); now hunting it blind")
+                                                        f"{planted.get('inserted_cells')} cells); the hunting tools don't get the value")
     res = await _hunt(client, target, transcript)
-    got = (res.get("counterexample") or {}).get("ui_in")
-    caught = res["verdict"] == "found" and got == n
-    return {**res, "intent": "drill", "base": chip, "secret": n, "found_value": got, "caught": caught,
-            "verdict": "caught" if caught else "missed",
-            "note": (f"planted at ui_in == {n}; the proof's counterexample is ui_in == {got}" if got is not None
-                     else f"planted at ui_in == {n}; no counterexample came back")}
+    want = re.compile(rf"(?<![\w'])(8'd{n}|8'h{n:02x}|8'b{n:08b}|{n})(?![\w'])", re.I)
+    cond = lambda f: str(f.get("condition") or f.get("fires_when") or f.get("code_line") or "")   # real core / stub keys
+    hit = next((f for f in res["flags"] if want.search(cond(f))), None)
+    if hit is not None:
+        hit = {"id": hit.get("id") or hit.get("cone"), "condition": cond(hit), "line": hit.get("line")}
+    caught = res["verdict"] == "found" and hit is not None
+    why = (f"the proof against the author's source failed, and flag {hit.get('id')} reads `{hit.get('condition')}`"
+           + (f" at line {hit.get('line')}" if hit.get("line") else "") if caught else
+           "the proof found extra logic, but no flagged condition names the secret value" if res["verdict"] == "found" else
+           f"the proof didn't fail ({res.get('proof')})")
+    return {**res, "intent": "drill", "base": chip, "secret": n, "caught": caught, "flag": hit,
+            "verdict": "caught" if caught else "missed", "note": f"planted at ui_in == {n}; {why}"}
 
 
 def _intent(command: str) -> str:
