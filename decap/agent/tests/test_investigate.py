@@ -104,3 +104,71 @@ def test_upload_check_routes_and_fails_soft_without_the_real_core():
     res = asyncio.run(run_command(build_server(create_stub_app()), "not_a_chip", "check my file",
                                   verilog="module m(); endmodule", filename="m.v"))
     assert res["intent"] == "check_source" and res["verdict"] == "unavailable" and res["detail"]
+
+
+def test_best_attempt_beats_last_attempt():
+    from decap_agent.scoping import best_attempt
+    tries = [{"verdict": "partial", "attempt": 0}, {"verdict": "unparseable", "attempt": 1}, {"verdict": "refuted", "attempt": 2}]
+    assert best_attempt(tries)["attempt"] == 0
+    assert best_attempt(tries + [{"verdict": "proven", "attempt": 3}])["attempt"] == 3
+
+
+def test_block_scope_is_narrowed_to_the_blocks_own_register():
+    from decap_agent.scoping import narrow_scope
+    region = {"outputs": [{"name": "next(data0)", "kind": "register_next", "flops": ["q_c1"]},
+                          {"name": "next(shreg0)", "kind": "register_next", "flops": ["q_c7", "q_c8"]},
+                          {"name": "next(state0)", "kind": "register_next", "flops": ["q_c9"]}]}
+    blocks = {"blocks": [{"id": "b3", "text": "shreg0 <= {shreg0[14:0], ui_in[2]};"}]}
+
+    async def call(tool, **args):
+        return region if tool == "get_region" else blocks
+    scope, why = asyncio.run(narrow_scope(call, "chip", {"cone_of": "b3"}))
+    assert scope == {"cells": ["c7", "c8"]} and "shreg0" in why
+    assert asyncio.run(narrow_scope(call, "chip", {"cone_of": "uo_out[0]"})) == ({"cone_of": "uo_out[0]"}, None)
+
+
+def test_claims_can_select_bits_of_next_and_use_helper_wires():
+    from decap_agent.claim_expr import expand_temps, parse, temp_defs, temps_used, unparse
+    assert unparse(parse("next(shreg0)[0] == shreg0[1]")) == "next(shreg0[0]) == shreg0[1]"
+    assert unparse(parse("next(x[7:4])[1] == 1'b1")) == "next(x[5]) == 1'd1"
+    d = temp_defs("wire t4 = a & b;\n wire t5 = (q | t4);")
+    assert temps_used(["y <= t5;"], d) == ["t4", "t5"]
+    assert expand_temps("n == t5", d) == "n == ((q | (a & b)))"
+
+
+def test_mux_claim_precedence_is_fixed_to_what_the_writer_meant():
+    from decap_agent.claim_expr import fix_mux_precedence
+    assert fix_mux_precedence("next(d) == (u == 1) ? d : s") == "next(d) == ((u == 1) ? d : s)"
+    assert fix_mux_precedence("next(a) == b && next(d) == c ? d : s") == "(next(a) == b) && (next(d) == (c ? d : s))"
+    assert fix_mux_precedence("next(d) == (c ? d : s)") == "next(d) == (c ? d : s)"   # already right: unchanged
+    assert fix_mux_precedence("not a claim ((") == "not a claim (("
+
+
+def test_heldout_chips_are_refused_to_interactive_agents(monkeypatch):
+    from decap_agent import heldout
+    monkeypatch.setattr(heldout, "_cache", {"tt_um_secret"})
+    monkeypatch.delenv("DECAP_HELDOUT_OK", raising=False)
+    assert "held-out" in heldout.refusal("decompile", {"chip": "tt_um_secret"})
+    assert "held-out" in heldout.refusal("prove_equiv", {"chip": "tt_um_secret+t9", "against": "author_source"})
+    assert heldout.refusal("benchmark", {})
+    assert heldout.refusal("decompile", {"chip": "tt_um_dev"}) is None
+    monkeypatch.setenv("DECAP_HELDOUT_OK", "1")                       # the frozen bench
+    assert heldout.refusal("decompile", {"chip": "tt_um_secret"}) is None
+
+
+def test_guard_is_live_in_the_mcp_server(monkeypatch):
+    from fastmcp import Client
+    from decap_agent import heldout
+    monkeypatch.setattr(heldout, "_cache", {"stub_counter8"})
+    monkeypatch.delenv("DECAP_HELDOUT_OK", raising=False)
+
+    async def go():
+        async with Client(build_server(create_stub_app())) as c:
+            return await c.call_tool("decompile", {"chip": "stub_counter8"}, raise_on_error=False)
+    r = asyncio.run(go())
+    assert r.is_error and "held-out" in str(r.content[0].text)
+
+
+def test_real_split_file_is_found():
+    from decap_agent.heldout import SPLIT
+    assert SPLIT.exists()

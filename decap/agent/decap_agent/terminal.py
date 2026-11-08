@@ -30,7 +30,8 @@ from .transcript import Transcript, result_payload
 DRILL = re.compile(r"drill|red.?team|plant|test (yourself|the hunt)|prove it works", re.I)
 HUNT = re.compile(r"hidden|trigger|trojan|suspicious|backdoor|planted|anything (extra|wrong|else|weird)", re.I)
 INVESTIGATE = re.compile(r"audit|investigat|review|report|overview|walk me|tour|everything|plan|deep|\bthen\b|\band\b.*\?|"
-                         r"slow|speed|timing|critical|faster|memory|remember|what do (you|we) know", re.I)
+                         r"slow|speed|timing|critical|faster|memory|remember|what do (you|we) know|"
+                         r"\btest(ing)?\b|\bcheck\b|\bverify\b|analy[sz]|continue|keep going|next step", re.I)
 EXPLAIN = re.compile(r"explain|what does|optimize|optimise|suggest|understand|how does|summari", re.I)
 
 
@@ -157,16 +158,20 @@ async def _run_command(server: FastMCP, chip: str, command: str, *, transcript: 
             block = re.search(r"\b(b\d+)\b", command)
             out = re.search(r"\b(u[io]_out|u[io]_in)(?:\[\d+(?::\d+)?\])?", command)
             scope = {"cone_of": block.group(1)} if block else ({"cone_of": out.group(0)} if out else {})
+            from .scoping import best_attempt, mcp_caller, narrow_scope
+            scope, why = await narrow_scope(mcp_caller(client), chip, scope)
+            if why and transcript is not None:
+                transcript.record("thought", step="aim", why=why)
             run = await explain_region(chip, scope, server, model=model, transcript=transcript,
                                        max_refine=max_refine, register=False)
-            final = run["attempts"][-1]
+            final = best_attempt(run["attempts"])
             from .plain import plain_for_run
             plain = await plain_for_run(client, run, model=model)
             return {"intent": "explain", "chip": chip, "scope": scope, "plain": plain,
-                    "verdict": run["final"], "claim": final.get("claim"), "english": final.get("english"),
-                    "counterexample": final.get("counterexample"), "explained": run["explained"],
+                    "verdict": final.get("verdict"), "claim": final.get("claim"), "english": final.get("english"),
+                    "counterexample": final.get("counterexample"), "explained": final.get("verdict") in ("proven", "inductive") and bool((final.get("credit") or {}).get("cleared")),
                     "attempts": len(run["attempts"])}
 
         from .guide import ask
-        answer = await ask(command, server, transcript, model=model)
+        answer = await ask(command, server, transcript, model=model, chip=chip)
         return {"intent": "guide", "chip": chip, "answer": answer}

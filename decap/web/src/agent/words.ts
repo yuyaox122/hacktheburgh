@@ -1,4 +1,5 @@
 import { esc } from "../ui/dom";
+import { md } from "./md";
 import type { Plain } from "./api";
 
 // What each checker verdict means, said the way a person would say it. Used wherever the agent replies in words.
@@ -22,7 +23,7 @@ const SAID: Record<string, string> = {
 export function verdictWords(v: string, failed = false): string {
   const s = SAID[v] ?? `The checker said "${v}".`;
   if (!failed) return s;
-  if (v === "refuted") return "My best explanation was wrong: " + s.charAt(0).toLowerCase() + s.slice(1) + " Try running it again.";
+  if (v === "refuted") return "My best explanation was wrong. " + s + " Try running it again.";
   return "I couldn't get an explanation proven. " + s;
 }
 
@@ -32,7 +33,7 @@ export function plainHtml(p: Plain | null | undefined): string {
   const proven = p.verdict === "proven" || p.verdict === "inductive";
   return `<div class="ag-plain">
     <b class="ag-plain-h">${esc(p.headline)}</b>
-    <p>${esc(p.explanation)}</p>
+    ${md(p.explanation)}
     ${p.example ? `<p class="ag-eg"><span>e.g.</span><code>${esc(p.example)}</code></p>` : ""}
     <span class="ag-by">${proven ? "Plain-English reading of the proven claim below" : `Plain-English reading. ${esc(verdictWords(p.verdict))}`}</span>
   </div>`;

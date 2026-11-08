@@ -180,20 +180,25 @@ def build_investigator(model: Any = None) -> Agent[Deps, Report]:
             return {"error": f"no block {block}; known: {', '.join(list(ctx.deps.blocks)[:30])}"}
         ctx.deps.explains += 1
         from .witness import explain_region
-        run = await explain_region(ctx.deps.chip, {"cone_of": block}, ctx.deps.server, model=ctx.deps.model,
+        from .scoping import best_attempt, mcp_caller, narrow_scope
+        scope, aimed = await narrow_scope(mcp_caller(ctx.deps.client), ctx.deps.chip, {"cone_of": block})
+        if aimed:
+            _thought(ctx.deps, "aim", aimed)
+        run = await explain_region(ctx.deps.chip, scope, ctx.deps.server, model=ctx.deps.model,
                                    transcript=ctx.deps.transcript, max_refine=ctx.deps.max_refine, register=False)
-        final = run["attempts"][-1]
-        out = {"block": block, "verdict": run["final"], "explained": run["explained"], "claim": final.get("claim"),
+        final = best_attempt(run["attempts"])
+        verdict = final.get("verdict")
+        out = {"block": block, "verdict": verdict, "explained": verdict in ("proven", "inductive"), "claim": final.get("claim"),
                "english": final.get("english"), "attempts": len(run["attempts"]),
-               "counterexample": final.get("counterexample") if run["final"] == "refuted" else None,
+               "counterexample": final.get("counterexample") if verdict == "refuted" else None,
                "credit_reason": (final.get("credit") or {}).get("reason")}
         from .plain import plain_for_run
         plain = await plain_for_run(ctx.deps.client, run, model=ctx.deps.model)
         if plain:   # the readable version, so the report can say it the same way the card does
             out["plain"] = {"headline": plain["headline"], "explanation": plain["explanation"]}
         ctx.deps.trail.append({"explain": out})
-        if run["final"] in ("proven", "inductive", "refuted"):
-            remember(ctx.deps.chip, {"key": f"explain:{block}", "verdict": run["final"], "claim": final.get("claim"),
+        if verdict in ("proven", "inductive", "partial"):   # a true fact is worth remembering, a refuted guess isn't
+            remember(ctx.deps.chip, {"key": f"explain:{block}", "verdict": verdict, "claim": final.get("claim"),
                                      "english": final.get("english")}, ctx.deps.transcript)
         return out
 

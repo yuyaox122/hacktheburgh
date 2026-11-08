@@ -126,6 +126,7 @@ export class AgentPanel {
     return `<article class="ag-run ${r.status}${r.explained ? " explained" : ""}" data-run="${r.id}">
       <header><b>${esc(r.label)}</b>${status}<span class="muted">${secs.toFixed(1)} s${r.cached ? " · cached" : ""}</span></header>
       ${r.status === "running" ? `<ol class="ag-steps">${steps || `<li><span class="spin"></span> Reading this part of the chip…</li>`}</ol>` : ""}
+      ${r.note ? `<p class="ag-why">${esc(r.note)}</p>` : ""}
       ${plainHtml(r.plain)}
       ${r.status === "done" && !r.plain && !r.explained ? `<p class="ag-why">${esc(verdictWords(r.final ?? "", true))}</p>` : ""}
       ${r.status !== "running" && (atts || steps) ? `<details class="ag-how"${r.plain ? "" : " open"}><summary>How it was checked (${r.attempts.length} attempt${r.attempts.length === 1 ? "" : "s"})</summary>${steps ? `<ol class="ag-steps">${steps}</ol>` : ""}${atts}</details>` : ""}

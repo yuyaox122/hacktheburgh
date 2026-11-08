@@ -28,12 +28,14 @@ export interface Plain { headline: string; explanation: string; example?: string
 export interface Done {
   final: string; first_draft: string; explained: boolean; proof?: boolean; claim: string | null; english: string | null;
   cells: string[]; cached: boolean; plain?: Plain | null;
+  shown?: string;            // the best attempt's verdict (what people see); `final` is the last one (the bench's)
 }
 
 export type AgentEvent =
   | ({ kind: "tool" } & ToolStep)
   | ({ kind: "claim" } & Attempt)
   | ({ kind: "done" } & Done)
+  | { kind: "thought"; step?: string; why?: string }
   | { kind: "error"; error: string };
 
 /** Interactive runs may refine up to 4 times; the frozen bench keeps the plan's 2 (decap/agent bench). */

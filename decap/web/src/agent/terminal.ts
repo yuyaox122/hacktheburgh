@@ -3,6 +3,7 @@
 // beneath as they land, a `thinking…` spinner, and a bottom status line with a live elapsed timer.
 
 import { esc } from "../ui/dom";
+import { md } from "./md";
 import { cexHtml, pill } from "./codeAgent";
 import type { Plain, TerminalEvent } from "./api";
 import { plainHtml } from "./words";
@@ -208,9 +209,9 @@ export class Terminal {
     } else if (d.intent === "investigate") {
       const tag: Record<string, string> = { yosys: "ok", proof: "ok", structure: "", estimate: "warn", memory: "", unverified: "bad" };
       const fs = (d.findings ?? []).map((f) =>
-        `<li><span class="pill sm ${tag[f.evidence] ?? ""}">${esc(f.evidence)}</span>${f.block ? `<b>${esc(f.block)}</b> ` : ""}${esc(f.text)}</li>`).join("");
+        `<li><span class="pill sm ${tag[f.evidence] ?? ""}">${esc(f.evidence)}</span>${f.block ? `<b>${esc(f.block)}</b> ` : ""}<span class="ag-ftext">${md(f.text)}</span></li>`).join("");
       const nx = (d.next_steps ?? []).map((n) => `<button type="button" class="ag-next" data-cmd="${esc(n)}">${esc(n)}</button>`).join("");
-      block.innerHTML = `<span class="ag-answer">${esc(d.summary ?? "")}</span>` +
+      block.innerHTML = `<div class="ag-answer">${md(d.summary ?? "")}</div>` +
         (fs ? `<ul class="ag-findings">${fs}</ul>` : "") +
         (nx ? `<div class="ag-nexts"><span class="ag-sub">next</span>${nx}</div>` : "");
     } else if (d.intent === "explain" && d.plain) {
@@ -222,7 +223,7 @@ export class Terminal {
         (d.english ? `<span class="ag-sub ag-clamp">${esc(String(d.english))}</span>` : "") +
         (d.verdict === "refuted" ? cexHtml(d.counterexample ?? null) : "");
     } else {
-      block.innerHTML = `<span class="ag-answer">${esc(String(d.answer ?? ""))}</span>`;
+      block.innerHTML = `<div class="ag-answer">${md(String(d.answer ?? ""))}</div>`;
     }
     this.el.append(block);
   }

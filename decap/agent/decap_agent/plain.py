@@ -160,7 +160,8 @@ async def plain_for_run(client, run: dict, model: Any = None) -> dict | None:
 
 
 async def _plain_for_run(client, run: dict, model: Any = None) -> dict | None:
-    final = run["attempts"][-1] if run.get("attempts") else {}
+    from .scoping import best_attempt
+    final = best_attempt(run.get("attempts") or [])
     if final.get("verdict") not in EXPLAINABLE:
         return None
     from .transcript import result_payload

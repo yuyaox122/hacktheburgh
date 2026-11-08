@@ -111,15 +111,23 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> F
 
         async def go():
             try:
-                run = await explain_region(body.chip, body.scope, server, model=model, transcript=t,
-                                           max_refine=body.max_refine, cache_dir=cache if body.cache else None)
-                final = run["attempts"][-1]
                 from fastmcp import Client
                 from .plain import plain_for_run
+                from .scoping import best_attempt, mcp_caller, narrow_scope
+                async with Client(server) as client:
+                    scope, why = await narrow_scope(mcp_caller(client), body.chip, body.scope)
+                if why:
+                    t.record("thought", step="aim", why=why)
+                run = await explain_region(body.chip, scope, server, model=model, transcript=t,
+                                           max_refine=body.max_refine, cache_dir=cache if body.cache else None)
+                final = best_attempt(run["attempts"])     # what people see; the bench keeps run["final"]
                 async with Client(server) as client:
                     plain = await plain_for_run(client, run, model=model)
-                await queue.put({"kind": "done", "chip": body.chip, "scope": body.scope, "first_draft": run["first_draft"],
-                                 "final": run["final"], "explained": run["explained"], "proof": run.get("proof"),
+                shown = final.get("verdict")
+                await queue.put({"kind": "done", "chip": body.chip, "scope": body.scope, "aimed": scope if why else None,
+                                 "first_draft": run["first_draft"], "final": run["final"], "shown": shown,
+                                 "explained": shown in ("proven", "inductive") and bool((final.get("credit") or {}).get("cleared")),
+                                 "proof": run.get("proof"),
                                  "claim": final.get("claim"), "english": final.get("english"), "cells": final.get("cells"),
                                  "cached": run.get("cached", False), "plain": plain})
             except Exception as e:  # shown to the user, not swallowed

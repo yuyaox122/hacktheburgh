@@ -30,15 +30,27 @@ RULES = """You are Decap's guide. Decap turns chips back into readable code and 
   sentences, plain words, no em dashes, no hype words (crucial, robust, seamless, essentially)."""
 
 
-def build_guide(server: FastMCP, model: Any = None) -> Agent:
-    return Agent(model or os.environ.get("DECAP_GUIDE_MODEL", DEFAULT_MODEL),
-                 instructions=RULES, toolsets=[MCPToolset(server)], defer_model_check=True)
+# Cross-chip and chip-changing tools. When the guide is answering about one chip (the website, the terminal) it
+# doesn't get these: asked to "continue testing", it once ran `benchmark` and wandered onto other chips.
+CROSS_CHIP = {"benchmark", "list_chips", "plant_trigger", "remove_trigger", "compare_design", "strip_names"}
 
 
-async def ask(question: str, server: FastMCP, transcript: Transcript | None = None, model: Any = None) -> str:
-    agent = build_guide(server, model)
+def build_guide(server: FastMCP, model: Any = None, chip: str | None = None) -> Agent:
+    tools = MCPToolset(server)
+    if chip:
+        tools = tools.filtered(lambda ctx, tool: tool.name not in CROSS_CHIP)
+    from .cli_model import resolve
+    return Agent(resolve(model, os.environ.get("DECAP_GUIDE_MODEL", DEFAULT_MODEL)),
+                 instructions=RULES, toolsets=[tools], defer_model_check=True)
+
+
+async def ask(question: str, server: FastMCP, transcript: Transcript | None = None, model: Any = None,
+              chip: str | None = None) -> str:
+    agent = build_guide(server, model, chip)
     t0 = time.perf_counter()
-    result = await agent.run(question)
+    prompt = (f"The user is looking at chip {chip!r}. Answer about this chip only, with its id in every tool call.\n\n"
+              f"{question}") if chip else question
+    result = await agent.run(prompt)
     usage = result.usage  # a property in pydantic-ai >= 2.66 (pinned in pyproject)
     if transcript is not None:
         transcript.record(

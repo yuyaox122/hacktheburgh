@@ -188,6 +188,13 @@ class Parser:
                 raise ClaimSyntaxError("next(...) takes a register or flip-flop name")
             node = self.select(Node("next", name=name))
             self.take(")")
+            if self.peek() == "[":   # next(x)[i] / next(x)[hi:lo]: one bit of the register's next value
+                inner_lo = node.lo or 0
+                had = node.hi is not None
+                node.hi = node.lo = None
+                self.select(node)
+                if had:              # next(x[7:4])[1] = next(x[5])
+                    node.hi, node.lo = node.hi + inner_lo, node.lo + inner_lo
             return node
         if kind == "name" and text != "when":
             return self.select(Node("sig", name=text))
@@ -220,6 +227,66 @@ def _strip_trailing_prose(src: str) -> str:
         else:
             break
     return s
+
+
+_TEMP_DEF = re.compile(r"\bwire\s+(?:\[[^\]]*\]\s*)?(t\d+)\s*=\s*(.+?);", re.S)
+_TEMP_REF = re.compile(r"\bt\d+\b")
+
+
+def temp_defs(verilog: str) -> dict[str, str]:
+    """The decompiler's helper wires: {'t5': '((shreg7[1] | state0[3]) & t4) | ...'}."""
+    return {m.group(1): " ".join(m.group(2).split()) for m in _TEMP_DEF.finditer(verilog or "")}
+
+
+def temps_used(texts: list[str], defs: dict[str, str]) -> list[str]:
+    """Every helper wire the given lines rely on, directly or through other helpers, in definition order."""
+    seen: set[str] = set()
+    todo = [t for x in texts for t in _TEMP_REF.findall(x) if t in defs]
+    while todo:
+        t = todo.pop()
+        if t not in seen:
+            seen.add(t)
+            todo += [u for u in _TEMP_REF.findall(defs[t]) if u in defs]
+    return [t for t in defs if t in seen]
+
+
+def expand_temps(claim: str, defs: dict[str, str], depth: int = 32) -> str:
+    """Replace helper-wire names in a claim by their (parenthesised) definitions until none are left."""
+    for _ in range(depth):
+        new = _TEMP_REF.sub(lambda m: f"({defs[m.group(0)]})" if m.group(0) in defs else m.group(0), claim)
+        if new == claim:
+            return new
+        claim = new
+    return claim
+
+
+def _fix_mux(n: Node) -> tuple[Node, bool]:
+    if n.op == "&&":
+        a, fa = _fix_mux(n.args[0])
+        b, fb = _fix_mux(n.args[1])
+        return Node("&&", [a, b]), fa or fb
+    if n.op == "?:" and n.args[0].op == "&&":   # `p && next(d) == c ? a : b`: the ?: swallowed the whole conjunction
+        left, right = n.args[0].args
+        r, fr = _fix_mux(Node("?:", [right, n.args[1], n.args[2]]))
+        if fr:
+            left, _ = _fix_mux(left)
+            return Node("&&", [left, r]), True
+    if n.op == "?:" and n.args[0].op == "==":
+        lhs, cond = n.args[0].args
+        if lhs.op == "next" or (lhs.op == "sig" and lhs.name in ("uo_out", "uio_out", "uio_oe")):
+            return Node("==", [lhs, Node("?:", [cond, n.args[1], n.args[2]])]), True
+    return n, False
+
+
+def fix_mux_precedence(src: str) -> str:
+    """`next(r) == c ? a : b` means `(next(r) == c) ? a : b` in Verilog (?: binds loosest), which is never what the
+    writer meant: they meant `next(r) == (c ? a : b)`. Add those parentheses, per conjunct. Anything else, or a claim
+    that doesn't parse, comes back unchanged."""
+    try:
+        node, fixed = _fix_mux(parse(src))
+    except ClaimSyntaxError:
+        return src
+    return unparse(node) if fixed else src
 
 
 def parse(src: str) -> Node:

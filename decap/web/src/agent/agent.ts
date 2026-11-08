@@ -57,8 +57,10 @@ export async function runAgent(o: StartOpts): Promise<Run> {
       } else if (e.kind === "claim") {
         run.attempts.push(e);
         if (e.cells?.length) run.cells = e.cells;
+      } else if (e.kind === "thought") {
+        run.note = e.why;
       } else if (e.kind === "done") {
-        run.status = "done"; run.final = e.final; run.explained = e.explained; run.cached = e.cached; run.plain = e.plain ?? null; run.t1 = Date.now();
+        run.status = "done"; run.final = e.shown ?? e.final; run.explained = e.explained; run.cached = e.cached; run.plain = e.plain ?? null; run.t1 = Date.now();
         if (e.cells?.length) run.cells = e.cells;
       } else if (e.kind === "error") {
         run.status = "error"; run.error = e.error; run.t1 = Date.now();

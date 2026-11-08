@@ -354,6 +354,8 @@ def main(argv: list[str] | None = None) -> int:
             print("[decap] refusing to score the held-out split without --frozen (post the freeze hash first)",
                   file=sys.stderr)
             return 2
+        if args.split == "test":
+            os.environ["DECAP_HELDOUT_OK"] = "1"   # the frozen bench is the one thing allowed past heldout.py
         chips = [r["chip"] for r in rows if r.get("split") == args.split]
         if args.chips:
             want = args.chips.split(",")

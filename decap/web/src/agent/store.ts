@@ -20,6 +20,7 @@ export interface Run {
   final?: string;
   explained?: boolean;
   plain?: Plain | null;
+  note?: string;            // e.g. how the agent aimed itself ("b3 touches 4 registers; explaining shreg0")
   cells: string[];
   error?: string;
   cached?: boolean;
