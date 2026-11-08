@@ -1,12 +1,14 @@
-// The agent inside the decompiled-Verilog pane: a hover toolbar on every line (Explain · Suggest edit · Comment),
+// The agent inside the decompiled-Verilog pane: a hover toolbar on every line (Explain · Suggest edit · Comment · Ideas),
 // comment threads under lines (claude.ai-style; @agent asks the agent), suggested edits as a diff with Accept /
-// Dismiss, and accepted edits shown in place of the lines they replace. Re-applied after every render of the pane.
+// Dismiss, Ideas threads (ideas.ts: the agent proposes edits, Yosys reviews the ones you apply), and accepted edits
+// shown in place of the lines they replace. Re-applied after every render of the pane.
 
 import type { ChipResult } from "../data/types";
 import { md } from "./md";
 import { $, $$, esc, hiVerilog, toast } from "../ui/dom";
 import { comment, regionForLine, runAgent, suggestEditFrom } from "./agent";
 import { store, type Comment, type Edit } from "./store";
+import * as ideas from "./ideas";
 
 export interface CodeHost {
   readonly chip: string;
@@ -32,11 +34,11 @@ export const pill = (v?: string | null) => {
   const [t, c] = VERDICT[v ?? ""] ?? [v ?? "…", ""];
   return `<span class="pill ${c}">${esc(t)}</span>`;
 };
-export function cexHtml(c?: Record<string, number> | null): string {
+export function cexHtml(c?: Record<string, number> | null, label = "Breaks at"): string {
   if (!c) return "";
   const shown = Object.entries(c).filter(([k]) => !k.startsWith("q_"));
   const hidden = Object.keys(c).length - shown.length;
-  return `<div class="ag-cex"><span class="ag-lbl">Breaks at</span>${shown.map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join("")}${hidden ? `<span class="muted">+${hidden} flip-flop bits</span>` : ""}</div>`;
+  return `<div class="ag-cex"><span class="ag-lbl">${esc(label)}</span>${shown.map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join("")}${hidden ? `<span class="muted">+${hidden} flip-flop bits</span>` : ""}</div>`;
 }
 const when = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -46,6 +48,9 @@ export function decorateCode(host: CodeHost) {
   const ol = $<HTMLOListElement>("#cpCode", host.el);
   if (!r || !ol) return;
   bindOnce(host);
+  // keep the caret of a half-typed comment or ask across the repaint
+  const typing = document.activeElement instanceof HTMLTextAreaElement && ol.contains(document.activeElement) ? document.activeElement : null;
+  const caret = typing ? { id: typing.id, value: typing.value, a: typing.selectionStart, b: typing.selectionEnd } : null;
   $$(".ag-row", ol).forEach((x) => x.remove());
   $$("li[data-ln]", ol).forEach((li) => { li.classList.remove("ag-replaced", "ag-v-ok", "ag-v-bad", "ag-v-warn", "ag-orig-shown"); li.querySelector(".ag-cbub")?.remove(); });
 
@@ -61,8 +66,10 @@ export function decorateCode(host: CodeHost) {
   const after = new Map<number, string[]>();   // line -> rows to insert after it
   const push = (ln: number, h: string) => { const a = after.get(ln) ?? []; a.push(h); after.set(ln, a); };
 
-  for (const e of store.edits(host.chip)) {
-    if (e.state === "accepted") {
+  const edits = ideas.shownEdits(host), basis = ideas.basisOf(host);
+  for (const e of edits) {
+    if (e.state === "reviewing" || e.state === "reviewed") push(e.lines[1], ideas.reviewRow(e, basis));
+    else if (e.state === "accepted") {
       const open = showOriginal.has(e.id);
       for (let ln = e.lines[0]; ln <= e.lines[1]; ln++) ol.querySelector(`li[data-ln="${ln}"]`)?.classList.add(open ? "ag-orig-shown" : "ag-replaced");
       push(e.lines[1], acceptedRow(e, open));
@@ -76,9 +83,20 @@ export function decorateCode(host: CodeHost) {
     const li = ol.querySelector(`li[data-ln="${ln}"]`);
     if (li && cs.length) li.insertAdjacentHTML("beforeend", `<button type="button" class="ag-cbub" data-ag="thread" data-line="${ln}" title="${cs.length} comment${cs.length > 1 ? "s" : ""}">${cs.length}</button>`);
   }
+  for (const t of store.ideaThreads(ideas.variantKey(host))) push(t.line, ideas.threadRow(t, edits));
   for (const [ln, rows] of after) ol.querySelector(`li[data-ln="${ln}"]`)?.insertAdjacentHTML("afterend", rows.join(""));
+  const back = caret ? ol.querySelector<HTMLTextAreaElement>(`#${caret.id}`) : null;
+  if (back && caret) { back.value = caret.value; back.focus({ preventScroll: true }); back.setSelectionRange(caret.a, caret.b); }
   const ta = composer?.chip === host.chip ? ol.querySelector<HTMLTextAreaElement>(`#ag-c-${composer.line}`) : null;
-  if (ta && document.activeElement !== ta && !ta.value) ta.focus({ preventScroll: true });
+  if (!back && ta && document.activeElement !== ta && !ta.value) ta.focus({ preventScroll: true });
+  const ita = ideas.focusThread ? ol.querySelector<HTMLTextAreaElement>(`#ag-i-${ideas.focusThread}`) : null;
+  if (ita) { ideas.clearFocus(); ita.focus({ preventScroll: true }); ita.closest("li")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  // "Download edited .v" in the pane header once any edit is kept
+  const head = ol.closest(".pane")?.querySelector(".pane-h");
+  const dl = head?.querySelector("[data-ag=download]");
+  const kept = edits.some((e) => e.state === "accepted");
+  if (kept && head && !dl) head.insertAdjacentHTML("beforeend", `<button class="btn sm" type="button" data-ag="download" title="Save the Verilog shown, with your kept edits, as a .v file">Download edited .v</button>`);
+  else if (!kept) dl?.remove();
 }
 
 function suggestedRow(e: Edit): string {
@@ -90,9 +108,10 @@ function suggestedRow(e: Edit): string {
 }
 
 function acceptedRow(e: Edit, open: boolean): string {
+  const tag = e.kind === "idea" ? `Your edit${e.title ? `: ${esc(e.title)}` : ""} · replaces lines ${e.lines[0]}–${e.lines[1]}` : `Agent edit · replaces lines ${e.lines[0]}–${e.lines[1]}`;
   return `<li class="ag-row ag-edit accepted" data-edit="${e.id}">
-    <div class="ag-code">${e.replacement.map((t) => `<div>${hiVerilog(t) || " "}</div>`).join("")}</div>
-    <div class="ag-actions"><span class="ag-tag">Agent edit · replaces lines ${e.lines[0]}–${e.lines[1]}</span><button type="button" class="btn sm" data-ag="orig" data-id="${e.id}">${open ? "Hide" : "Show"} original</button><button type="button" class="btn sm" data-ag="cells" data-id="${e.id}">Show its cells</button><button type="button" class="btn sm" data-ag="undo" data-id="${e.id}">Undo</button></div>
+    <div class="ag-code">${e.replacement.map((t) => `<div>${hiVerilog(t) || " "}</div>`).join("") || `<div class="muted">(lines removed)</div>`}</div>
+    <div class="ag-actions"><span class="ag-tag">${tag}</span>${e.kind === "idea" ? ideas.keptNote(e) : ""}<button type="button" class="btn sm" data-ag="orig" data-id="${e.id}">${open ? "Hide" : "Show"} original</button>${e.cells.length ? `<button type="button" class="btn sm" data-ag="cells" data-id="${e.id}">Show its cells</button>` : ""}<button type="button" class="btn sm" data-ag="undo" data-id="${e.id}">Undo</button></div>
   </li>`;
 }
 
@@ -124,21 +143,46 @@ function bindOnce(host: CodeHost) {
     if (!b) return;
     ev.stopPropagation();
     const id = b.dataset.id ?? "", line = +(b.dataset.line ?? 0);
-    const edit = store.edits(host.chip).find((e) => e.id === id);
+    const edit = store.edit(id);
     switch (b.dataset.ag) {
-      case "accept": store.setEdit(id, "accepted"); toast("Edit accepted: the Verilog now shows the proven version; its cells are blue in 3D.", "good"); break;
+      case "accept": {
+        const k = edit && ideas.keptIdeaClash(host, edit.lines);
+        if (k) { toast(`This edit overlaps your kept edit on lines ${k.lines[0]}–${k.lines[1]}. Undo that one first.`, "bad"); break; }
+        store.setEdit(id, "accepted"); toast("Edit accepted: the Verilog now shows the proven version; its cells are blue in 3D.", "good"); break;
+      }
       case "dismiss": store.setEdit(id, "dismissed"); break;
       case "undo": store.setEdit(id, "dismissed"); showOriginal.delete(id); break;
       case "orig": showOriginal.has(id) ? showOriginal.delete(id) : showOriginal.add(id); decorateCode(host); break;
       case "cells": if (edit) host.highlightFromGuide({ cells: edit.cells }); break;
       case "thread": case "reply": composer = { chip: host.chip, line }; decorateCode(host); break;
       case "cancel": composer = null; decorateCode(host); break;
+      case "keep": ideas.keep(host, id); break;
+      case "review": void ideas.review(host, id); break;
+      case "idea-apply": void ideas.applyIdea(host, b.dataset.thread!, b.dataset.idea!); break;
+      case "ideas-close": ideas.drafts.delete(b.dataset.thread!); store.removeIdeaThread(b.dataset.thread!); break;
+      case "download": ideas.download(host); break;
     }
+  });
+  host.el.addEventListener("input", (ev) => {
+    const ta = ev.target as HTMLElement;
+    const f = ta.closest<HTMLFormElement>("form.ag-ideas-compose");
+    if (f && ta instanceof HTMLTextAreaElement) ideas.drafts.set(f.dataset.thread!, ta.value);
+  });
+  host.el.addEventListener("keydown", (ev) => {
+    const f = (ev.target as HTMLElement).closest<HTMLFormElement>("form.ag-ideas-compose");
+    if (f && ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); f.requestSubmit(); }
   });
   host.el.addEventListener("submit", (ev) => {
     const f = (ev.target as HTMLElement).closest<HTMLFormElement>("form.ag-compose");
     if (!f) return;
     ev.preventDefault();
+    if (f.classList.contains("ag-ideas-compose")) {
+      const id = f.dataset.thread!, ta = f.querySelector("textarea"), text = (ideas.drafts.get(id) ?? ta?.value ?? "").trim();
+      ideas.drafts.delete(id);
+      if (ta) ta.value = "";   // sent: the repaint below must not put it back
+      void ideas.askIdeas(host, id, text);
+      return;
+    }
     const ln = +f.dataset.line!;
     const text = $<HTMLTextAreaElement>(`#ag-c-${ln}`, f).value.trim();
     if (!text) return;
@@ -162,13 +206,13 @@ function ensureHover(): HTMLDivElement {
   hover.className = "ag-hover";
   hover.setAttribute("role", "toolbar");
   hover.setAttribute("aria-label", "Agent actions for this line");
-  hover.innerHTML = `<button type="button" data-h="explain" title="An agent explains this line's region in one line; Yosys checks it">Explain</button><button type="button" data-h="edit" title="Explain, then propose the proven line as an edit">Suggest edit</button><button type="button" data-h="comment" title="Comment on this line (the agent can check it)">Comment</button>`;
+  hover.innerHTML = `<button type="button" data-h="explain" title="An agent explains this line's region in one line; Yosys checks it">Explain</button><button type="button" data-h="edit" title="Explain, then propose the proven line as an edit">Suggest edit</button><button type="button" data-h="comment" title="Comment on this line (the agent can check it)">Comment</button><button type="button" data-h="ideas" title="Ask the agent for 2-3 ways to change this part; Yosys reviews any edit you apply">Ideas</button>`;
   hover.addEventListener("mouseenter", () => clearTimeout(hideT));
   hover.addEventListener("mouseleave", () => { hideT = window.setTimeout(hideHover, 250); });
   hover.addEventListener("click", (ev) => {
     const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-h]");
     if (!b || !hoverHost) return;
-    act(hoverHost, hoverLine, b.dataset.h as "explain" | "edit" | "comment");
+    act(hoverHost, hoverLine, b.dataset.h as "explain" | "edit" | "comment" | "ideas");
     hideHover();
   });
   document.body.append(hover);
@@ -190,10 +234,11 @@ function showHover(host: CodeHost, li: HTMLElement) {
 function hideHover() { hover?.classList.remove("on"); }
 
 /** Start the agent from a line (also used by the command palette). */
-export function act(host: CodeHost, ln: number, what: "explain" | "edit" | "comment") {
+export function act(host: CodeHost, ln: number, what: "explain" | "edit" | "comment" | "ideas") {
   const r = host.result;
   if (!r) return;
   if (what === "comment") { composer = { chip: host.chip, line: ln }; decorateCode(host); return; }
+  if (what === "ideas") { ideas.openIdeas(host, ln); return; }
   const reg = regionForLine(r, ln);
   if (!reg) { toast(`Line ${ln} has no gates under it to explain.`); return; }
   host.highlightFromGuide({ cells: reg.block?.cells ?? (reg.scope.cells ?? []) });

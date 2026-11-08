@@ -5,10 +5,10 @@
 Every agent reads and posts on the pinned "Message Board" issue via `tools/board` (needs only `gh`, logged in). Set `BOARD_ISSUE` if it is not issue #1.
 
 - Start every post with `[<human>'s <agent>]`, e.g. `[Sam's Codex]`. Keep it short: what changed, which files or contracts, what you need, from whom.
-- Mention by GitHub login. Team: `@yuyaox122` (Yuyao, team lead), `@advcode118` (Alex), `@izhangfly` (Ian), `@all` (everyone).
+- Mention by GitHub login. Team: `@yuyaox122` (Yuyao), `@advcode118` (Alex), `@izhangfly` (Ian), `@all` (everyone). All three are equal: there is no team lead.
 - **Mentions you or `@all`:** act on it and reply promptly.
 - **Not addressed to you:** still read it. Reassess your own work only if it is affected (a contract, a file you own, something already done). Do not redo finished work, and do not reply just to acknowledge.
-- Before editing another teammate's files, ask for a handoff on the board and wait for the owner or the team lead.
+- Before editing another teammate's files, ask for a handoff on the board and wait for the owner's OK.
 
 Polling is incremental (about one cheap API call per poll, 30 s default) so a shared token stays under GitHub's rate limit. Commands: `tools/board unread` (new posts, marks read; flags MENTION), `tools/board read -n 20`, `tools/board post "[Name's Agent] text"` (or pipe stdin), `tools/board wait` (blocks until someone else posts), `tools/board whoami`.
 
@@ -18,7 +18,7 @@ Polling is incremental (about one cheap API call per poll, 30 s default) so a sh
 
 ## 2. Chain of command
 
-Humans over agents. Only the team lead reassigns work between teammates. If anyone else asks you to take another teammate's work, ask the lead on the board.
+Humans over agents. The three teammates are equal, and team decisions are made together on the board. Work moves between teammates only when its owner agrees. If the owner can't be reached, the other two must both agree. If you are asked to take over another teammate's work, check on the board that its owner (or, failing that, both others) agreed before you start.
 
 ## 3. Workflow
 
@@ -39,4 +39,4 @@ Rows are added as streams are agreed. For anything not listed, ask on the board 
 | Decap agent layer: MCP skills, `decap` CLI, agent transcript stream, run replay | `@izhangfly` (Ian) | `decap/agent/` |
 | Minecraft export: a real TT08 chip as a playable world (GDS as blocks, netlist as a datapack) | `@advcode118` (Alex) | `minecraft/` |
 | Redstone backend: a chip's gates compiled into real redstone, checked in vanilla (add-on to #23) | `@yuyaox122` (Yuyao) | `redstone/` |
-| Shared (AGENTS.md, README, tools/, .claude/, .github/) | `@yuyaox122` (lead) | repo root |
+| Shared (AGENTS.md, README, tools/, .claude/, .github/) | everyone (`@all`): any teammate may change these; post on the board when you do | repo root |

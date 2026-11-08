@@ -26,6 +26,9 @@ ol.code li.ag-orig-shown .t { text-decoration: line-through; color: var(--muted)
 ol.code li.ag-row { display: block; white-space: normal; cursor: default; padding: 8px 12px 10px 54px; font-family: var(--font-body);
   font-size: 13px; line-height: 1.5; background: var(--panel); border-block: 1px solid var(--line); }
 ol.code li.ag-row:hover { background: var(--panel); }
+/* the code list's wrap mode (pre-wrap) and last-cell alignment (justify-self: end) must not reach these rows */
+body:not(.nowrap) ol.code li.ag-row, body.nowrap ol.code li.ag-row { white-space: normal; }
+ol.code li.ag-row > :last-child { justify-self: auto; }
 .ag-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .ag-actions label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .ag-actions .grow { flex: 1; }
@@ -54,6 +57,24 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .ag-cex code { font: 12px/1.4 var(--font-mono); padding: 2px 6px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--del) 40%, transparent);
   background: color-mix(in srgb, var(--del) 8%, transparent); font-variant-numeric: tabular-nums; }
 .ag-lbl { font: 600 10.5px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--del); }
+
+/* Ideas threads: idea cards with a diff and Apply; applied ideas wait under their lines for Yosys, then Keep / Undo */
+.ag-ideas > .ag-edit-h { margin-bottom: 6px; }
+.ag-ideas-list { display: grid; gap: 8px; margin-top: 4px; }
+.ag-idea { display: grid; gap: 4px; padding: 8px 10px; border-radius: 7px; background: var(--panel); border: 1px solid var(--line); }
+.ag-idea p, .ag-review p { margin: 0; }
+.ag-idea .ag-actions { margin-top: 2px; }
+.ag-intent { font: 600 10.5px/1 var(--font-body); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px;
+  border: 1px solid var(--line-2); color: var(--muted); }
+.ag-intent.change { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.ag-cm.err { border-color: color-mix(in srgb, var(--del) 45%, var(--line)); }
+.ag-cm.err p { color: var(--fg); }
+ol.code li.ag-edit.ag-review { border-left: 3px solid var(--accent); padding-left: 51px; }
+ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
+.ag-review > [role=status] > p, .ag-review > [role=status] > .ag-cex, .ag-review > [role=status] > .callout { margin-top: 6px; max-width: 760px; }
+.ag-detail { font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+.ag-busy { color: var(--muted); }
+.ag-diff .add.muted { color: var(--faint); }
 
 /* ---------- agent drawer ---------- */
 .ag-drawer { width: min(480px, 100%); }

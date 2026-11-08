@@ -87,8 +87,13 @@ def start(chip: str | None, kind: str, command: str | None = None, *,
 
 def finish(session_id: str, status: str = "done", *, transcript: Transcript | None = None,
            sessions_path: Path | None = None, **done: Any) -> None:
-    """Mark a session done/error/stopped; extra kwargs (intent, verdict, error) land on the record."""
-    _update(session_id, {"status": status, **done}, _registry(transcript, sessions_path))
+    """Mark a session done/error/stopped; extra kwargs (intent, verdict, error) land on the record.
+    A session someone stopped stays 'stopped' (its result is still recorded)."""
+    reg = _registry(transcript, sessions_path)
+    cur = next((s for s in _load(reg) if s.get("id") == session_id), None)
+    if cur is not None and cur.get("status") == "stopped":
+        status = "stopped"
+    _update(session_id, {"status": status, **done}, reg)
 
 
 def stop(session_id: str, sessions_path: Path | None = None) -> bool:

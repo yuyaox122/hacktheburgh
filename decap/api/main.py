@@ -159,11 +159,17 @@ def chat_web(body: ChatIn = Body(default_factory=ChatIn)) -> dict:
     if not guide.available():
         raise HTTPException(503, "The guide needs an LLM key (ANTHROPIC_API_KEY) on the server.")
     chip = body.context.get("chip") or body.context.get("variant_id")
-    if not chip:
-        raise HTTPException(400, "context.chip is required")
-    v = _get(chip)
+    selection = body.context.get("selection")
+    design = body.context.get("design")
+    if not chip and isinstance(design, str) and service.parse_id(design)[0] in service.known_chips():
+        chip = design                 # Explore sends the chip it shows as `design`;
+        selection = body.context      # keep its live facts (selected cell, pin values, cycle) for the guide
     try:
-        return guide.ask(v.result, body.messages, body.context.get("selection"))
+        if not chip:   # Results, Compare, Minecraft, or a non-chip demo design: answer from the page's own facts
+            return guide.ask(None, body.messages, page=body.context)
+        return guide.ask(_get(chip).result, body.messages, selection)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:  # API errors: report, don't crash the page
@@ -299,6 +305,27 @@ def prove_equiv(chip: str, body: ProveIn = Body(default_factory=ProveIn)) -> dic
     counterexample input (e.g. {'ui_in': 137}) where they differ."""
     out = service.prove_against(chip, body.against)
     return {"chip": chip, "against": body.against, **out}
+
+
+class ReviewEditIn(BaseModel):
+    verilog: str = Field(description="The FULL edited module (the decompiled Verilog from `decompile` with your changes). "
+                                     "Keep the module name and the port list exactly; only the logic inside may change.")
+    baseline: str | None = Field(default=None, description="Optional: the full module BEFORE this edit (with edits you "
+                                 "already kept). Then `this_edit` also says what this edit alone does compared with it.")
+
+
+@app.post("/api/chips/{chip}/review-edit", operation_id="review_edit")
+def review_edit(chip: str, body: ReviewEditIn) -> dict:
+    """Check an edited copy of this chip's decompiled Verilog against the chip's real gates with Yosys, so you know
+    what your edit really does before anyone builds it. verdict: 'same' (Yosys proved it the same circuit for every
+    input and register value, and the ports, clocking and wiring are unchanged), 'tested_same' (no difference in 20
+    clock cycles from reset, NOT proven), 'changed' (behaviour differs; counterexample gives the inputs and clock step
+    where the outputs differ) or 'broken' (doesn't compile, ports changed, a wiring problem such as an undriven wire,
+    two drivers, a loop, a latch or x/z, or Yosys couldn't finish; detail says which). With `baseline`, `this_edit`
+    ({verdict, headline, detail, counterexample}) compares the edit with that text instead. headline and detail are
+    written by the checker; quote them as given. Takes up to 90 s."""
+    _get(chip)
+    return service.review_edit(chip, body.verilog, body.baseline)
 
 
 @app.post("/api/chips/{chip}/simulate", operation_id="simulate")

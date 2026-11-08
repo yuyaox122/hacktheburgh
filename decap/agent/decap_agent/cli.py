@@ -357,6 +357,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.split == "test":
             os.environ["DECAP_HELDOUT_OK"] = "1"   # the frozen bench is the one thing allowed past heldout.py
         chips = [r["chip"] for r in rows if r.get("split") == args.split]
+        if args.split == "test":   # chips an agent already saw before the held-out guard (split.json, hashed by the freeze)
+            seen = set(json.loads(Path("decap/bench/split.json").read_text()).get("witness_exclude", []))
+            chips = [c for c in chips if c not in seen]
         if args.chips:
             want = args.chips.split(",")
             chips = [c for c in chips if c in want]
