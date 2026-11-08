@@ -8,6 +8,7 @@ import { WallPage } from "./ui/wallPage";
 import { ChipPage } from "./ui/chipPage";
 import { ComparePage } from "./ui/comparePage";
 import { MinecraftPage } from "./ui/minecraftPage";
+import { verifyIcon, verifyPage } from "./verify/verifyPage";
 import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
@@ -35,6 +36,7 @@ root.innerHTML = `
     <div class="actions">
       <span class="status" id="apiStatus"><i></i><span>Connecting</span></span>
       <button class="search" type="button" id="btnPal" aria-label="Search and commands">${icon.search}<span class="lbl">Search</span><span class="k">${isMac ? "⌘K" : "Ctrl K"}</span></button>
+      <a class="btn plain" href="#/verify" id="btnVerify" title="Verify a chip: every input pattern at once, then trace a fault to its cell (V)">${verifyIcon}<span>Verify</span></a>
       <button class="btn plain" type="button" id="btnAgent" title="Witness agent: explains a region in one line; Yosys decides (A)">${icon.cube}<span>Agent</span></button>
       <button class="btn plain" type="button" id="btnGuide" title="Ask about what's on screen (G)">${icon.sparkle}<span>Ask</span></button>
       <div class="menuwrap">
@@ -142,6 +144,10 @@ async function route() {
     show(m.el, false, () => m.unmount());
     await m.mount(arg ? decodeURIComponent(arg) : null);
     app.guideContext = () => m.context(); app.guideHighlight = undefined; app.pageCommands = () => [];
+  } else if (r === "verify") {
+    show(verifyPage.el, false, () => verifyPage.unmount());
+    verifyPage.mount(arg ? decodeURIComponent(arg) : null);
+    app.guideContext = undefined; app.guideHighlight = undefined; app.pageCommands = () => [];
   } else { location.hash = "#/stage"; }
 }
 addEventListener("hashchange", route);
@@ -176,6 +182,7 @@ const palette = new Palette((): PaletteCommand[] => [
   { label: "Decompile", key: "3", run: () => (location.hash = "#/chip") },
   { label: "Compare", key: "4", run: () => (location.hash = "#/compare") },
   { label: "Minecraft: build Verilog in redstone", key: "5", run: () => (location.hash = "#/minecraft") },
+  { label: "Verify: check every input, trace a fault to its cell", key: "V", run: () => (location.hash = "#/verify") },
   { label: "Ask the guide", key: "G", run: () => { agentPanel.close(); guide.open(); } },
   { label: "Witness agent panel", key: "A", run: () => { guide.close(); agentPanel.open(); } },
   { label: "Presenter mode", key: "D", run: () => demo.toggle() },
@@ -232,6 +239,7 @@ addEventListener("keydown", (e) => {
   else if (k === "g" || k === "G") { e.preventDefault(); agentPanel.close(); guide.toggle(); }
   else if (k === "a" || k === "A") { e.preventDefault(); guide.close(); agentPanel.toggle(); }
   else if (k === "w" || k === "W") setWrap(!wrapOn());
+  else if (k === "v" || k === "V") location.hash = "#/verify";
   else if (k === "d" || k === "D") demo.toggle();
   else if (app.route === "stage" && stage) {
     if (k === " " && !/^(BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) { e.preventDefault(); stage.isRunning ? stage.pause() : stage.run(); }

@@ -1,11 +1,10 @@
-// Verify page (verify.html): the 4-bit CLA verified on its real 3D layout, the way it scales to big chips.
+// Verify page (#/verify, the "Verify" button in the header): the 4-bit CLA verified on its real 3D layout, the way it scales to big chips.
 // Step 1: the taped-out chip. Every input pattern at once (bit-parallel simulation), compared with a + b + ci,
 //         plus the bench's Yosys proof.
 // Step 2: "rev B", the same layout with one gate changed (a seeded bug). Wrong outputs are traced back through
 //         the netlist in one pass; the top suspects are confirmed by re-simulation. The heatmap is each cell's
 //         fault probability (engine.ts has the model).
 
-import "../styles.css";
 import "./verify.css";
 import { loadDesign } from "../data/load";
 import type { Design, Lib } from "../data/types";
@@ -18,7 +17,8 @@ const SPEED = Number(new URLSearchParams(location.search).get("speed")) || 1;   
 /** Animation beats (ms): simulate (forward wave), compare, trace back (backward wave), confirm. */
 const T = { sim: 900 / SPEED, cmp: 350 / SPEED, trace: 1400 / SPEED, confirm: 600 / SPEED };
 
-const root = document.getElementById("vf")!;
+const root = document.createElement("div");
+root.className = "vf";
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const pct = (p: number) => (p >= 0.995 ? "99" : p < 0.01 && p > 0 ? "<1" : String(Math.round(p * 100)));
 const ms = (x: number) => (x < 0.1 ? "<0.1 ms" : `${x.toFixed(1)} ms`);
@@ -36,7 +36,6 @@ const GREEN = "#30d158", CLEAR = "#2c6e49", FLASH = "#ffffff";
 root.innerHTML = `
   <main class="vf-view" id="vfView"></main>
   <header class="vf-top">
-    <a class="vf-brand" href="/#/stage"><b><span>b</span>ASIC</b><i>Verify</i></a>
     <ol class="vf-steps">
       <li data-step="1"><b>1</b>4-bit CLA <small>as taped out</small></li>
       <li data-step="2"><b>2</b>CLA rev B <small>one change, unknown</small></li>
@@ -65,7 +64,7 @@ root.innerHTML = `
     <button class="vf-btn" id="vfRevB" type="button" disabled>Introduce rev B</button>
     <button class="vf-btn plain" id="vfReplay" type="button" disabled>Replay</button>
   </footer>`;
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector(`#${id}`) as T;
 const btn = (id: string) => $<HTMLButtonElement>(id);
 
 let design: Design, lib: Lib, view: Stage3D;
@@ -73,6 +72,7 @@ let bugCell: Design["cells"][number], bugFrom = "";
 let proof: { method?: string; seconds?: number; proven?: boolean } | null = null;
 let step: 1 | 2 = 1;
 let R: Result | null = null;
+let auto = false;   // #/verify/auto plays both steps hands-free (presenter mode)
 let running = false, selected: string | null = null, shown = 0;
 const level = new Map<string, number>();
 
@@ -236,7 +236,7 @@ function finish(traced: Set<string>) {
       <p>Every combination of a, b and ci gives a + b + ci. Checked in ${ms(total)}.</p>${y}`;
     btn("vfRevB").disabled = false;
     view.setHighlight(null);
-    if (location.hash === "#auto") setTimeout(() => { setStep(2); start(); }, 2500);
+    if (auto) setTimeout(() => { setStep(2); start(); }, 2500);
   } else {
     $("vfSusSec").hidden = false; renderSuspects(1);
     const s = R!.suspects[0], tied = R!.suspects.filter((x) => Math.abs(x.p - s.p) < 1e-6);
@@ -281,14 +281,25 @@ async function boot() {
   $("vfReplay").onclick = () => start();
   $("vfSus").onclick = (e) => { const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-id]"); if (li && !running) { select(li.dataset.id!); view.flyTo([li.dataset.id!]); } };
   addEventListener("keydown", (e) => {
-    if (running) return;
-    if (e.key === " ") { e.preventDefault(); (step === 1 && shown ? $("vfRevB") : $("vfGo")).click(); }
-    if (e.key === "1") $("vfGo").click();
-    if (e.key === "2") $("vfRevB").click();
+    if (!root.isConnected || running || e.key !== " " || /^(INPUT|TEXTAREA|BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) return;
+    e.preventDefault(); (step === 1 && shown ? $("vfRevB") : $("vfGo")).click();
   });
   addEventListener("resize", () => drawStrip(shown / (R?.patterns || 1)));
-  // #auto plays both steps hands-free (presenter mode); #revb jumps straight to the buggy chip.
-  if (location.hash === "#auto") setTimeout(() => $("vfGo").click(), 1500);
-  if (location.hash === "#revb") setTimeout(() => { setStep(2); start(); }, 1500);
 }
-boot().catch((e) => { root.insertAdjacentHTML("beforeend", `<div class="vf-err">Couldn't load the CLA layout (${esc(String(e?.message ?? e))}). Run <code>npm run stage-data</code> in decap/web.</div>`); });
+
+/** Header button icon: a shield with a tick, in the style of ui/icons.ts. */
+export const verifyIcon = `<svg class="ic" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6L8 1.8Z"/><path d="m5.6 8 1.7 1.7 3.2-3.4"/></svg>`;
+
+let booted: Promise<void> | null = null;
+/** The page for the app router: build the 3D view on first mount (it needs the element on screen). */
+export const verifyPage = {
+  el: root,
+  mount(arg: string | null = null) {
+    auto = arg === "auto";
+    if (!booted) booted = boot().catch((e) => { root.insertAdjacentHTML("beforeend", `<div class="vf-err">Couldn't load the CLA layout (${esc(String(e?.message ?? e))}). Run <code>npm run stage-data</code> in decap/web.</div>`); });
+    else view?.start();
+    if (auto) void booted.then(() => setTimeout(() => { if (!running) { setStep(1); start(); } }, 1200));
+    if (arg === "revb") void booted.then(() => setTimeout(() => { if (!running) { setStep(2); start(); } }, 1200));
+  },
+  unmount() { view?.stop(); },
+};
