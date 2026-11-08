@@ -87,6 +87,7 @@ export async function command(chip: string, text: string, onEvent: (e: TerminalE
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
+  let ended = false;   // a stream that stops without done/error must not leave the panel spinning
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -95,9 +96,13 @@ export async function command(chip: string, text: string, onEvent: (e: TerminalE
     while ((i = buf.indexOf("\n\n")) >= 0) {
       const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
       const line = chunk.split("\n").find((l) => l.startsWith("data: "));
-      if (line) onEvent(JSON.parse(line.slice(6)) as TerminalEvent);
+      if (!line) continue;
+      const ev = JSON.parse(line.slice(6)) as TerminalEvent;
+      if (ev.kind === "done" || ev.kind === "error") ended = true;
+      onEvent(ev);
     }
   }
+  if (!ended) throw new Error("The agent's stream ended before it finished. Try again.");
 }
 
 /** The judge's / commenter's sentence -> one formal line (+ the checker's verdict when check = true). */

@@ -74,7 +74,8 @@ def tool_summary(tool: str, r: Any) -> str | None:
             return "no rare conditions" if n == 0 else f"{n} rare condition{'s' if n > 1 else ''}"
         if tool == "prove_equiv":
             v = r.get("verdict")
-            return f"{v}" + (" (random testing only, not a proof)" if v == "tested" else "")
+            return f"{v}" + (" (20-cycle bounded check, not a proof)" if v == "tested" else
+                             " (no author source to compare)" if v == "unavailable" else "")
         if tool == "critical_path":
             d = r.get("delay_ns_estimate")
             return f"~{d} ns to {r.get('ends_at', '?')}" if d is not None else None
@@ -185,7 +186,7 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, read
         from .terminal import run_command
         queue: asyncio.Queue = asyncio.Queue()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        t = Transcript(runs / f"terminal-{stamp}-{body.chip}.jsonl")
+        t = Transcript(runs / f"terminal-{stamp}-{_safe(body.chip)}.jsonl")
         t.listeners.append(lambda ev: queue.put_nowait(_slim(ev)))
         server = build_server(core_app, transcript=t)
 

@@ -38,7 +38,8 @@ export class AgentPanel {
       <div class="ag-intro" id="agIntro"></div>
       <div class="ag-termbox">
         <div class="ag-term" id="agTerm" hidden></div>
-        <div class="ag-status" id="agStatus"><span class="ag-state ready">ready</span><span class="ag-elapsed"></span></div>
+        <div class="ag-status" id="agStatus"><span class="ag-state ready">ready</span><span class="ag-elapsed"></span>
+          <button type="button" class="btn plain sm" id="agStop" hidden title="Stop this command">Stop</button></div>
         <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
           placeholder="Type a message…" aria-label="Command the chip agent">
           <button class="btn primary" type="submit">Run</button></form>
@@ -55,6 +56,7 @@ export class AgentPanel {
     document.body.append(this.el);
     this.term = new Terminal($("#agTerm", this.el), $("#agStatus", this.el));
     $("#agClose", this.el).addEventListener("click", () => this.close());
+    $("#agStop", this.el).addEventListener("click", () => this.cancel("Stopped."));
     $("#agClear", this.el).addEventListener("click", () => { if (this.chip) store.clear(this.chip); });
     $("#agCmd", this.el).addEventListener("submit", (e) => {
       e.preventDefault();
@@ -74,6 +76,7 @@ export class AgentPanel {
   }
 
   setChip(chip: string | null, verilog?: string) {
+    if (chip !== this.chip) this.cancel();   // don't stream the old chip's result into the new chip's panel
     this.chip = chip;
     verilogIO.setChip(chip);
     if (chip && verilog) this.verilog.set(chip, verilog);
@@ -85,15 +88,32 @@ export class AgentPanel {
   toggle() { this.isOpen ? this.close() : this.open(); }
 
   /** The terminal: run one natural-language command and stream its tool calls + result into the drawer. */
+  private ctrl: AbortController | null = null;
+
+  /** Stop the running command (Stop button, a new command, or switching chips). */
+  private cancel(say?: string) {
+    if (!this.ctrl) return;
+    this.ctrl.abort();
+    this.ctrl = null;
+    this.runSeq++;
+    if (say) this.term.error(say);
+    $("#agStop", this.el).hidden = true;
+  }
+
   private async runCommand(text: string, upload?: { verilog: string; filename: string }, chip = this.chip) {
     if (!chip) return;
     this.open();
+    this.cancel();
     const seq = ++this.runSeq;
+    const ctrl = this.ctrl = new AbortController();
+    $("#agStop", this.el).hidden = false;
     this.term.begin(text);
     try {
-      await command(chip, text, (e: TerminalEvent) => { if (seq === this.runSeq) this.term.event(e); }, undefined, upload);
+      await command(chip, text, (e: TerminalEvent) => { if (seq === this.runSeq) this.term.event(e); }, ctrl.signal, upload);
     } catch (err) {
-      if (seq === this.runSeq) this.term.error((err as Error).message);
+      if (seq === this.runSeq && (err as Error).name !== "AbortError") this.term.error((err as Error).message);
+    } finally {
+      if (this.ctrl === ctrl) { this.ctrl = null; $("#agStop", this.el).hidden = true; }
     }
   }
 
