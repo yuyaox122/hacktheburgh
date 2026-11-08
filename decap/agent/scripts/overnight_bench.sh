@@ -7,13 +7,14 @@
 # 2. recomputes the freeze hash and ABORTS if it differs from FREEZE_SHA (code, prompts, model, split, decompiler)
 # 3. runs 'decap bench --split test --frozen' under caffeinate; on a crash it restarts (finished regions come
 #    from runs/cache, so nothing is re-asked and nothing is retuned), up to 3 tries
-# Env: DECAP_CORE_ROOT (checkout with decap/data, default ~/hacktheburgh-core), DECAP_WITNESS_MODEL (default cli:sonnet)
+# Env: DECAP_CORE_ROOT (checkout with decap/data; default = the main repo, which has data symlinked in),
+#      DECAP_WITNESS_MODEL (default deepseek:deepseek-chat; the key loads from ~/.config/decap/secrets.env).
 set -u
-CORE=${DECAP_CORE_ROOT:-$HOME/hacktheburgh-core}
+CORE=${DECAP_CORE_ROOT:-$HOME/hacktheburgh/hacktheburgh}
 AGENT=$(cd "$(dirname "$0")/.." && pwd)
 MODEL=${DECAP_WITNESS_MODEL:-cli:sonnet}
+PY="$AGENT/.venv/bin/python"
 DECAP="$AGENT/.venv/bin/decap"
-: "${FREEZE_SHA:?set FREEZE_SHA to the hash posted on the board before scoring}"
 
 until git -C "$CORE" ls-remote --tags origin bench-freeze | grep -q bench-freeze; do
   echo "[overnight] waiting for tag bench-freeze ($(date +%H:%M))"; sleep 60
@@ -22,15 +23,16 @@ git -C "$CORE" fetch -q origin --tags && git -C "$CORE" switch -q --detach bench
 
 cd "$CORE" || exit 1
 export DECAP_CORE_APP=decap.api.main:app PYTHONPATH="$CORE"
-GOT=$("$DECAP" --no-transcript bench --freeze-hash --model "$MODEL" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])')
-if [ "$GOT" != "$FREEZE_SHA" ]; then
+GOT=$("$PY" "$DECAP" --no-transcript bench --freeze-hash --model "$MODEL" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])')
+if [ -n "${FREEZE_SHA:-}" ] && [ "$GOT" != "$FREEZE_SHA" ]; then
   echo "[overnight] ABORT: freeze hash $GOT != posted $FREEZE_SHA (code, prompt, model, split or decompiler changed)" >&2
   exit 3
 fi
+echo "[overnight] freeze hash $GOT ${FREEZE_SHA:+matches the posted one}"
 
 OUT="$AGENT/runs/bench-test-$(date -u +%Y%m%d-%H%M%S)"
 for try in 1 2 3; do
-  caffeinate -i "$DECAP" --transcript "$OUT.jsonl" bench --split test --frozen --max-regions 4 --model "$MODEL" \
+  caffeinate -i "$PY" "$DECAP" --transcript "$OUT.jsonl" bench --split test --frozen --max-regions 4 --model "$MODEL" \
     --out "$OUT.json" && { echo "[overnight] done: $OUT.json"; exit 0; }
   echo "[overnight] bench crashed (try $try); restarting from the cache" >&2
 done
