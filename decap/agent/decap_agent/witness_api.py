@@ -264,6 +264,32 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, read
             raise HTTPException(502, "The agent couldn't explain those lines")
         return r
 
+    @app.post("/witness/explain-fix")
+    async def explain_fix(body: dict) -> dict:
+        """Verify page: the agent explains a cell fix the engine found and checked (it decides nothing)."""
+        from fastmcp import Client
+        from pydantic_ai import Agent
+        from .cli_model import resolve
+        from .transcript import result_payload
+        chip, cell = str(body.get("chip", "")), str(body.get("cell", ""))
+        lines = []
+        async with Client(build_server(core_app)) as c:
+            r = await c.call_tool("get_region", {"chip": chip, "scope": {"cells": [cell]}}, raise_on_error=False)
+            reg = None if getattr(r, "is_error", False) else result_payload(r)
+            if isinstance(reg, dict):
+                lines = [f"{f.get('line')}: {f.get('text')}" for f in (reg.get("focus") or [])[:12] if isinstance(f, dict)]
+        agent = Agent(resolve(model, "deepseek:deepseek-chat"), defer_model_check=True, instructions=(
+            "In two or three plain sentences, explain a one-gate repair to an engineer: what this cell does in the "
+            "decompiled code, what the wrong gate did, and why the new gate restores the spec. Quote the numbers "
+            "given; never claim more than they show. No hype, no em dashes."))
+        prompt = (f"Chip {chip}. Cell {cell} was {body.get('from_type')} ({body.get('from_function')}); the fix makes it "
+                  f"{body.get('to_type')} ({body.get('to_function')}).\nDecompiled lines this cell belongs to:\n"
+                  + "\n".join(lines or ["(not found)"])
+                  + f"\nEvidence: {body.get('wrong_before')} wrong of the sampled vectors before; after the fix "
+                    f"{body.get('sampled')} sampled and {body.get('exhaustive')} exhaustive (every input).")
+        out = await agent.run(prompt)
+        return {"text": str(out.output), "lines": lines}
+
     @app.get("/witness/status")
     def status() -> list[dict]:
         """The terminal's /status: recent agent sessions (the same registry as `decap status`)."""
