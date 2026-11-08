@@ -22,15 +22,20 @@ export interface Attempt {
 
 export interface ToolStep { tool: string; args?: Record<string, unknown>; cells?: string[]; lines?: number[]; wall_s?: number; is_error?: boolean }
 
+/** The plain-English reading written after Yosys decided (decap_agent/plain.py). The formal claim stays the source. */
+export interface Plain { headline: string; explanation: string; example?: string; verdict: string }
+
 export interface Done {
   final: string; first_draft: string; explained: boolean; proof?: boolean; claim: string | null; english: string | null;
-  cells: string[]; cached: boolean;
+  cells: string[]; cached: boolean; plain?: Plain | null;
+  shown?: string;            // the best attempt's verdict (what people see); `final` is the last one (the bench's)
 }
 
 export type AgentEvent =
   | ({ kind: "tool" } & ToolStep)
   | ({ kind: "claim" } & Attempt)
   | ({ kind: "done" } & Done)
+  | { kind: "thought"; step?: string; why?: string }
   | { kind: "error"; error: string };
 
 /** Interactive runs may refine up to 4 times; the frozen bench keeps the plan's 2 (decap/agent bench). */
@@ -68,9 +73,10 @@ export interface Formal {
 export type TerminalEvent = AgentEvent | ({ kind: "done" } & Record<string, unknown>) | { kind: "note"; intent: string; text?: string };
 
 /** A natural-language command for the chip agent (the terminal): 'is anything hidden?', 'what does block b0 do?'... */
-export async function command(chip: string, text: string, onEvent: (e: TerminalEvent) => void, signal?: AbortSignal): Promise<void> {
+export async function command(chip: string, text: string, onEvent: (e: TerminalEvent) => void, signal?: AbortSignal,
+                              upload?: { verilog: string; filename: string }): Promise<void> {
   const res = await fetch("/witness/command", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, command: text }), signal,
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, command: text, ...upload }), signal,
   });
   if (!res.ok || !res.body) throw new Error(`The agent service answered ${res.status}. Is 'decap serve' running on port 8791?`);
   const reader = res.body.getReader();

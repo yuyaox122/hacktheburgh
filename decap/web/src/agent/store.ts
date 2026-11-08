@@ -2,7 +2,7 @@
 // Verilog, and comment threads on lines. Kept in localStorage per browser (a hackathon demo, not shared state), and
 // broadcast to whichever view is open so the Verilog pane and the 3D Stage repaint together.
 
-import type { Attempt, Scope, ToolStep } from "./api";
+import type { Attempt, Plain, Scope, ToolStep } from "./api";
 
 export type Origin = "line" | "edit" | "block" | "stage" | "comment" | "palette";
 
@@ -19,6 +19,8 @@ export interface Run {
   attempts: Attempt[];
   final?: string;
   explained?: boolean;
+  plain?: Plain | null;
+  note?: string;            // e.g. how the agent aimed itself ("b3 touches 4 registers; explaining shreg0")
   cells: string[];
   error?: string;
   cached?: boolean;

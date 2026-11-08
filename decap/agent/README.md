@@ -2,59 +2,181 @@
 
 Owner: **@izhangfly** (AGENTS.md section 4). The rest of `decap/` is Yuyao's core.
 
-This layer lets any AI agent use Decap's tools, and lets the judges watch it happen:
+The core reads a chip. This layer puts an AI agent on top of it and makes the agent's work checkable. The agent
+is called **Witness**. It can look at any part of a chip and say what it does, but it can't decide whether it is
+right. Yosys decides that. So every sentence Witness shows you has one of three labels: proven, refuted (with
+the input that breaks it), or only tested.
 
-- **MCP server.** Every route of the Decap core API becomes an MCP tool, via FastMCP's `from_fastapi`, so the tools aren't hand-written twice. Claude Code, JetBrains Air/Junie and Cursor can all call them.
-- **Guide agent.** A pydantic-ai agent (spec §6.5) whose *only* source of facts is those tools.
-- **`decap` CLI.** Includes a scripted, no-LLM version of the demo's judge moment.
-- **Transcript.** One JSONL event per tool call or agent answer, from any client. It feeds the UI's live timeline (SSE), replay, and the data for any calibration work.
+What's in here:
 
-**Status: v0.3 adds the Witness region agent loop (below), stub-checked. v0.2 was verified against Yuyao's real core** (branch `4-decap-build`; 13 tools generated from its API). On the real Tiny Tapeout chip `tt_um_Electom_cla_4bits`, `decap demo --n 137` does the following in about 3 s:
-1. plants 137 (9 cells, proven);
-2. finds `ui_in == 8'd137` at `assign uo_out[0] = state0[2] | (ui_in == 8'd137);`;
-3. proves the netlist against the author's source: **failed**, with counterexample `ui_in = 137`;
-4. runs `remove_trigger`: **proven**.
-
-Without a core, a STUB (`decap_agent/stub_core.py`, a made-up counter, every result `"source": "stub"`) is served instead. The stub also models **region scope**, which the real core doesn't have yet.
-
-```bash
-# from a checkout of 4-decap-build whose decap/data/ is fetched (cd decap && python -m ingest.fetch); needs `brew install yosys`
-export DECAP_CORE_APP=decap.api.main:app PYTHONPATH=$PWD
-decap/agent/.venv/bin/decap demo --n 137          # real chip (first dev chip, or --chip tt_um_mac)
-DECAP_REAL_CORE_ROOT=$PWD decap/agent/.venv/bin/pytest -q decap/agent/tests   # includes the real-core test
-```
-
-**Strict arguments:** the FastAPI bridge only *warns* and drops arguments a tool doesn't have, so an agent that misspells `scope` or `against` would silently get the default. `StrictArgsMiddleware` turns that into a tool error that lists the valid arguments.
+- **MCP server.** Every route of the core API becomes a tool that Claude Code, JetBrains Air/Junie or Cursor can
+  call. FastMCP's `from_fastapi` generates them, so nothing is written twice.
+- **Witness, the region agent.** Point it at a region and it proposes one claim about it. Yosys checks the claim,
+  and if it's wrong the agent gets the counterexample and tries again.
+- **The Witness terminal.** Type what you want in plain English. Simple asks run a fixed flow. Bigger ones go to
+  an investigator that plans its own steps.
+- **`decap` CLI.** The same things from a shell, plus a no-LLM version of the demo.
+- **Transcript.** Every tool call and answer becomes one JSONL line, whichever client made it. The UI streams it,
+  replay re-runs it, and the bench scores it.
 
 ## Quick start
 
 ```bash
 cd decap/agent
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/decap tools                 # what agents see
-.venv/bin/decap demo --n 137          # plant 137 → find it → prove it, no LLM
-.venv/bin/decap call find_rare_triggers -a chip=stub_counter8+t137   # (after demo, in one process: use demo)
-.venv/bin/decap ask "Is anything hidden in stub_counter8?"           # needs ANTHROPIC_API_KEY (or set DECAP_GUIDE_MODEL)
+.venv/bin/decap tools                 # the tools an agent sees
+.venv/bin/decap demo --n 137          # plant 137, find it, prove it. No LLM.
+.venv/bin/decap agent-send "audit this chip" --chip tt_um_kapilan_alarm   # needs a model key, see below
 .venv/bin/pytest -q
 ```
 
-Connect Claude Code (from the repo root): `claude mcp add decap -- decap/agent/.venv/bin/decap mcp`.
-For JetBrains Air/Junie or Cursor, add an MCP server with command `decap/agent/.venv/bin/decap` and args `mcp`.
+Without a real core you get a stub (`decap_agent/stub_core.py`): a made-up 8-bit counter, with every result
+marked `"source": "stub"`. To use the real core, run from a checkout whose `decap/data/` is fetched
+(`cd decap && python -m ingest.fetch`) with `brew install yosys` done:
 
-## How it fits
+```bash
+export DECAP_CORE_APP=decap.api.main:app PYTHONPATH=$PWD
+decap/agent/.venv/bin/decap demo --n 137          # first dev chip, or --chip tt_um_mac
+DECAP_REAL_CORE_ROOT=$PWD decap/agent/.venv/bin/pytest -q decap/agent/tests
+```
+
+On `tt_um_Electom_cla_4bits` the demo takes about 3 s. It plants a trigger for 137 (9 cells, proven), finds
+`ui_in == 8'd137` in `assign uo_out[0] = state0[2] | (ui_in == 8'd137);`, proves the netlist against the
+author's source (failed, counterexample `ui_in = 137`), then removes the trigger (proven).
+
+**Models.** Keys live in `~/.config/decap/secrets.env` (or `$DECAP_SECRETS`), never in the repo. DeepSeek
+(`--model deepseek:deepseek-chat`) is the fast default for the terminal. `--model cli:sonnet` runs each request
+through your local `claude` login (`decap_agent/cli_model.py`). Use it when the API key is capped. It can't
+call tools, so it works for the bench and region claims but not for the investigator.
+
+**Connect an IDE agent.** Claude Code: `claude mcp add decap -- decap/agent/.venv/bin/decap mcp`. JetBrains
+Air picks up the repo's `.mcp.json`. Its paths are for Ian's Mac, so edit them on another machine. Anything
+else: command `decap/agent/.venv/bin/decap`, args `mcp`.
+
+## The Witness terminal
+
+```bash
+decap serve --port 8791 --model deepseek:deepseek-chat   # the web app's Agent drawer talks to this
+decap agent-send "is anything hidden?" --chip tt_um_kapilan_alarm
+decap status · decap log -f <session> · decap stop <session>
+```
+
+You type a command and the terminal routes it (`decap_agent/terminal.py`). The routing is plain keyword
+matching, and it doesn't pretend to be more:
+
+| You say | What runs | Typical time |
+|---|---|---|
+| "is anything hidden?", "trojan", "backdoor" | **hunt**: `find_rare_triggers`, then a whole-chip `prove_equiv` against the author's source | ~1 s |
+| "what does b3 do?", "explain uo_out[0]" | **explain**: the Witness loop on that block or output | 5–30 s |
+| "red team drill", "plant", "test yourself" | **drill**: plant a trigger at a secret random value, hunt it blind, reveal | ~10 s |
+| "audit this chip", "...then...", "slowest path", "what do we know?" | **investigate**: plans its own steps (below) | ~30 s |
+| anything else | **guide**: a Q&A agent whose only facts come from tool results | ~5 s |
+
+**Hunt verdicts mean exactly this.** `found`: the proof failed, and its counterexample is the input that wakes
+the hidden logic. `clean`: proven equivalent to the author's source. `inconclusive`: only a bounded check passed
+(20 clock cycles on real chips). That isn't a proof, so a rare trigger could still be there. Before 8 Nov the
+terminal said `clean` here. That was an overclaim, and it's fixed.
+
+**The drill** (`_drill`) is the strongest live demo. The secret `N` never reaches the hunting tools, because they
+only get the planted chip's id and the new cells are renamed. The drill passes only if the counterexample's
+`ui_in` is exactly `N`. On `tt_um_kapilan_alarm`: secret 192, counterexample `ui_in = 192`, 9.5 s.
+
+### The investigator (`decap_agent/investigate.py`)
+
+This is the open-ended mode. The fixed flows run one script. The investigator picks its steps from what it
+sees:
+
+1. It writes a 2–5 step plan (`plan` event). It re-plans only if a result changes what it will do next.
+2. Before every tool call it says, in one line, what it expects to learn (`thought` event).
+3. Its tools: `recall` (chip memory), `overview` (blocks), `explain` (the Witness loop on one block, at most 3
+   per run), `hunt`, `slowest_path`. It runs one at a time, so the reasoning reads in order.
+4. Anything Yosys settled goes into chip memory, `runs/memory/<chip>.json` (`memory` event). The next question on
+   that chip starts from it. This is our version of DimOS's spatial memory.
+5. It ends with a report: a short summary, findings tagged by evidence (`yosys`, `proof`, `structure`,
+   `estimate`, `memory`), and up to three next commands you can click.
+
+Two guards stop it overclaiming. A `yosys` finding about a block that wasn't explained in this run is relabelled
+`unverified`. If the hunt was inconclusive and the summary still says "no hidden logic", a correction is added.
+
+## Witness: the region loop (`decap_agent/witness.py`, plan in docs/decap/witness-plan.md)
 
 ```
-Claude Code · JetBrains Air/Junie · Cursor          Web app (Yuyao): chat + agent timeline
-            │ MCP (stdio / HTTP)                            ▲ SSE /events     │ /chat
-            ▼                                               │                 ▼
-┌──────── decap/agent ─────────────────────────────────────┴─────────────────────────┐
-│ FastMCP server = FastMCP.from_fastapi(core_app)  ── TranscriptMiddleware ─► runs/*.jsonl │
-│ Guide agent (pydantic-ai, MCPToolset → same server; tokens + model logged)          │
-│ decap CLI · replay --check · SKILL.md for Claude Code                               │
-└───────────────┬─────────────────────────────────────────────────────────────────────┘
-                ▼ in-process ASGI (or HTTP)
-     Decap core (Yuyao): FastAPI → block recovery, decompiler, Yosys proofs, plant/flag
+decap explain CHIP --cone-of 'uo_out[0]'      # look, claim, check, refine (max 2)
+decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the checker; --dry = parse + English only
 ```
+
+The LLM sees only the look tools: `get_region`, `probe_truth`, `simulate`, `resolve_scope`. It returns one
+`{claim, label, gist}`. The controller, not the LLM, sends it to `propose_claim`, and Yosys checks it through
+Yuyao's `core/claims.py`. If the verdict is refuted, tautology, unparseable or restated, the LLM gets the verdict
+and counterexample back and may refine, at most twice in the bench and four times in the web app. Every attempt
+is a `claim` event, and the whole run is cached in `runs/cache/`.
+
+- **The first draft is counted honestly.** The LLM can't call `propose_claim`, so attempt 0 is always its claim
+  with a simulator and no proof. That first-draft rate is the headline number.
+- **`probe_truth` is evidence, never a verdict.** It runs random vectors through the simulator (all of them if
+  the region has 12 input bits or fewer), plus the rows where a rare 1-bit output fired.
+- **Claim syntax** (`claim_expr.py`): a Verilog expression over ports and flip-flops. `next(x)` means x one clock
+  later. `A when B` means B implies A. `rst_n` and `ena` are assumed 1. Verilog's unsigned width rules apply, so
+  `next(count) == count + 1` is refuted at count = 255 while `count + 8'd1` is proven. The parser also accepts
+  commas as `&&`, real `(expr)[hi:lo]` slices, and drops prose after the expression.
+
+**When a claim earns credit.** It has to be true and also useful:
+- **Complete.** It pins down every output bit it names, for every input. Otherwise it's `partial`. On its first
+  run the agent found the loophole this closes: "once set, bit0 stays set" is true and short but says almost
+  nothing.
+- **Covers the whole region.** Every output bit counts, through any alias. Otherwise it's `partial`. On Yuyao's
+  real checker the agent next tried `uio_out[7] == bit0`. It's true and complete, but that pin just copies the
+  alarm flip-flop, so the claim skipped the 50 literals of logic behind it.
+- **Shorter than the code.** It needs under ⅓ of `cone_literals`, or a recognised shape in `label`. Otherwise
+  it's `restated`.
+
+**Why the proof matters, in one example.** A claim with a planted bug passed 4096 plain random vectors: kapilan's
+alarm was made to compare hour bit 0 with 0 instead of `ui_in[0]`. The 11-bit alarm match almost never happens
+at random. Biased patterns caught it. Yosys catches it by construction.
+
+**Budget.** The controller puts the region and a 1024-vector probe in the first prompt. The LLM may probe twice
+more, within 6 requests and 120k input tokens per attempt. Before the cap, one 23-input region cost 1.37M tokens.
+Now it costs about 3k.
+
+**Cache key:** netlist sha, decompiler commit, chip, scope, model, prompt version + instructions hash, max_refine.
+
+## The bench and the Monte Carlo ablation
+
+```
+decap bench --split dev [--max-regions 4] [--model cli:sonnet]   # tune on dev chips only
+decap bench --freeze-hash                                        # post this before scoring the held-out split
+decap bench --split test --frozen ...                            # refuses to run without --frozen
+decap bench --ablate runs/<bench>.jsonl                          # re-check every claim by simulation, no LLM
+```
+
+- **Which regions.** The rule was set before any test chip was seen: every block the templates couldn't name
+  (`recognised: false`), largest first, at most `--max-regions` per chip.
+- **What it reports.** First-draft outcomes; the semantic error rate with a bootstrap 95% CI clustered by chip;
+  explained coverage of unrecognised cells; median compression; honesty counts by chip.
+- **The ablation** answers Ian's Monte Carlo question. Every claim is re-checked with 1024 random vectors and the
+  core's 4096 biased ones, then compared with Yosys. Each Yosys counterexample is replayed in the simulator
+  first. If the simulator disagrees, that's a model mismatch, such as a cut ring-oscillator loop, not a sampling
+  miss, so it's excluded.
+- **Dev dry run** (3 chips, 5 regions, claude CLI, 6 min). The kapilan alarm blob was proven on its first draft.
+  segdecode was refuted three times. Over 12 claims Yosys refuted 3. Of the 2 comparable ones, random and biased
+  testing passed both. Simulation never contradicted a proof. That's a small sample from dev chips. The
+  held-out run gives the real number.
+- **Overnight.** `scripts/overnight_bench.sh` waits for the `bench-freeze` tag, runs the held-out split with
+  `cli:sonnet` at concurrency 1, and writes `out/witness-summary.json` for the Results card.
+
+## The formaliser
+
+```
+decap formalise "LED 3 lights when switches 1 and 2 are on" [CHIP --cone-of X] [--check]
+```
+
+One LLM call turns a person's sentence into a formal line. It also lists the reading choices it made and, if the
+sentence is ambiguous, the other reading. The line is parse-checked, with one retry. With a chip, the checker's
+English comes back so the person can confirm "yes, that's what I meant". `--check` then runs the proof. By
+default switch k is `ui_in[k]` and LED k is `uo_out[k]`. The web app can pass its own legend.
+
+On 30 sloppy phrasings, scored by logical equivalence (which catches the width traps: "plus one" must become
+`+ 8'd1`, "times two" `<< 1`), claude-sonnet-5-5 and claude-haiku-5-5 both scored 30/30 (median 3.0 s and 2.6 s).
 
 ## The contract with the core
 
@@ -63,149 +185,47 @@ With `from_fastapi`, Yuyao's API *is* the tool definition:
 | FastAPI element | Becomes |
 |---|---|
 | `operation_id` | the tool name (e.g. `prove_equiv`) |
-| the route function's docstring | the description the LLM reads (write it for an agent) |
-| path params, body model fields, `Field(description=…)` | the tool's input schema |
-| the response model or dict | the structured result recorded in the transcript |
+| the route's docstring | the description the LLM reads, so write it for an agent |
+| path params, body fields, `Field(description=…)` | the tool's input schema |
+| the response | the structured result in the transcript |
 
-### Region scope: agents aimed at a selected part of the chip (Yuyao's ask, 7 Nov 19:31)
-Every tool that works on a chip takes an optional `scope` and returns what it `touched`, so the 3D view can light it up:
+**Region scope.** Every chip tool takes an optional `scope` and returns what it `touched`, so the 3D view can
+light it up:
 
 ```json
 "scope":   {"cells": ["trg_3"], "nets": ["hit"], "cone_of": "out"}      // any mix; empty = whole chip
 "touched": {"cells": ["trg_0", "trg_1", ...], "nets": ["trig", "ui_in[0]", ...]}
 ```
 
-- `resolve_scope(chip, scope)` turns a user's selection into the exact cones and cells; pass the same scope on to other tools.
-- A scope that matches nothing is an **error**, never a silent widening to the whole chip.
-- The transcript copies `scope`, `cells` and `nets` to the top level of each tool event, for the timeline and the 3D highlight.
-- A real core should return real netlist cell ids (the ids TT Explorer / the 3D view use) in `touched.cells`.
+`resolve_scope` turns a selection into exact cones and cells. A scope that matches nothing is an error. It never
+silently widens to the whole chip.
 
-**⚠️ Two traps found while building (FastMCP 4.1 + FastAPI 0.162):**
-- A request body whose fields all have defaults is still *required* by FastAPI, so an agent that sends only `chip` gets a 422.
-- Declaring it `body: Model | None = None` is worse: the schema becomes `anyOf` and FastMCP **silently drops** the body's arguments. In our test, a planted chip then "proved" equal to its author's source.
+**Two traps we hit (FastMCP 4.1 + FastAPI 0.162).** FastAPI treats a body as required even when all its fields
+have defaults, so an agent that sends only `chip` gets a 422. Declaring it `body: Model | None = None` is worse.
+The schema becomes `anyOf` and FastMCP silently drops the body's arguments. In our test a planted chip then
+"proved" equal to its source. Use `body: Model = Body(default_factory=Model)`.
+`tests/test_agent_layer.py::test_arguments_reach_the_core` guards it.
 
-**Use `body: Model = Body(default_factory=Model)`.** `tests/test_agent_layer.py::test_arguments_reach_the_core` guards this.
+**Strict arguments.** On its own the bridge only warns about an argument a tool doesn't have, then drops it, so a
+misspelt `against` would quietly get the default. `StrictArgsMiddleware` turns that into an error that lists the
+valid arguments.
 
-The stub uses the names spec §6.1 implies: `list_chips`, `strip_names`, `recover_blocks`, `decompile`, `prove_equiv`, `simulate`, `find_rare_triggers`, `plant_trigger`, `cone_of_influence`, `critical_path`. Yuyao's real names win; the guide's rules and the demo script follow whatever `decap/CONTRACTS.md` says.
+## Transcript format
 
-## Witness: the region agent loop (v0.3, plan: docs/decap/witness-plan.md)
-
-An agent dropped on a region explains it in **one claim**; only the checker decides whether it is shown.
-
-```
-decap explain CHIP --cone-of 'uo_out[0]'      # LLM: look, claim, check, refine (max 2)
-decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the checker; --dry = parse + English only
-```
-
-```
- explain_region (decap_agent/witness.py)
-   LLM (pydantic-ai, output_type=Claim) ── sees ONLY get_region, probe_truth, simulate, resolve_scope
-        │ returns {claim, label, gist}
-   controller ── propose_claim ──► checker (stub: exhaustive sim; real: core/claims.py + Yosys, Yuyao's)
-        │ refuted / tautology / unparseable / restated → verdict + counterexample back to the LLM (≤ 2 refinements)
-        └ every attempt → transcript event kind="claim" {attempt, first_draft, claim, verdict, counterexample,
-          english, credit, cells, model, tokens, wall_s}; whole run cached in runs/cache/
-```
-
-- **The first draft is counted honestly.** The LLM cannot call `propose_claim`, so attempt 0 is always its
-  claim with a simulator and no proof. That is the plan's headline number (section 4).
-- **`probe_truth` is the Monte Carlo look:** random vectors through the simulator (every vector if the region has
-  ≤ 12 input bits), plus the rows where a rare 1-bit output fired. Evidence, never a verdict.
-- **Claim syntax** (`decap_agent/claim_expr.py`): a Verilog expression over ports and flip-flops, `next(x)` = one
-  clock later, `A when B` = B → A; rst_n = ena = 1 assumed; Verilog's unsigned width rules, so
-  `next(count) == count + 1` is refuted at count = 255 and `count + 8'd1` is proven.
-- **Cache key:** netlist_sha, decompiler commit, chip, scope, model, prompt version + instructions hash.
-- **Contract proposed to the core** (board, 7 Nov 20:32): `get_region` and `probe_truth` (region description and
-  samples) and `propose_claim` → `{verdict: proven|inductive|bounded|refuted|restated|tautology|unparseable|timeout,
-  formal, english, counterexample, refute_kind, credit {cleared, reason, literals, cone_literals}, touched}`.
-  The stub implements all three on `stub_counter8` so the loop runs offline.
-
-- **Credit needs a complete claim.** A true partial fact ("once set, bit0 stays set": 2 literals vs 50) used to
-  pass the 1/3-literals rule. Now credit also needs the claim to pin down the output bits it names for every
-  input (verdict `partial` otherwise). The live agent found that loophole on its own first run.
-- **Real chips before the checker lands:** `get_region` and `probe_truth` (with `fix`) are core routes now
-  (PR #37, decap/api/scope.py). `DECAP_CORE_APP=decap_agent.core_witness:app PYTHONPATH=<checkout>` adds a FALLBACK
-  `propose_claim` (netlist simulation with the core's biased patterns; verdicts `tested`/`refuted`/`partial`, never
-  `proven`). It steps aside once core/claims.py ships a route with the same operation_id.
-- **Why the proof matters, in one example:** a claim with a planted bug (kapilan's alarm compares hour bit 0 with 0
-  instead of ui_in[0]) passed 4096 plain random vectors, because the 11-bit alarm match almost never happens at
-  random. Biased patterns caught it; Yosys catches it by construction.
-
-- **Credit needs the WHOLE region covered.** With Yuyao's real checker (core/claims.py, PR #39), the live agent's
-  next trick was `uio_out[7] == bit0`: true, complete, 2 literals vs 50, credited. But that pin is only a buffered
-  copy of the alarm flip-flop, so the claim skipped the 50-literal logic. The stub and fallback now require every
-  output bit of the region to be covered (through any alias), otherwise `partial` "missing next(bit0)"; proposed
-  for claims.py on the board.
-- **LLM backend when the API key is capped:** `--model cli:sonnet` (or `DECAP_LLM=cli`) runs each request through
-  the local `claude` CLI login (decap_agent/cli_model.py: no tools, no MCP, no user settings so no hooks, no saved
-  session, API key removed from its env). Opt-in only, because it spends the logged-in account.
-
-### The bench (the measured number) and the Monte Carlo ablation
-
-```
-decap bench --split dev [--max-regions 4] [--model cli:sonnet]   # dry run on dev chips (tune here only)
-decap bench --freeze-hash                                        # post before scoring the held-out split
-decap bench --split test --frozen ...                            # refuses to run without --frozen
-decap bench --ablate runs/<bench>.jsonl                          # re-check every claim with simulation (no LLM)
-```
-- **Fixed region rule** (set before any test chip is seen): every block the templates could not name
-  (`recognised: false`), largest first, at most `--max-regions` per chip, scope `{cone_of: block id}`.
-- **Summary:**
-  - first-draft outcomes (true and credited / refuted semantic / reset-only / partial / restated / …);
-  - semantic error rate with a **bootstrap 95% CI clustered by chip**;
-  - explained coverage of unrecognised cells, and median compression;
-  - honesty counts with chip names;
-  - the plan's decision rule picks the headline.
-- **Ablation (Ian's Monte Carlo question):** every claim an agent made is re-checked by plain random simulation
-  (1024 vectors) and by the core's biased patterns (4096), then compared with Yosys. Each Yosys counterexample is
-  replayed in the simulator first: a disagreement there is a model mismatch (e.g. a cut ring-oscillator loop),
-  not a sampling miss, and is excluded.
-- **Dev dry run** (3 dev chips, 5 regions, claude CLI, 6 min): the kapilan alarm blob was proven on its first draft;
-  segdecode was refuted three times. Ablation over the 12 claims made so far: Yosys refuted 3. Of the 2 comparable
-  ones, **random and biased testing passed both** (the third was a ring-oscillator model mismatch). Simulation
-  never contradicted a proof. Small n, dev chips only: the held-out run gives the real number.
-
-### The formaliser (judge's moment)
-
-```
-decap formalise "LED 3 lights when switches 1 and 2 are on" [CHIP --cone-of X] [--check]
-```
-One LLM call (no tools) turns the sentence into a formal line, plus the reading choices it made (`assumptions`)
-and, if the sentence is ambiguous, the other reading (`alternative`). The line is parse-checked (one retry
-with the parser's error), and with a chip, `propose_claim(check=false)` returns the checker's English for the
-confirm step. `--check` then runs the checker. Board legend by default: switch k = ui_in[k], LED k = uo_out[k];
-the web can pass its own.
-
-**Measured** on 30 sloppy phrasings (`python -m decap_agent.formalise [model]`), scored by logical equivalence
-with the accepted readings, which also checks the width traps: 'plus one' → `+ 8'd1`, 'times two' → `<< 1`.
-claude-sonnet-5-5 scored 30/30 (median 3.0 s); claude-haiku-5-5 scored 30/30 (median 2.6 s).
-- **Budget:** the controller puts the region + a 1024-vector probe in the first prompt; the LLM may probe twice more;
-  6 requests / 120k input tokens per attempt. Uncapped, one 23-input region cost 1.37M tokens; now about 3k.
-
-Real chip, fallback checker (`tt_um_kapilan_alarm`, region `cone_of uio_out[7]`, 50-literal decompiled blob):
-first draft `(uio_out[7] == bit0) && (next(bit0) == (bit0 | ({count0, count1[4:0]} == {uio_in[2:0], ui_in})))`.
-That's the alarm latch: minutes and hours equal the alarm set on the inputs. It is complete, 9 literals vs 50, and was
-tested on 4096 random vectors (not proven; that needs core/claims.py), in 8.5 s with 3k input tokens.
-
-Live check (stub chip, `claude-sonnet-5-5`, about 10 s): the agent claimed
-`next(count) == (en ? count + 8'd1 : count)` labelled counter, which was proven on its first draft and credited
-(4 literals vs 40 in the decompiled cone).
-
-## Transcript format (for the UI timeline)
-
-One JSON object per line:
+One JSON object per line. Kinds: `tool`, `claim`, `agent`, `note`, plus `plan`, `thought`, `memory` and
+`session` from the terminal.
 
 ```json
 {"seq": 3, "ts": "2026-11-07T19:40:01.123+00:00", "run_id": "a1b2c3", "kind": "tool",
  "tool": "find_rare_triggers", "args": {"chip": "stub_counter8+t137"},
  "result": {"flagged": [...], "source": "stub"}, "is_error": false, "wall_s": 0.004}
-{"seq": 9, "kind": "agent", "question": "...", "answer": "...", "model": "claude-sonnet-5-5",
- "input_tokens": 2810, "output_tokens": 164, "requests": 4, "tool_calls": 3, "wall_s": 6.2}
 ```
 
-Live: `decap stream runs/<file>.jsonl --port 8790`, then `EventSource("http://127.0.0.1:8790/events")`, or fetch `/events.json`.
+Stream one: `decap stream runs/<file>.jsonl --port 8790`, then `EventSource("http://127.0.0.1:8790/events")`.
 
-## Built on (credit)
-- [FastMCP](https://github.com/PrefectHQ/fastmcp) (Apache-2.0): the MCP server and client, `from_fastapi`, middleware.
-- [Pydantic AI](https://github.com/pydantic/pydantic-ai) (MIT): the guide agent, model providers, MCP toolset, token usage.
-- Design borrowed from [DimOS](https://github.com/dimensionalOS/dimos): skills over MCP, a CLI for agents, transcript as a stream, replay.
+## Built on
+
+- [FastMCP](https://github.com/PrefectHQ/fastmcp) (Apache-2.0): MCP server and client, `from_fastapi`, middleware.
+- [Pydantic AI](https://github.com/pydantic/pydantic-ai) (MIT): agents, model providers, MCP toolset, token usage.
+- Design borrowed from [DimOS](https://github.com/dimensionalOS/dimos): skills over MCP, a CLI for agents, the
+  transcript as a stream, replay, and the terminal's look.

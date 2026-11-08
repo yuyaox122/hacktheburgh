@@ -12,6 +12,7 @@ import os
 from fastapi import FastAPI
 from fastmcp import FastMCP
 
+from .heldout import HeldOutGuard
 from .stub_core import create_stub_app
 from .transcript import StrictArgsMiddleware, Transcript, TranscriptMiddleware
 
@@ -39,4 +40,5 @@ def build_server(app: FastAPI | None = None, transcript: Transcript | None = Non
     if transcript is not None:
         mcp.add_middleware(TranscriptMiddleware(transcript))  # outermost: also records rejected calls
     mcp.add_middleware(StrictArgsMiddleware())
+    mcp.add_middleware(HeldOutGuard())   # test-split chips: only the frozen bench (DECAP_HELDOUT_OK=1)
     return mcp

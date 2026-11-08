@@ -27,10 +27,12 @@ from typing import Any
 from fastmcp import Client, FastMCP
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.usage import UsageLimits
 
+from . import lifecycle
+from .claim_expr import expand_temps, fix_mux_precedence, temp_defs, temps_used
 from .transcript import Transcript, result_payload
 
 DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
@@ -40,7 +42,7 @@ LIMITS = UsageLimits(request_limit=6, input_tokens_limit=120_000)   # per attemp
 # whether the claim holds. 'tested' = credited by the fallback simulation checker (never a proof).
 DONE = {"proven", "inductive", "tested"}   # credited: the loop ends
 PROOF = {"proven", "inductive"}
-PROMPT_VERSION = "witness-v6"
+PROMPT_VERSION = "witness-v7"
 
 INSTRUCTIONS = """You explain one region of a real chip in ONE short claim. A formal checker (Yosys) then tries
 to prove the claim against the chip's gates. It is shown to people only if it is proven, so a wrong claim
@@ -150,8 +152,29 @@ def _model_name(agent: Agent) -> str:
 
 async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any = None,
                          transcript: Transcript | None = None, max_refine: int = 2,
-                         cache_dir: Path | None = None) -> dict:
-    """Run one region agent: look, claim, check, refine. Returns the attempts and the final verdict."""
+                         cache_dir: Path | None = None, register: bool = True) -> dict:
+    """Run one region agent: look, claim, check, refine. Returns the attempts and the final verdict.
+
+    With `register` (default) the run is tracked as a terminal session; callers that already
+    register their own session (run_command) or that fan out many regions (bench) pass register=False.
+    """
+    sid = lifecycle.start(chip, "explain", None, transcript=transcript) if (register and transcript is not None) else None
+    try:
+        run = await _explain_region(chip, scope, server, model=model, transcript=transcript,
+                                    max_refine=max_refine, cache_dir=cache_dir)
+    except Exception as exc:
+        if sid:
+            lifecycle.finish(sid, "error", transcript=transcript, error=f"{type(exc).__name__}: {exc}")
+        raise
+    if sid:
+        lifecycle.finish(sid, "done", transcript=transcript, intent="explain", verdict=run.get("final"))
+    return run
+
+
+async def _explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any = None,
+                          transcript: Transcript | None = None, max_refine: int = 2,
+                          cache_dir: Path | None = None) -> dict:
+    """The region loop (moved out of explain_region so the session wrapper stays small)."""
     agent = build_region_agent(server, model)
     model_name = _model_name(agent)
     async with Client(server) as client:
@@ -173,13 +196,31 @@ async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any 
             return {**run, "cached": True}
 
         probe = await call("probe_truth", chip=chip, scope=scope, n=1024)
+        # The decompiled lines use helper wires (t5 = ...). Show their definitions, and let the claim use the names:
+        # the controller expands them before the checker sees the claim, so what is checked is fully explicit.
+        try:
+            defs = temp_defs((await call("decompile", chip=chip)).get("verilog", ""))
+        except Exception:
+            defs = {}
+        helpers = temps_used([f.get("text", "") if isinstance(f, dict) else str(f) for f in region.get("focus") or []], defs)
+        helper_txt = ("\nHelper wires used by those lines (you may write these names in the claim; they are expanded "
+                      "before checking):\n" + "\n".join(f"  {t} = {defs[t]}" for t in helpers[:24])) if helpers else ""
         prompt = (f"Chip {chip!r}. Your region: scope = {json.dumps(scope)} (pass exactly this scope to probe_truth).\n"
-                  f"{brief(region, probe)}\nExplain the region in one claim.")
+                  f"{brief(region, probe)}{helper_txt}\nExplain the region in one claim.")
         history, attempts = None, []
         for attempt in range(1 + max_refine):
             t0 = time.perf_counter()
             try:
                 res = await agent.run(prompt, message_history=history, usage_limits=LIMITS)
+            except UnexpectedModelBehavior as e:   # a malformed reply is a failed attempt, not a crashed run
+                row = {"chip": chip, "scope": scope, "attempt": attempt, "first_draft": attempt == 0, "claim": None,
+                       "verdict": "no_claim", "error": f"the model's reply was malformed: {str(e)[:200]}", "model": model_name,
+                       "wall_s": round(time.perf_counter() - t0, 3), "cells": [], "credit": None, "counterexample": None,
+                       "english": None, "label": "", "source": region.get("source", "core")}
+                attempts.append(row)
+                if transcript is not None:
+                    transcript.record("claim", **row)
+                break
             except UsageLimitExceeded as e:
                 row = {"chip": chip, "scope": scope, "attempt": attempt, "first_draft": attempt == 0, "claim": None,
                        "verdict": "no_claim", "error": f"look budget exceeded: {e}", "model": model_name,
@@ -190,11 +231,13 @@ async def explain_region(chip: str, scope: dict, server: FastMCP, *, model: Any 
                     transcript.record("claim", **row)
                 break
             claim: Claim = res.output
-            verdict = await call("propose_claim", chip=chip, scope=scope, claim=claim.claim, label=claim.label)
+            checked = fix_mux_precedence(expand_temps(claim.claim, defs) if defs else claim.claim)
+            verdict = await call("propose_claim", chip=chip, scope=scope, claim=checked, label=claim.label)
             usage = res.usage
             row = {
                 "chip": chip, "scope": scope, "attempt": attempt, "first_draft": attempt == 0,
-                "claim": claim.claim, "label": claim.label, "gist": claim.gist,
+                "claim": checked, "claim_written": claim.claim if checked != claim.claim else None,
+                "label": claim.label, "gist": claim.gist,
                 "verdict": verdict.get("verdict"), "truth": verdict.get("truth"), "formal": verdict.get("formal"),
                 "english": verdict.get("english"), "checker_s": verdict.get("seconds"),
                 "counterexample": verdict.get("counterexample"), "refute_kind": verdict.get("refute_kind"),

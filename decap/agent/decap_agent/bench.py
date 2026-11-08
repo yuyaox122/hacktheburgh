@@ -153,7 +153,7 @@ async def run_bench(server: FastMCP, chips: list[str], *, model: Any = None, max
         async with sem:
             try:
                 run = await explain_region(p["chip"], p["scope"], server, model=model, transcript=transcript,
-                                           max_refine=max_refine, cache_dir=cache_dir)
+                                           max_refine=max_refine, cache_dir=cache_dir, register=False)
             except Exception as e:  # a crash is reported, never retried with changes
                 row = {**p, "error": f"{type(e).__name__}: {str(e)[:300]}", "first": None, "final": None, "explained": False}
                 log(f"[bench] {p['chip']}:{p['block']} ERROR {row['error'][:120]}")

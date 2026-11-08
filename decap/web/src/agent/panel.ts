@@ -8,11 +8,14 @@ import { agentUp, command, type TerminalEvent } from "./api";
 import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
+import { Terminal } from "./terminal";
+import { plainHtml, verdictWords } from "./words";
+import * as verilogIO from "./verilogIO";
 
 const STEP: Record<string, (s: Run["steps"][number]) => string> = {
-  get_region: () => "Read the region: its inputs, outputs and decompiled lines",
-  probe_truth: (s) => `Simulated ${Number((s.args as { n?: number } | undefined)?.n ?? 1024).toLocaleString()} input vectors (evidence, not proof)`,
-  propose_claim: () => "Sent the claim to Yosys",
+  get_region: () => "Read this part's inputs, outputs and code",
+  probe_truth: (s) => `Tried ${Number((s.args as { n?: number } | undefined)?.n ?? 1024).toLocaleString()} random inputs to see what it does (a hint, not a proof)`,
+  propose_claim: () => "Asked Yosys to prove the explanation",
 };
 
 export class AgentPanel {
@@ -20,6 +23,8 @@ export class AgentPanel {
   private chip: string | null = null;
   private raf = 0;
   private verilog = new Map<string, string>();   // chip -> decompiled Verilog (for "Suggest as edit")
+  private term: Terminal;
+  private runSeq = 0;
 
   constructor() {
     this.el.className = "drawer ag-drawer";
@@ -29,12 +34,24 @@ export class AgentPanel {
         <button class="btn plain sm" type="button" id="agClear" title="Forget this chip's runs, edits and comments">Clear</button>
         <button class="btn plain icon" type="button" id="agClose" aria-label="Close the agent panel" title="Close (Esc)">${icon.close}</button></div>
       <div class="ag-intro" id="agIntro"></div>
-      <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
-        placeholder="Command the chip agent… e.g. “is anything hidden?”" aria-label="Command the chip agent">
-        <button class="btn primary" type="submit">Run</button></form>
-      <div class="ag-term" id="agTerm" hidden></div>
+      <div class="ag-termbox">
+        <div class="ag-term" id="agTerm" hidden></div>
+        <div class="ag-status" id="agStatus"><span class="ag-state ready">ready</span><span class="ag-elapsed"></span></div>
+        <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
+          placeholder="Type a message…" aria-label="Command the chip agent">
+          <button class="btn primary" type="submit">Run</button></form>
+        <div class="ag-suggest" id="agSuggest">
+          <button type="button" class="ag-next" data-cmd="Audit this chip: what are its parts, and is the unrecognised logic doing anything odd?">Audit this chip</button>
+          <button type="button" class="ag-next" data-cmd="Is anything hidden in this chip?">Is anything hidden?</button>
+          <button type="button" class="ag-next" data-cmd="Red-team drill: plant a hidden trigger and find it blind">Red-team drill</button>
+          <button type="button" class="ag-next" data-cmd="What is the slowest path, and what does the block on it do?">Slowest path</button>
+          <button type="button" class="ag-next" data-cmd="What do we already know about this chip? Review memory and fill one gap.">What do we know?</button>
+          <button type="button" class="ag-next" data-vio="up" title="Upload a .v file; Yosys checks whether this chip implements it">Check my Verilog…</button>
+        </div>
+      </div>
       <div class="ag-runs" id="agRuns" aria-live="polite"></div>`;
     document.body.append(this.el);
+    this.term = new Terminal($("#agTerm", this.el), $("#agStatus", this.el));
     $("#agClose", this.el).addEventListener("click", () => this.close());
     $("#agClear", this.el).addEventListener("click", () => { if (this.chip) store.clear(this.chip); });
     $("#agCmd", this.el).addEventListener("submit", (e) => {
@@ -45,11 +62,18 @@ export class AgentPanel {
     this.el.addEventListener("click", (e) => this.onClick(e));
     store.on((chip) => { if (chip === this.chip) this.schedule(); });
     document.addEventListener("agent:open", () => this.open());
+    verilogIO.install();
+    document.addEventListener("agent:upload", (e) => {
+      const d = (e as CustomEvent<{ chip: string; filename: string; text: string }>).detail;
+      void this.runCommand(`Check my file ${d.filename} (${d.text.split("\n").length} lines) against this chip`,
+        { verilog: d.text, filename: d.filename }, d.chip);
+    });
     void agentUp().then((ok) => { if (!ok) $("#agIntro", this.el).innerHTML = `<div class="callout bad">The agent service isn't reachable. Start it with <code>decap serve --port 8791</code> (decap/agent).</div>`; });
   }
 
   setChip(chip: string | null, verilog?: string) {
     this.chip = chip;
+    verilogIO.setChip(chip);
     if (chip && verilog) this.verilog.set(chip, verilog);
     this.schedule();
   }
@@ -59,29 +83,16 @@ export class AgentPanel {
   toggle() { this.isOpen ? this.close() : this.open(); }
 
   /** The terminal: run one natural-language command and stream its tool calls + result into the drawer. */
-  private async runCommand(text: string) {
-    if (!this.chip) return;
+  private async runCommand(text: string, upload?: { verilog: string; filename: string }, chip = this.chip) {
+    if (!chip) return;
     this.open();
-    const term = $("#agTerm", this.el);
-    term.hidden = false;
-    term.innerHTML = `<div class="ag-trow me">${esc(text)}</div><div class="ag-trow spin"><span class="spin"></span> thinking…</div>`;
-    const row = (cls: string, html: string) => term.insertAdjacentHTML("beforeend", `<div class="ag-trow ${cls}">${html}</div>`);
+    const seq = ++this.runSeq;
+    this.term.begin(text);
     try {
-      await command(this.chip, text, (e: TerminalEvent) => {
-        if (e.kind === "tool") row("tool", `<b>▶ ${esc(e.tool)}</b>`);
-        else if (e.kind === "claim") {
-          row("claim", `<b>${e.first_draft ? "First draft" : `Refine ${e.attempt}`}</b> ${pill(e.verdict)}<code>${esc(e.claim ?? "")}</code>${e.verdict === "refuted" ? cexHtml(e.counterexample) : ""}`);
-        } else if (e.kind === "done") {
-          const d = e as Record<string, unknown>;
-          if (d.intent === "hunt") row("done", `Verdict: <b>${esc(String(d.verdict))}</b>${d.counterexample ? cexHtml(d.counterexample as Record<string, number>) : ""}`);
-          else if (d.intent === "explain") row("done", `${pill(String(d.verdict))}<code>${esc(String(d.claim ?? ""))}</code>`);
-          else if (d.intent === "guide") row("done", esc(String(d.answer ?? "")));
-        } else if (e.kind === "error") row("err", esc(String(e.error)));
-      });
+      await command(chip, text, (e: TerminalEvent) => { if (seq === this.runSeq) this.term.event(e); }, undefined, upload);
     } catch (err) {
-      row("err", esc((err as Error).message));
+      if (seq === this.runSeq) this.term.error((err as Error).message);
     }
-    term.querySelector(".spin")?.remove();
   }
 
   private schedule() { cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(() => this.render()); }
@@ -89,7 +100,7 @@ export class AgentPanel {
   private render() {
     const intro = $("#agIntro", this.el);
     if (!intro.querySelector(".bad")) {
-      intro.innerHTML = `<p class="muted">Hover a line of decompiled Verilog and press <b>Explain</b> or <b>Suggest edit</b>, select a cell in Explore and press <b>Explain block</b>, or write a comment and tick <b>Ask the agent</b>. The agent can only look; every verdict below comes from Yosys.</p>`;
+      intro.innerHTML = `<p class="muted">Ask about this chip below, or hover a line of code and press <b>Explain</b>. The agent writes the explanation. Yosys decides whether it's true.</p>`;
     }
     const runs = this.chip ? store.runs(this.chip) : [];
     $("#agRuns", this.el).innerHTML = runs.length ? runs.map((r) => this.card(r)).join("")
@@ -103,19 +114,22 @@ export class AgentPanel {
     const steps = r.steps.filter((s) => s.tool !== "propose_claim").map((s) => `<li>${esc(STEP[s.tool]?.(s) ?? s.tool)}</li>`).join("");
     const atts = r.attempts.map((a) => `
       <div class="ag-att">
-        <div class="ag-att-h"><span class="ag-tag">${a.first_draft ? "First draft" : `Refine ${a.attempt}`}</span>${pill(a.verdict)}${a.checker_s != null ? `<span class="muted">Yosys ${a.checker_s.toFixed(2)} s</span>` : ""}</div>
+        <div class="ag-att-h"><span class="ag-tag">${a.first_draft ? "First try" : `Try ${a.attempt + 1}`}</span>${pill(a.verdict)}${a.checker_s != null ? `<span class="muted">Yosys ${a.checker_s.toFixed(2)} s</span>` : ""}</div>
         <code class="ag-claim">${esc(a.claim ?? "(no claim)")}</code>
         ${a.english ? `<p class="muted">${esc(a.english)}</p>` : ""}
         ${a.verdict === "refuted" ? cexHtml(a.counterexample) : ""}
         ${a.error ? `<p class="muted">${esc(a.error)}</p>` : ""}
         ${a.credit?.reason && a.verdict !== "proven" && a.verdict !== "inductive" ? `<p class="muted">${esc(a.credit.reason)}</p>` : ""}
-        ${a.credit?.cleared ? `<p class="ag-ok">${a.credit.literals} literals instead of ${a.credit.cone_literals} in the decompiled code</p>` : ""}
+        ${a.credit?.cleared ? `<p class="ag-ok">Shorter than the code: ${a.credit.literals} terms instead of ${a.credit.cone_literals}</p>` : ""}
       </div>`).join("");
     const canEdit = r.explained && r.lines && r.lines[0] > 0 && !store.edits(r.chip).some((e) => e.runId === r.id);
     return `<article class="ag-run ${r.status}${r.explained ? " explained" : ""}" data-run="${r.id}">
       <header><b>${esc(r.label)}</b>${status}<span class="muted">${secs.toFixed(1)} s${r.cached ? " · cached" : ""}</span></header>
-      ${steps ? `<ol class="ag-steps">${steps}</ol>` : r.status === "running" ? `<ol class="ag-steps"><li><span class="spin"></span> Reading the region…</li></ol>` : ""}
-      ${atts}
+      ${r.status === "running" ? `<ol class="ag-steps">${steps || `<li><span class="spin"></span> Reading this part of the chip…</li>`}</ol>` : ""}
+      ${r.note ? `<p class="ag-why">${esc(r.note)}</p>` : ""}
+      ${plainHtml(r.plain)}
+      ${r.status === "done" && !r.plain && !r.explained ? `<p class="ag-why">${esc(verdictWords(r.final ?? "", true))}</p>` : ""}
+      ${r.status !== "running" && (atts || steps) ? `<details class="ag-how"${r.plain ? "" : " open"}><summary>How it was checked (${r.attempts.length} attempt${r.attempts.length === 1 ? "" : "s"})</summary>${steps ? `<ol class="ag-steps">${steps}</ol>` : ""}${atts}</details>` : ""}
       ${r.error ? `<div class="callout bad">${esc(r.error)}</div>` : ""}
       <div class="ag-actions">
         ${r.cells.length ? `<button type="button" class="btn sm" data-run-act="cells">Show cells (${r.cells.length})</button>` : ""}
@@ -127,6 +141,8 @@ export class AgentPanel {
   }
 
   private onClick(e: MouseEvent) {
+    const cmd = (e.target as HTMLElement).closest<HTMLElement>("[data-cmd]");
+    if (cmd?.dataset.cmd) { void this.runCommand(cmd.dataset.cmd); return; }
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-run-act]");
     if (!b) return;
     const run = store.run(b.closest<HTMLElement>("[data-run]")!.dataset.run!);

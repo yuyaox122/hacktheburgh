@@ -62,17 +62,18 @@ export function hide() {
 
 function act(what: "explain" | "edit" | "comment") {
   if (!chip || !cell) return;
+  const chipId = chip, cellId = cell;   // capture before hide() clears the module vars (async loadChip below)
   if (what === "comment") {   // comments live on the Decompile page's lines
-    location.hash = `#/chip/${encodeURIComponent(chip)}`;
+    location.hash = `#/chip/${encodeURIComponent(chipId)}`;
     document.dispatchEvent(new CustomEvent("agent:open"));
     return;
   }
   document.dispatchEvent(new CustomEvent("agent:open"));
-  void loadChip(chip).then(({ data }) => {
-    const reg = regionForCell(data, cell);
+  void loadChip(chipId).then(({ data }) => {
+    const reg = regionForCell(data, cellId);
     if (!reg) return;
     void runAgent({
-      chip, scope: reg.scope, label: `3D cell ${cell} · ${reg.label}`, origin: "stage",
+      chip: chipId, scope: reg.scope, label: `3D cell ${cellId} · ${reg.label}`, origin: "stage",
       line: reg.lines[0] || undefined, lines: reg.lines[0] ? reg.lines : undefined,
       suggestEdit: what === "edit", verilog: data.decompiled.verilog,
     });

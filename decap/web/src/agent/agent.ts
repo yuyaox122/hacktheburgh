@@ -4,6 +4,7 @@
 import type { Block, ChipResult } from "../data/types";
 import { explain, formalise, type Scope } from "./api";
 import { claimToVerilog, store, uid, type Origin, type Run } from "./store";
+import { verdictWords } from "./words";
 
 const KIND_WORD: Record<string, string> = {
   adder: "adder", subtractor: "subtractor", counter: "counter", register: "register", shift: "shift register",
@@ -56,8 +57,10 @@ export async function runAgent(o: StartOpts): Promise<Run> {
       } else if (e.kind === "claim") {
         run.attempts.push(e);
         if (e.cells?.length) run.cells = e.cells;
+      } else if (e.kind === "thought") {
+        run.note = e.why;
       } else if (e.kind === "done") {
-        run.status = "done"; run.final = e.final; run.explained = e.explained; run.cached = e.cached; run.t1 = Date.now();
+        run.status = "done"; run.final = e.shown ?? e.final; run.explained = e.explained; run.cached = e.cached; run.plain = e.plain ?? null; run.t1 = Date.now();
         if (e.cells?.length) run.cells = e.cells;
       } else if (e.kind === "error") {
         run.status = "error"; run.error = e.error; run.t1 = Date.now();
@@ -91,13 +94,35 @@ export function suggestEditFrom(run: Run, verilog: string): boolean {
   return true;
 }
 
-/** A comment on a line. With `ask`, the agent formalises the sentence, Yosys checks it, and the agent replies. */
+/** A comment on a line. With `ask`, a claim is formalised + proved; a request ("check the logic") is explained. */
+const REQUEST = /\b(check|explain|what|how|why|is this|optimize|optimise|understand|review|verify|look at|tell me|describe|does this|can you|fix|improve)\b/i;
+
 export async function comment(chip: string, line: number, text: string, ask: boolean, scope: Scope | null) {
   store.addComment({ id: uid(), chip, line, author: "you", text, ts: Date.now() });
   if (!ask) return;
+  const sentence = text.replace(/@agent\b/gi, "").trim();
+
+  // A request/question ("check the logic of this part") → explain the region, not prove a vacuous tautology.
+  if (REQUEST.test(sentence)) {
+    if (!scope) return;
+    const reply = store.addComment({ id: uid(), chip, line, author: "agent", text: "Explaining this part and asking Yosys to check the explanation…", ts: Date.now(), pending: true });
+    try {
+      const run = await runAgent({ chip, scope, label: `comment on line ${line}`, origin: "comment", line });
+      const last = run.attempts[run.attempts.length - 1];
+      store.updateComment(reply.id, {
+        pending: false,
+        text: run.plain ? `${run.plain.headline}. ${run.plain.explanation}${run.plain.verdict === "proven" || run.plain.verdict === "inductive" ? "" : ` (${verdictWords(run.plain.verdict)})`}`
+          : run.explained ? (last.english ?? last.claim ?? "") : verdictWords(run.final ?? "", true),
+        claim: last.claim ?? undefined, english: last.english, verdict: run.final, counterexample: last.counterexample ?? null,
+      });
+    } catch (e) {
+      store.updateComment(reply.id, { pending: false, text: (e as Error).message });
+    }
+    return;
+  }
+
   const reply = store.addComment({ id: uid(), chip, line, author: "agent", text: "Reading your comment as a claim and asking Yosys…", ts: Date.now(), pending: true });
   try {
-    const sentence = text.replace(/@agent\b/gi, "").trim();
     const f = await formalise(chip, sentence, scope ?? {}, true);
     if (f.error) {
       store.updateComment(reply.id, { pending: false, text: `I couldn't turn that into a checkable line: ${f.error}` });
@@ -105,11 +130,9 @@ export async function comment(chip: string, line: number, text: string, ask: boo
     }
     const v = f.verdict;
     const verdict = v?.truth ?? v?.verdict ?? "unchecked";
-    const said = verdict === "proven" || verdict === "inductive" ? "Yosys proved it."
-      : verdict === "refuted" ? "Yosys refuted it. Here is an input where the chip does something else."
-      : verdict === "bounded" ? "It holds for 30 cycles after reset, but isn't proven beyond that."
-      : verdict === "tautology" ? "That's true of any chip, so it says nothing about this one."
-      : `Checker verdict: ${verdict}.`;
+    const said = verdict === "proven" || verdict === "inductive" ? "You're right. Yosys proved it for every input."
+      : verdict === "refuted" ? "That's not quite what the chip does. Here is an input where it behaves differently."
+      : verdictWords(verdict);
     const reading = f.assumptions?.length ? ` I read it as: ${f.assumptions.join("; ")}.` : "";
     store.updateComment(reply.id, {
       pending: false, text: said + reading + (f.ambiguous && f.alternative ? ` (Another reading: ${f.alternative})` : ""),

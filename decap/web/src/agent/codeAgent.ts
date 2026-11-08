@@ -3,6 +3,7 @@
 // Dismiss, and accepted edits shown in place of the lines they replace. Re-applied after every render of the pane.
 
 import type { ChipResult } from "../data/types";
+import { md } from "./md";
 import { $, $$, esc, hiVerilog, toast } from "../ui/dom";
 import { comment, regionForLine, runAgent, suggestEditFrom } from "./agent";
 import { store, type Comment, type Edit } from "./store";
@@ -98,9 +99,8 @@ function acceptedRow(e: Edit, open: boolean): string {
 function commentHtml(c: Comment): string {
   return `<div class="ag-cm ${c.author}">
     <div class="ag-cm-h"><b>${c.author === "agent" ? "Witness agent" : "You"}</b><time>${when(c.ts)}</time>${c.verdict ? pill(c.verdict) : ""}</div>
-    <p>${c.pending ? `<span class="spin"></span> ` : ""}${esc(c.text)}</p>
-    ${c.claim ? `<code class="ag-claim">${esc(c.claim)}</code>` : ""}
-    ${c.english ? `<p class="muted">${esc(c.english)}</p>` : ""}
+    ${c.pending ? `<p><span class="spin"></span> ${esc(c.text)}</p>` : md(c.text)}
+    ${c.claim ? `<details class="ag-how"><summary>The checked claim</summary><code class="ag-claim">${esc(c.claim)}</code>${c.english ? `<p class="muted">${esc(c.english)}</p>` : ""}</details>` : ""}
     ${c.verdict === "refuted" ? cexHtml(c.counterexample) : ""}
   </div>`;
 }
