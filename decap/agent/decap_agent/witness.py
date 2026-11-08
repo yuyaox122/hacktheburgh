@@ -40,7 +40,7 @@ LIMITS = UsageLimits(request_limit=6, input_tokens_limit=120_000)   # per attemp
 # whether the claim holds. 'tested' = credited by the fallback simulation checker (never a proof).
 DONE = {"proven", "inductive", "tested"}   # credited: the loop ends
 PROOF = {"proven", "inductive"}
-PROMPT_VERSION = "witness-v5"
+PROMPT_VERSION = "witness-v6"
 
 INSTRUCTIONS = """You explain one region of a real chip in ONE short claim. A formal checker (Yosys) then tries
 to prove the claim against the chip's gates. It is shown to people only if it is proven, so a wrong claim
@@ -54,8 +54,10 @@ How to work:
 3. Return one claim about the region's outputs.
 
 The claim is a Verilog expression:
+- ONE expression, nothing else. No semicolons, no `=` assignments, no commas, no intermediate variables and no
+  prose or asides (no "i.e.", "where", "in the samples", "bit N of the sum"). Join parts with `&&`.
 - Names: exactly the ports and flip-flops the region lists (with [i] or [hi:lo]), or a register alias it
-  gives. next(x) is x one clock later. 'A when B' means: whenever B, A holds.
+  gives. next(x) is x one clock later. 'A when B' means: whenever B, A holds. Never invent a name.
 - rst_n = 1 and ena = 1 are assumed (the chip is running, not in reset).
 - Verilog widths apply: an unsized number such as 1 is 32 bits wide and does not wrap; write 8'd1 when an
   8-bit value should wrap around.
