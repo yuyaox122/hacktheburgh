@@ -79,7 +79,7 @@ export type TerminalEvent = AgentEvent | ({ kind: "done" } & Record<string, unkn
 
 /** A natural-language command for the chip agent (the terminal): 'is anything hidden?', 'what does block b0 do?'... */
 export async function command(chip: string, text: string, onEvent: (e: TerminalEvent) => void, signal?: AbortSignal,
-                              upload?: { verilog: string; filename?: string; repair?: boolean; suspects?: unknown[] }): Promise<void> {
+                              upload?: { verilog: string; filename?: string; repair?: boolean; suspects?: unknown[]; fixture?: boolean }): Promise<void> {
   const res = await fetch("/witness/command", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, command: text, ...upload }), signal,
   });

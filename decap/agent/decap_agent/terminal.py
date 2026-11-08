@@ -159,11 +159,58 @@ async def _repair(client: Client, chip: str, verilog: str | None, suspects: list
     return res
 
 
+LINE_REF = re.compile(r"\bline(?:s)?\s+(\d+)(?:\s*(?:-|to|–|to)\s*(\d+))?\b", re.I)
+
+
+def _line_focus(command: str, verilog: str) -> list[dict]:
+    """The lines the user asked about ("line 7", "lines 4-6"), with a little context either side; the whole file if
+    no line is named (fixtures are tiny)."""
+    lines = [t for t in verilog.split("\n")]
+    m = LINE_REF.search(command)
+    if not m:
+        return [{"line": i + 1, "text": t} for i, t in enumerate(lines) if t.strip()][:40]
+    a = int(m.group(1)); b = int(m.group(2)) if m.group(2) else a
+    lo = max(1, min(a, b) - 2); hi = min(len(lines), max(a, b) + 2)
+    return [{"line": i, "text": lines[i - 1]} for i in range(lo, hi + 1) if lines[i - 1].strip()]
+
+
+async def _fixture_command(chip: str, command: str, verilog: str, transcript: Transcript | None, model: Any) -> dict:
+    """A chip the core doesn't know (a browser demo fixture): the agent can read its Verilog but not prove anything."""
+    kind = _intent(command)
+    if kind not in ("explain", "guide"):
+        return {"intent": kind, "chip": chip, "verdict": "fixture", "fixture": True,
+                "note": f"{chip} is a demo fixture the core doesn't know, so {kind} isn't available here. "
+                        f"Ask 'what does line N mean?' or 'what does this chip do?' to read its code."}
+    from .plain import explain_code
+    from .claim_expr import temp_defs
+    if transcript is not None:
+        transcript.record("thought", step="fixture", why=f"{chip} is a demo fixture; reading its Verilog (no proof, no core)")
+    focus = _line_focus(command, verilog)
+    r = await explain_code(chip, {"inputs": [], "outputs": [], "focus": focus}, defs=temp_defs(verilog), model=model)
+    if r is None:
+        return {"intent": "explain", "chip": chip, "verdict": "error", "fixture": True,
+                "error": "The agent couldn't read those lines."}
+    return {"intent": "explain", "chip": chip, "verdict": "code", "plain": r, "fixture": True,
+            "scope": {"lines": [f["line"] for f in focus]}}
+
+
 async def run_command(server: FastMCP, chip: str, command: str, *, transcript: Transcript | None = None,
                       model: Any = None, max_refine: int = 2, verilog: str | None = None,
-                      filename: str | None = None, repair: bool = False, suspects: list[dict] | None = None) -> dict:
+                      filename: str | None = None, repair: bool = False, suspects: list[dict] | None = None,
+                      fixture: bool = False) -> dict:
     """Interpret one natural-language command and run the matching flow (tracked as a session)."""
-    kind = "repair" if repair else "check_source" if verilog else _intent(command)
+    kind = "repair" if repair else "check_source" if (verilog and not fixture) else _intent(command)
+    if fixture:
+        sid = lifecycle.start(chip, kind, command, transcript=transcript) if transcript is not None else None
+        try:
+            result = await _fixture_command(chip, command, verilog or "", transcript, model)
+        except Exception as exc:
+            if sid:
+                lifecycle.finish(sid, "error", transcript=transcript, error=f"{type(exc).__name__}: {exc}")
+            raise
+        if sid:
+            lifecycle.finish(sid, "done", transcript=transcript, intent=result.get("intent"), verdict=result.get("verdict"))
+        return result
     if kind in ("repair", "fault"):
         sid = lifecycle.start(chip, "repair", command, transcript=transcript) if transcript is not None else None
         try:

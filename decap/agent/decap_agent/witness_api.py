@@ -63,6 +63,7 @@ class CommandIn(BaseModel):
     filename: str | None = None
     repair: bool = Field(False, description="With verilog: the agent fixes it until Yosys proves it equal to the chip")
     suspects: list[dict] | None = Field(None, description="Fault-localiser output: [{cell|line, p, explains?, confirmed?}]")
+    fixture: bool = Field(False, description="True when the chip is a browser demo fixture: verilog is its decompiled code, explained without the core")
     max_refine: int = Field(2, ge=0, le=4)
 
 
@@ -204,7 +205,8 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, read
         async def go():
             try:
                 res = await run_command(server, body.chip, body.command, transcript=t, model=model, max_refine=body.max_refine,
-                                        verilog=body.verilog, filename=body.filename, repair=body.repair, suspects=body.suspects)
+                                        verilog=body.verilog, filename=body.filename, repair=body.repair, suspects=body.suspects,
+                                        fixture=body.fixture)
                 await queue.put({"kind": "done", **res})
             except Exception as e:
                 await queue.put({"kind": "error", "error": f"{type(e).__name__}: {str(e)[:400]}"})
