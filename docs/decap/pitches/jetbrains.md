@@ -3,7 +3,7 @@
 **Prize:** 1st €350 per person; 2nd €150 per person. They will ask how we used AI.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 09:15 (synced with main through #99 and the board's 08:33 decision: no held-out Witness number in any pitch). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 09:00 (synced with main through #104; the held-out Witness bench is running at `bench-freeze` e7708d6). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
