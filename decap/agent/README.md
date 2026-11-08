@@ -47,7 +47,8 @@ author's source (failed, counterexample `ui_in = 137`), then removes the trigger
 **Models.** Keys live in `~/.config/decap/secrets.env` (or `$DECAP_SECRETS`), never in the repo. DeepSeek
 (`--model deepseek:deepseek-chat`) is the fast default for the terminal. `--model cli:sonnet` runs each request
 through your local `claude` login (`decap_agent/cli_model.py`). Use it when the API key is capped. It can't
-call tools, so it works for the bench and region claims but not for the investigator.
+call tools, so it works for the bench and region claims but not for the investigator. **Gemini:** put `GOOGLE_API_KEY` (from AI Studio)
+in the same secrets file and use `--model google-gla:gemini-flash-latest` (the `google` extra is in pyproject).
 
 **Connect an IDE agent.** Claude Code: `claude mcp add decap -- decap/agent/.venv/bin/decap mcp`. JetBrains
 Air picks up the repo's `.mcp.json`. Its paths are for Ian's Mac, so edit them on another machine. Anything
