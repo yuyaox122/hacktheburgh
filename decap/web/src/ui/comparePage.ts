@@ -4,6 +4,18 @@ import type { CompareResult } from "../data/types";
 import { compare, loadBench } from "../data/load";
 import { $, esc, hiVerilog } from "./dom";
 import { icon } from "./icons";
+import { KIND_COLOUR, KIND_WORD } from "./chipPage";
+
+const FAMILY_WORD: Record<string, string> = {
+  flop: "flip-flops", xor: "XOR", and: "AND", or: "OR", aoi: "AND-OR", oai: "OR-AND", mux: "mux", inv: "inverters", buf: "buffers", other: "other",
+};
+const word = (k: string) => KIND_WORD[k] ?? (k === "table" ? "lookup table" : k === "bitwise" ? "bitwise block" : k === "multiplier" ? "multiplier" : k);
+const plural = (k: string, n: number) => {
+  const w = word(k);
+  if (n === 1 || k === "logic") return `${n} ${w}`;
+  return `${n} ${/[^aeiou]y$/.test(w) ? w.slice(0, -1) + "ies" : /(sh|x|ch|s)$/.test(w) ? w + "es" : w + "s"}`;
+};
+const sorted = (o: Record<string, number> | undefined) => Object.entries(o ?? {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
 
 export class ComparePage {
   readonly el = document.createElement("div");
@@ -64,9 +76,24 @@ export class ComparePage {
     if (this.err) { out.innerHTML = `<div class="callout bad"><b>Compare is not available right now.</b><span>It needs the bASIC API with Yosys running. ${esc(this.err)}</span></div>`; return; }
     const r = this.res;
     if (!r) { out.innerHTML = ""; return; }
-    const fp = Object.entries(r.fingerprint ?? {}).filter(([, v]) => typeof v !== "object").map(([k, v]) => `<span class="pill">${esc(k)} ${esc(v)}</span>`).join(" ");
-    const blocks = (b: unknown) => Array.isArray(b) ? b.join(", ") : b && typeof b === "object" ? Object.entries(b as Record<string, number>).map(([k, v]) => `${v} ${k}`).join(", ") : String(b ?? "");
-    out.innerHTML = `<div class="group" style="margin-bottom:16px"><span class="eyebrow">Your fingerprint</span><div class="acts">${fp || `<span class="muted">None returned</span>`}</div></div>
+    const fp = r.fingerprint ?? {}, im = r.imported ?? {};
+    const parts = sorted(fp.blocks), total = parts.reduce((t, [, v]) => t + v, 0);
+    const nBlocks = Object.values(fp.block_count ?? {}).reduce((t, v) => t + v, 0);
+    const blocks = (b: unknown) => Array.isArray(b) ? b.join(", ") : b && typeof b === "object" ? sorted(b as Record<string, number>).map(([k, v]) => plural(k, v)).join(", ") : String(b ?? "");
+    const verdict = im.verdict ? `<span class="pill ${esc(im.verdict)}">${im.verdict === "proven" ? "Read back and proven equal" : `Proof: ${esc(im.verdict)}`}</span>` : "";
+    out.innerHTML = `<section class="card fp">
+        <div class="fp-hd"><span class="eyebrow">${im.chip ? `Starting from ${esc(im.chip)}` : "Your design, read back"}</span><span class="grow"></span>${verdict}</div>
+        <div class="fp-stats">
+          <div><b>${fp.logic_cells ?? "?"}</b><span>logic cells</span></div>
+          <div><b>${fp.flops ?? "?"}</b><span>flip-flops</span></div>
+          <div><b>${nBlocks}</b><span>blocks recognised</span></div>
+        </div>
+        ${total ? `<div class="group"><span class="fine">What the cells are built into</span>
+          <div class="fp-bar" role="img" aria-label="${esc(parts.map(([k, v]) => `${word(k)} ${Math.round(100 * v / total)}%`).join(", "))}">${parts.map(([k, v]) => `<i style="flex:${v};background:${KIND_COLOUR[k] ?? "var(--gate)"}" title="${esc(word(k))}: ${v} cells"></i>`).join("")}</div>
+          <div class="fp-legend">${parts.map(([k, v]) => `<span><i style="background:${KIND_COLOUR[k] ?? "var(--gate)"}"></i>${esc(plural(k, fp.block_count?.[k] ?? 1))}<span class="muted">${v} cell${v === 1 ? "" : "s"}</span></span>`).join("")}</div></div>` : ""}
+        ${sorted(fp.cell_families).length ? `<div class="group"><span class="fine">Cells by kind of gate</span><div class="acts">${sorted(fp.cell_families).map(([k, v]) => `<span class="pill">${esc(FAMILY_WORD[k] ?? k)} <b>${v}</b></span>`).join(" ")}</div></div>` : ""}
+      </section>
+      <span class="eyebrow">Most similar real chips</span>
       <div class="ncards">${r.neighbours.map((n, i) => `
         <article class="ncard">
           <div class="hd"><span class="rank">${i + 1}</span><a href="#/chip/${encodeURIComponent(n.chip)}">${esc(n.title || n.chip)}</a><span class="mono fine">${esc(n.chip)}</span><span class="grow"></span>

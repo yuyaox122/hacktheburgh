@@ -181,9 +181,17 @@ export interface Neighbour {
   blocks: string[] | Record<string, number> | string;
   excerpt: string;
 }
+export interface CompareFingerprint {
+  blocks?: Record<string, number>;
+  cell_families?: Record<string, number>;
+  block_count?: Record<string, number>;
+  logic_cells?: number;
+  flops?: number;
+}
 export interface CompareResult {
-  fingerprint: Record<string, unknown>;
+  fingerprint: CompareFingerprint;
   neighbours: Neighbour[];
+  imported?: { chip?: string; verdict?: string; stats?: { logic_cells?: number; flops?: number; area_um2?: number } };
 }
 export interface ChatReply {
   reply: string;
