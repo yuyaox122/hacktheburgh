@@ -26,6 +26,8 @@ export function withAcceptedEdits(chipId: string, verilog: string): string {
   return lines.join("\n");
 }
 
+export function saveText(name: string, text: string) { save(name, text); }
+
 function save(name: string, text: string) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text.endsWith("\n") ? text : text + "\n"], { type: "text/x-verilog" }));

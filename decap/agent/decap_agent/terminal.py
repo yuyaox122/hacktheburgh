@@ -27,6 +27,7 @@ from fastmcp import Client, FastMCP
 from . import lifecycle
 from .transcript import Transcript, result_payload
 
+FAULT = re.compile(r"fault drill|break (a|one) gate|inject (a )?fault|switch (a|one) gate|repair drill|mutat", re.I)
 # Explicit drill wording only: "was a backdoor planted here?" is a hunt on THIS chip, not a drill (review of #95).
 DRILL = re.compile(r"\bdrill\b|red.?team|test (yourself|the hunt)|prove (that )?it works", re.I)
 HUNT = re.compile(r"hidden|trigger|trojan|suspicious|backdoor|planted|anything (extra|wrong|else|weird)", re.I)
@@ -110,6 +111,8 @@ async def _drill(client: Client, chip: str, transcript: Transcript | None) -> di
 def _intent(command: str) -> str:
     """Single-skill commands take the fast fixed flow; compound or open-ended ones go to the investigator,
     which plans its own steps. A bare question with no chip verb falls through to the guide."""
+    if FAULT.search(command):
+        return "fault"
     if DRILL.search(command):
         return "drill"
     if INVESTIGATE.search(command):
@@ -134,11 +137,45 @@ async def _check_source(chip: str, verilog: str, filename: str, transcript: Tran
     return {"intent": "check_source", "chip": chip, "filename": filename, **res}
 
 
+async def _repair(client: Client, chip: str, verilog: str | None, suspects: list[dict] | None,
+                  transcript: Transcript | None, model: Any) -> dict:
+    """Fix a design that differs from the chip (repair.py). With no design: the fault drill, which switches one gate
+    in the decompiled Verilog, hides which from the agent, and reveals it at the end."""
+    from .repair import inject_fault, repair
+    from .scoping import mcp_caller
+    call = mcp_caller(client)
+    injected = None
+    if verilog is None:
+        dec = (await call("decompile", chip=chip))["verilog"]
+        injected = inject_fault(dec)
+        verilog = injected["verilog"]
+        if transcript is not None:
+            transcript.record("thought", step="fault drill", why="switched one gate in a copy of the decompiled Verilog; "
+                                                                "the agent isn't told which")
+    res = await repair(chip, verilog, call=call, suspects=suspects, model=model, transcript=transcript)
+    if injected:
+        res["injected"] = {k: injected[k] for k in ("line", "before", "after")}
+        res["found_injected"] = any(d["line"] == injected["line"] for d in res.get("diff", []))
+    return res
+
+
 async def run_command(server: FastMCP, chip: str, command: str, *, transcript: Transcript | None = None,
                       model: Any = None, max_refine: int = 2, verilog: str | None = None,
-                      filename: str | None = None) -> dict:
+                      filename: str | None = None, repair: bool = False, suspects: list[dict] | None = None) -> dict:
     """Interpret one natural-language command and run the matching flow (tracked as a session)."""
-    kind = "check_source" if verilog else _intent(command)
+    kind = "repair" if repair else "check_source" if verilog else _intent(command)
+    if kind in ("repair", "fault"):
+        sid = lifecycle.start(chip, "repair", command, transcript=transcript) if transcript is not None else None
+        try:
+            async with Client(server) as client:
+                result = await _repair(client, chip, verilog if repair else None, suspects, transcript, model)
+        except Exception as exc:
+            if sid:
+                lifecycle.finish(sid, "error", transcript=transcript, error=f"{type(exc).__name__}: {exc}")
+            raise
+        if sid:
+            lifecycle.finish(sid, "done", transcript=transcript, intent="repair", verdict=result.get("verdict"))
+        return result
     sid = lifecycle.start(chip, kind, command, transcript=transcript) if transcript is not None else None
     try:
         result = (await _check_source(chip, verilog, filename or "upload.v", transcript) if verilog else

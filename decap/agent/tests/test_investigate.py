@@ -219,3 +219,35 @@ def test_lifecycle_keeps_stopped(tmp_path):
     lifecycle.stop(sid, sessions_path=p)
     lifecycle.finish(sid, "done", sessions_path=p, verdict="clean")
     assert lifecycle.get(sid, sessions_path=p)["status"] == "stopped"
+
+
+SRC = """module m(input [7:0] ui_in, output [7:0] uo_out);
+    wire t1 = ui_in[0] & ui_in[1];
+    assign uo_out = {7'b0, t1 | ui_in[2]};
+endmodule"""
+
+
+def test_fault_drill_routes_and_injects_one_operator():
+    from decap_agent.repair import inject_fault
+    assert _intent("fault drill: switch one gate") == "fault"
+    f = inject_fault(SRC, seed=3)
+    changed = [i for i, (a, b) in enumerate(zip(SRC.split("\n"), f["verilog"].split("\n"))) if a != b]
+    assert changed == [f["line"] - 1] and f["before"] != f["after"]
+
+
+def test_mutation_search_finds_the_fix_that_the_checker_proves():
+    from decap_agent.repair import candidate_fixes, inject_fault, mutation_search
+    f = inject_fault(SRC, seed=3)
+    assert any(c[1].strip() == f["before"] for c in candidate_fixes(f["verilog"], [f["line"]]))
+
+    async def verify(text, label, quiet=False):            # the "chip" is SRC: proven iff identical
+        return {"verdict": "proven" if text == SRC else "failed"}
+    hit = asyncio.run(mutation_search(f["verilog"], verify, [f["line"]]))
+    assert hit and hit["line"] == f["line"] and hit["verilog"] == SRC
+
+
+def test_gate_level_candidates_swap_cell_type_only():
+    from decap_agent.repair import candidate_fixes
+    v = "  sky130_fd_sc_hd__and2_1 c53 (.A(n1), .B(n2), .X(n3));"
+    outs = {c[1].strip() for c in candidate_fixes(v, [1])}
+    assert "sky130_fd_sc_hd__or2_1 c53 (.A(n1), .B(n2), .X(n3));" in outs and len(outs) == 5

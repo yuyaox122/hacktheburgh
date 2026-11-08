@@ -212,3 +212,13 @@ ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
   display: inline; white-space: normal; padding: 0 4px; font-size: 12px; }
 .ag-outcome .md pre code { display: block; white-space: pre; }
 .ag-plain .md p { color: var(--fg); }
+.ag-termbox { position: relative; }
+.ag-jump { position: absolute; right: 18px; margin-top: -34px; z-index: 2; font: 12px var(--font-mono); padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--ag-teal); background: var(--panel); color: var(--ag-teal); cursor: pointer; }
+.ag-jump[hidden] { display: none; }
+.ag-outcome .ag-diff { font: 12px/1.6 var(--font-mono); }
+.ag-outcome .ag-diff div { white-space: pre-wrap; word-break: break-word; padding: 0 8px; }
+.ag-outcome .ag-diff .del { background: color-mix(in srgb, var(--del) 12%, transparent); color: var(--fg); }
+.ag-outcome .ag-diff .add { background: color-mix(in srgb, var(--add) 12%, transparent); color: var(--fg); }
+.ag-outcome .ag-diff span { display: inline-block; width: 14px; color: var(--muted); }
+.ag-outcome .ag-diff i { color: var(--faint); font-style: normal; }
