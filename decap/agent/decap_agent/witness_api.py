@@ -51,6 +51,11 @@ class FormaliseIn(BaseModel):
     check: bool = False
 
 
+class ExplainTextIn(BaseModel):
+    chip: str
+    lines: list[dict] = Field(description="[{line, text}] the selected lines, as shown in the editor")
+
+
 class CommandIn(BaseModel):
     chip: str
     command: str = Field(description="A natural-language command: 'is anything hidden?', 'what does block b0 do?', ...")
@@ -238,6 +243,26 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, read
             "ideas", chip=body.chip, line=body.line, lines=body.lines, ask=body.ask,
             **{k: out[k] for k in ("reply", "ideas", "dropped", "model", "prompt", "wall_s")})
         return out
+
+    @app.post("/witness/explain-text")
+    async def explain_text(body: ExplainTextIn) -> dict:
+        """The editor's Explain: plain English for the lines a person selected (read from the code itself)."""
+        from fastmcp import Client
+        from .claim_expr import temp_defs
+        from .plain import explain_code
+        from .transcript import result_payload
+        async with Client(build_server(core_app)) as c:
+            async def look(tool, **a):
+                r = await c.call_tool(tool, a, raise_on_error=False)
+                return None if getattr(r, "is_error", False) else result_payload(r)
+            dec = await look("decompile", chip=body.chip)
+            blocks = await look("recover_blocks", chip=body.chip)
+        region = {"inputs": [], "outputs": [], "focus": [{"line": l.get("line"), "text": l.get("text", "")} for l in body.lines[:40]]}
+        r = await explain_code(body.chip, region, defs=temp_defs((dec or {}).get("verilog", "") + "\n" + "\n".join(l.get("text", "") for l in body.lines)),
+                               blocks=(blocks or {}).get("blocks"), proof=None, model=model)
+        if not r:
+            raise HTTPException(502, "The agent couldn't explain those lines")
+        return r
 
     @app.get("/witness/status")
     def status() -> list[dict]:

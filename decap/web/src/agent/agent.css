@@ -223,3 +223,13 @@ ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
 .ag-outcome .ag-diff span { display: inline-block; width: 14px; color: var(--muted); }
 .ag-outcome .ag-diff i { color: var(--faint); font-style: normal; }
 .ag-line .ag-pre { white-space: pre-wrap; font-style: normal; }
+
+/* Decompile pane as an editor (editor.ts) */
+.ag-editor { display: flex; flex-direction: column; height: 100%; min-height: 420px; }
+.ag-ed-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.ag-ed-bar .grow { flex: 1; }
+.ag-ed-main { flex: 1 1 auto; min-height: 260px; overflow: auto; }
+.ag-ed-main .cm-editor { height: 100%; }
+.ag-ed-out { flex: 0 0 auto; max-height: 42%; overflow: auto; padding: 8px 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; font-size: 13px; }
+.ag-ed-ideas { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
+.ag-ed-pre { margin: 4px 0; padding: 6px 8px; border-radius: 6px; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; background: color-mix(in srgb, var(--fg) 6%, transparent); }
