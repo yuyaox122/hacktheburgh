@@ -251,3 +251,19 @@ def test_gate_level_candidates_swap_cell_type_only():
     v = "  sky130_fd_sc_hd__and2_1 c53 (.A(n1), .B(n2), .X(n3));"
     outs = {c[1].strip() for c in candidate_fixes(v, [1])}
     assert "sky130_fd_sc_hd__or2_1 c53 (.A(n1), .B(n2), .X(n3));" in outs and len(outs) == 5
+
+
+def test_line_focus_parses_the_asked_line_with_context():
+    from decap_agent.terminal import _line_focus
+    v = "\n".join(f"line {i}" for i in range(1, 20))
+    f = _line_focus("what does line 7 mean", v)
+    assert [x["line"] for x in f] == [5, 6, 7, 8, 9]     # asked line + 2 lines of context each side
+    assert _line_focus("explain lines 4-6", v)[0]["line"] >= 2
+    assert len(_line_focus("what does this chip do", v)) == 19    # whole file when no line is named
+
+
+def test_fixture_chip_routes_to_code_not_core(monkeypatch):
+    from decap_agent import terminal
+    assert _intent("what does line 7 mean") == "explain"
+    r = asyncio.run(terminal._fixture_command("tt_um_fixture_counter4", "is anything hidden?", "", None, None))
+    assert r["verdict"] == "fixture" and "available here" in r["note"] and r["intent"] == "hunt"

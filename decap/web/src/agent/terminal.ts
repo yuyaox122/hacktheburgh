@@ -34,6 +34,7 @@ interface DoneShape {
   findings?: Array<{ text: string; evidence: string; block?: string | null }>;
   next_steps?: string[];
   filename?: string;
+  fixture?: boolean;
   detail?: string;
   renamed_from?: string | null;
   top?: string;
@@ -276,6 +277,7 @@ export class Terminal {
         (nx ? `<div class="ag-nexts"><span class="ag-sub">next</span>${nx}</div>` : "");
     } else if (d.intent === "explain" && d.plain) {
       block.innerHTML = `${pill(String(d.verdict))}${plainHtml(d.plain)}` +
+        (d.fixture ? `<span class="ag-sub">Demo fixture — read from its code, no Yosys proof (the core doesn't have this chip).</span>` : "") +
         (d.claim ? `<details class="ag-claimbox"><summary>the checked claim</summary><code>${esc(String(d.claim))}</code></details>` : "");
     } else if (d.intent === "explain") {
       block.innerHTML = `${pill(String(d.verdict))}` +
@@ -283,7 +285,7 @@ export class Terminal {
         (d.english ? `<span class="ag-sub ag-clamp">${esc(String(d.english))}</span>` : "") +
         (d.verdict === "refuted" ? cexHtml(d.counterexample ?? null) : "");
     } else {
-      block.innerHTML = `<div class="ag-answer">${md(String(d.answer ?? ""))}</div>`;
+      block.innerHTML = `<div class="ag-answer">${md(String(d.answer ?? d.note ?? ""))}</div>`;
     }
     this.el.append(block);
   }

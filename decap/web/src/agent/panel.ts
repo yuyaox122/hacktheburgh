@@ -5,6 +5,7 @@ import { $, esc } from "../ui/dom";
 import { app } from "../ui/state";
 import { icon } from "../ui/icons";
 import { agentUp, command, type TerminalEvent } from "./api";
+import { FIXTURE_CHIPS } from "../data/load";
 import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
@@ -147,9 +148,11 @@ export class AgentPanel {
     } catch (e) { this.term.error(`/status: ${(e as Error).message}`); }
   }
 
-  private async runCommand(text: string, upload?: { verilog: string; filename?: string; repair?: boolean; suspects?: unknown[] }, chip = this.chip) {
+  private async runCommand(text: string, upload?: { verilog: string; filename?: string; repair?: boolean; suspects?: unknown[]; fixture?: boolean }, chip = this.chip) {
     if (!upload && text.startsWith("/")) { this.open(); this.slash(text); return; }
     if (!chip) return;
+    // A demo fixture chip isn't in the core, so the agent reads its own Verilog instead of the core's tools.
+    if (!upload && FIXTURE_CHIPS[chip]) upload = { verilog: FIXTURE_CHIPS[chip].decompiled?.verilog ?? "", fixture: true };
     this.open();
     this.cancel();
     const seq = ++this.runSeq;
