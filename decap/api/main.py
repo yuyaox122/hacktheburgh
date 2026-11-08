@@ -158,12 +158,13 @@ def compare_web(body: CompareIn = Body(default_factory=CompareIn)) -> dict:
 def chat_web(body: ChatIn = Body(default_factory=ChatIn)) -> dict:
     if not guide.available():
         raise HTTPException(503, "The guide needs an LLM key (ANTHROPIC_API_KEY) on the server.")
-    chip = body.context.get("chip") or body.context.get("variant_id")
+    # the Explore page sends its chip as `design` and the picked cell as `selected`; the Decompile page sends chip/selection
+    chip = body.context.get("chip") or body.context.get("variant_id") or body.context.get("design")
     if not chip:
         raise HTTPException(400, "context.chip is required")
     v = _get(chip)
     try:
-        return guide.ask(v.result, body.messages, body.context.get("selection"))
+        return guide.ask(v.result, body.messages, body.context.get("selection") or body.context.get("selected"))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:  # API errors: report, don't crash the page
