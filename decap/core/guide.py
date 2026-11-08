@@ -70,23 +70,31 @@ def context_text(result: dict, selection: dict | None) -> str:
     return f"Context (facts from Decap):\n{json.dumps(ctx)}\n\nDecompiled Verilog (line numbers on the left):\n{numbered}"
 
 
-def ask(result: dict, messages: list[dict], selection: dict | None = None) -> dict:
+def page_context_text(page: dict) -> str:
+    """No chip open (Stage, Results, Compare, Minecraft): the page's own facts, as the page sent them."""
+    return ("Context (facts from the page the user is on; no single chip is open, so there are no decompiled lines "
+            "or cells to highlight):\n" + json.dumps(page, default=str)[:12000])
+
+
+def ask(result: dict | None, messages: list[dict], selection: dict | None = None, page: dict | None = None) -> dict:
+    """Answer about one chip (result), or, with result=None, about the page the user is on (page = its context)."""
     msgs = [{"role": m["role"], "content": str(m["content"])} for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
     if not msgs or msgs[-1]["role"] != "user":
         raise ValueError("the last message must be from the user")
+    ctx = context_text(result, selection) if result is not None else page_context_text(page or {})
     if _has_key():
-        text, model = _ask_api(result, msgs, selection)
+        text, model = _ask_api(ctx, msgs)
     else:
-        text, model = _ask_cli(RULES + "\n\n" + context_text(result, selection), msgs)
+        text, model = _ask_cli(RULES + "\n\n" + ctx, msgs)
     return _parse(result, text, model)
 
 
-def _ask_api(result: dict, msgs: list[dict], selection: dict | None) -> tuple[str, str]:
+def _ask_api(ctx: str, msgs: list[dict]) -> tuple[str, str]:
     client = anthropic.Anthropic()
     resp = client.beta.messages.create(
         model=MODEL,
         max_tokens=2000,
-        system=[{"type": "text", "text": RULES}, {"type": "text", "text": context_text(result, selection)}],
+        system=[{"type": "text", "text": RULES}, {"type": "text", "text": ctx}],
         messages=msgs,
         output_config={"effort": "low"},
         betas=["server-side-fallback-2026-07-01"],
@@ -97,15 +105,15 @@ def _ask_api(result: dict, msgs: list[dict], selection: dict | None) -> tuple[st
     return "".join(b.text for b in resp.content if b.type == "text").strip(), resp.model
 
 
-def _parse(result: dict, text: str, model: str) -> dict:
+def _parse(result: dict | None, text: str, model: str) -> dict:
     text = text.strip()
     m = re.search(r"\{.*\}", text, re.S)
     try:
         data = json.loads(m.group(0)) if m else {"reply": text}
     except json.JSONDecodeError:
         data = {"reply": text}
-    known_cells = {c["id"] for c in result["netlist"]["cells"]}
-    n_lines = result["decompiled"]["verilog"].count("\n") + 1
+    known_cells = {c["id"] for c in result["netlist"]["cells"]} if result else set()
+    n_lines = result["decompiled"]["verilog"].count("\n") + 1 if result else 0
     cells = [c for c in data.get("cells", []) if c in known_cells]
     lines = [int(l) for l in data.get("lines", []) if str(l).isdigit() and 1 <= int(l) <= n_lines]
     return {"reply": str(data.get("reply", text))[:1500], "highlights": {"cells": cells, "lines": lines}, "model": model}
