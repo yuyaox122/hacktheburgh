@@ -79,9 +79,11 @@ def cli_model(alias: str = "sonnet", timeout: float = 360) -> FunctionModel:
 
 
 def resolve(model, default: str):
-    """'cli:sonnet' (or DECAP_LLM=cli with no model given) -> the CLI backend; anything else passes through."""
+    """'cli:sonnet' as the model or the default (or DECAP_LLM=cli with no model given) -> the CLI backend; anything
+    else passes through."""
     if model is None and os.environ.get("DECAP_LLM") == "cli":
         return cli_model(os.environ.get("DECAP_CLI_MODEL", "sonnet"))
-    if isinstance(model, str) and model.startswith("cli:"):
-        return cli_model(model.split(":", 1)[1] or "sonnet")
-    return model or default
+    m = model or default   # DECAP_WITNESS_MODEL=cli:sonnet arrives here as `default`
+    if isinstance(m, str) and m.startswith("cli:"):
+        return cli_model(m.split(":", 1)[1] or "sonnet")
+    return m

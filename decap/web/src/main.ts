@@ -197,8 +197,9 @@ function agentCommands(c: ChipPage): PaletteCommand[] {
   const r = c.result;
   if (!r) return [];
   return [...r.blocks].sort((a, b) => Number(a.recognised) - Number(b.recognised) || b.cells.length - a.cells.length)
-    .map((b) => ({ label: `Agent: explain block ${b.id} (${b.kind}, ${b.cells.length} cells, line ${b.lines[0]})`, key: "",
-      run: () => act(c, b.lines[0], "explain") }));
+    .flatMap((b) => [{ label: `Agent: explain block ${b.id} (${b.kind}, ${b.cells.length} cells, line ${b.lines[0]})`, key: "",
+      run: () => act(c, b.lines[0], "explain") },
+    { label: `Agent: ideas for block ${b.id} (line ${b.lines[0]})`, key: "", run: () => act(c, b.lines[0], "ideas") }]);
 }
 // 3D Stage inspector: "Explain its block with the agent"
 document.addEventListener("click", (e) => {
