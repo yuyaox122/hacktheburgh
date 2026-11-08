@@ -3,7 +3,7 @@
 **Prize:** 1st €350 per person; 2nd €150 per person. They will ask how we used AI.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:40.
+Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -20,7 +20,7 @@ Status: 8 Nov 2026, 00:40.
 
 - **The user is a developer, not a security reviewer.** Specifically, a hardware developer editing Verilog, or reviewing an AI's edit to it.
 - **The hero is the AI editor,** not the decompiler: hover a block → ideas → Apply → the Verilog changes → Yosys says **"proven equivalent"** or **"behaviour changed"**, with the input that differs. Yuyao is building it now.
-- **The IDE integration is shown, not claimed:** Decap's tools inside JetBrains Air/Junie through MCP.
+- **The IDE integration is shown, not claimed:** bASIC's tools inside JetBrains Air/Junie through MCP.
 - **Criterion 4 gets its own beat:** our multi-agent board.
 - **Results-wall numbers are a one-liner,** and the judge's-number trigger is optional.
 - **Minecraft is the end of the developer loop:** edit → prove → build → test on levers.
@@ -31,7 +31,7 @@ Status: 8 Nov 2026, 00:40.
 |---|---|---|---|
 | **AI editor** (hover → ideas → Apply → Yosys review) | Yuyao | Building: issue #68, branch `68-ideas-editor` (taken over 00:26; confirmed on the board at 00:34) | **Plan A only after one full rehearsal.** Otherwise Plan B |
 | **Witness drawer** (`A`): Explain / Suggest edit / Comment on Decompile lines | Ian, on main (#65) | Tested live on `cla_4bits`, all 4 flows work | Plan B hero |
-| **Decap MCP in JetBrains Air/Junie** (`decap mcp`) | Alex or Ian | MCP server works (13 tools against the real core). **Not yet connected in Air** | Connect once, record 20 s. If it fails, cut it and say "MCP, works in Claude Code" |
+| **bASIC MCP in JetBrains Air/Junie** (`decap mcp`) | Alex or Ian | MCP server works (13 tools against the real core). **Not yet connected in Air** | Connect once, record 20 s. If it fails, cut it and say "MCP, works in Claude Code" |
 | **Build in Minecraft** from the Decompile page | Yuyao, on main (#60) | Works (Verilog path checked 40/40) | Keep |
 
 Known agent quirk (Yuyao, #65): on a small output cone the agent proposed the same true XOR claim 5 times and got "restated" each time. Pick a demo region where this doesn't happen, and rehearse it.
@@ -45,9 +45,9 @@ Known agent quirk (Yuyao, #65): on a small output cone the agent proposed the sa
 | Time | Beat | On screen | Say |
 |---|---|---|---|
 | 0–15 s | **Hook** | Decompile page of a real chip | The hook |
-| 15–25 s | **Context, fast** | Decompiled Verilog beside the author's code, "Proven equivalent" | "Decap turns any chip's netlist back into readable Verilog, proven exactly right. 15 of 18 real chips we never tuned on. That's our starting point." |
+| 15–25 s | **Context, fast** | Decompiled Verilog beside the author's code, "Proven equivalent" | "bASIC turns any chip's netlist back into readable Verilog, proven exactly right. 15 of 18 real chips we never tuned on. That's our starting point." |
 | 25–55 s | **The editor** | Hover a block → conversation → "Generate ideas" → pick one → Apply → the Verilog changes → Yosys review | "Hover any block and ask the agent for ideas. Apply one, and the change lands in the Verilog. Then the proof runs. If behaviour is unchanged: proven equivalent, safe to merge. If it changed, you get the exact input where it differs, before it's ever silicon." |
-| 55–65 s | **In your IDE** | 10 s recording: JetBrains Air/Junie calling Decap's MCP tools | "Every Decap tool is an MCP tool, so the same checks run inside JetBrains Air or any agent you already use." |
+| 55–65 s | **In your IDE** | 10 s recording: JetBrains Air/Junie calling bASIC's MCP tools | "Every bASIC tool is an MCP tool, so the same checks run inside JetBrains Air or any agent you already use." |
 | 65–80 s | **Test it physically** | "Build in Minecraft" → redstone builds in about 3 s → flip the levers | "And because the edited code is proven, we can build it as a real circuit, out of redstone. Your unit test has levers." |
 | 80–90 s | **How we built it + close** | The board (GitHub issue #1) | "Built by three humans each steering their own coding agent, coordinated through one GitHub issue. **The agent proposes. The proof decides.**" |
 
@@ -71,7 +71,7 @@ Same hook and close. Replace 25–55 s with the **Witness drawer** (`A`):
 - The Witness design itself came from a multi-agent design tournament: 6 designs, 5 judges, a red team (`docs/decap/witness-plan.md`).
 
 **Be honest:**
-- **Our agents were Claude Code and Codex, not JetBrains Air.** Say: "We built with Claude Code and Codex agents; Decap plugs into Air through MCP." Don't imply Air built the project.
+- **Our agents were Claude Code and Codex, not JetBrains Air.** Say: "We built with Claude Code and Codex agents; bASIC plugs into Air through MCP." Don't imply Air built the project.
 - Humans steered. Mention a moment we rejected an agent's output (e.g. the unmergeable branch, the trigger bug).
 
 ## Likely questions

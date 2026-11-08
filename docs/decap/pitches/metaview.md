@@ -3,7 +3,7 @@
 **Prize:** $500 per team member. No set challenge: "show a creative project", any track or none.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:40.
+Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -19,7 +19,7 @@ A creative project that clearly works. "Best overall" judges are generalists: th
 
 ## The one sentence (if someone asks "what is it?")
 
-> "Decap turns a computer chip back into readable code and proves the code is exactly right, so anyone can see what the chip really does, including anything hidden inside. Then we build the chip in Minecraft."
+> "bASIC turns a computer chip back into readable code and proves the code is exactly right, so anyone can see what the chip really does, including anything hidden inside. Then we build the chip in Minecraft."
 
 ## The hook (0–15 s)
 
@@ -30,7 +30,7 @@ A creative project that clearly works. "Best overall" judges are generalists: th
 | Time | Beat | On screen | Say |
 |---|---|---|---|
 | 0–15 s | **Hook** | `minecraft/out/flythrough.mp4`: the real layout as blocks, metal layers spread out, wires glowing | The hook |
-| 15–30 s | **Read it** | Presenter mode (`D`), Read step: the decompiled code beside the author's own, "Proven equivalent" | "Decap reads the chip's raw gates back into code a person can read, and a formal checker proves it's exactly the same circuit. It did that for 15 of 18 real chips it had never seen." |
+| 15–30 s | **Read it** | Presenter mode (`D`), Read step: the decompiled code beside the author's own, "Proven equivalent" | "bASIC reads the chip's raw gates back into code a person can read, and a formal checker proves it's exactly the same circuit. It did that for 15 of 18 real chips it had never seen." |
 | 30–50 s | **Your number** | Find step: the judge's number as a flagged line | "You picked a number. We hid a secret trigger for it inside this chip, and here it is: your number, as a line of code nobody wrote. That's how you'd catch a backdoor." |
 | 50–80 s | **Build it** | Minecraft: two redstone builds of the same proven code, clean and planted. Flip the levers to the trigger value: the planted lamp lights, the clean one stays dark. Pan across the redstone | "Because the code is proven exactly right, it *is* the chip. So we compile it into real redstone: no command blocks, no cheats, about 33,000 blocks, checked against the original chip 60 cycles out of 60. Same chip, backdoor included." |
 | 80–90 s | **Close** | Lamp lit | "You can't review what you can't read. **Now you can read silicon. You can even walk around in it.**" |
@@ -56,7 +56,7 @@ A creative project that clearly works. "Best overall" judges are generalists: th
 |---|---|
 | "Is the Minecraft chip real?" | "Yes. The layout world puts every gate where it sits on the real chip. The redstone version is compiled from the proven code and checked cycle by cycle against the real netlist." |
 | "Can it read any chip?" | "Small open chips today, up to a few hundred gates. It reads design files, not manufactured chips." |
-| "What's the real-world use?" | "Chips are built from parts you didn't make, and AI is starting to design them. You can patch software, but never a chip. Decap lets you read and check what you're about to ship." |
+| "What's the real-world use?" | "Chips are built from parts you didn't make, and AI is starting to design them. You can patch software, but never a chip. bASIC lets you read and check what you're about to ship." |
 | "Did AI write this?" | "Our coding agents helped build it, steered by us. There's no AI in the decompiler or the proof. That's what makes the result trustworthy." |
 
 ## Don't say

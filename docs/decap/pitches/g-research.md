@@ -3,7 +3,7 @@
 **Prize:** Nintendo Switch 2 + Mario Kart. **Our best-fit track.** The brief is nearly our product description.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:40.
+Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -38,7 +38,7 @@ Run Presenter mode (`D`). Its step buttons can be clicked in any order. Minecraf
 |---|---|---|---|
 | 0–15 s | **Hook** | 3 s of the fly-through (`minecraft/out/flythrough.mp4`), then the 3D chip (Presenter step 1) | The hook |
 | 15–30 s | **1. What's hidden** | Explore (step 2): click a gate, press Run, wires glow | "This is a real Tiny Tapeout chip, from its published layout. Every gate has a meaning, but nobody can read hundreds of them. And every one of these chips has a hidden answer key: the author's source, at the exact commit." |
-| 30–50 s | **2. How we find it** | Results wall (step 3), then the judge's chip: Read (step 4), "Proven equivalent", author's code beside it | "Decap reads the gates back into code, blind, with names stripped. Then a formal checker *proves* the code is exactly the same circuit. 15 of 18 real chips we never tuned on, proven. And here's what the author actually wrote." |
+| 30–50 s | **2. How we find it** | Results wall (step 3), then the judge's chip: Read (step 4), "Proven equivalent", author's code beside it | "bASIC reads the gates back into code, blind, with names stripped. Then a formal checker *proves* the code is exactly the same circuit. 15 of 18 real chips we never tuned on, proven. And here's what the author actually wrote." |
 | 50–70 s | **3. What we do with it** | Find (step 5): the judge's number as a flagged line; click its flag card | "You picked a number. We hid a trigger for it in this chip, and here it is: a line of code nobody wrote. On held-out chips: 16 of 16 planted triggers caught, false alarms on 3 of 16 clean chips." |
 | 70–85 s | **Walk inside it** | Minecraft showcase world: `/function decap:tour/…` to the trojan annex (red blocks, the flagged line floating above), then the redstone lever bank: flip to the trigger value, the lamp lights | "Invisible to code review, visible from orbit. And because the code is proven, it's the real circuit, so we rebuilt it in redstone. The trojan comes along with it." |
 | 85–90 s | **Close** | Lamp lit | "You can't review what you can't read. **Now you can read silicon.**" |
@@ -50,7 +50,7 @@ Run Presenter mode (`D`). Its step buttons can be clicked in any order. Minecraf
 | Question | Answer |
 |---|---|
 | **Data source** | Tiny Tapeout 08: 121 netlists fetched with `gh api` (14 failed, mostly analog/ROM). Each digital chip ships a netlist, a GDS, and `commit_id.json` pointing at the author's repo + commit. |
-| **The hidden join** | The GDS keeps each netlist instance name as **property 61**, so every gate can be placed in 3D without a DEF (24 of 27 chips match fully). |
+| **The hidden join** | The GDS keeps each netlist instance name as **property 61**, so every gate can be placed in 3D without a DEF (24 of 27 chips match fully; measured with `ingest/ingest_gds.py`, `PITCH.md` §5). |
 | **Leak we had to close** | TT08 netlists keep the author's wire names (`co`, `s_w[0]`). We strip them before anything "blind". |
 | **Evaluation** | 27 chips: 9 dev, 18 test, **split frozen before tuning**. Both scored runs reported (first run: 15/18 proven, 15/16 caught). |
 | **Readability, not just correctness** | A gate-by-gate copy would pass the proof trivially, so we also measure: 52% of logic cells explained by recognised blocks (mean; 37% weighted), and the decompile is shorter than the author's code on all 9 test chips with hand-written Verilog (480 vs 1,307 lines). |
@@ -76,14 +76,14 @@ Ian is running the Witness agent bench with DeepSeek: AI agents propose one-line
 | "Did you tune on the test chips?" | "No. The split was frozen first. Our first scored run was 15/18 proven and 15/16 caught. We made general fixes after it and report both runs." |
 | "Is the Minecraft layout real?" | "Yes: every cell sits at its GDS position, the wires come from the GDS nets, and the world's logic matches the reference simulation 30 out of 30. The redstone build keeps the real rows and approximate x; it stretches the rows apart to make room for wiring." |
 | "Would it catch a stealthier trojan?" | "Not with the blind flag alone. Published trojans are built to evade rare-signal checks. The stronger guarantee is the proof: whatever is in the chip is in the proven code." |
-| "3 false alarms out of 16?" | "One is a combination lock, `input == 118`. A lock and a backdoor look identical to a blind check. Decap shows you the line; intent needs a human." |
+| "3 false alarms out of 16?" | "One is a combination lock, `input == 118`. A lock and a backdoor look identical to a blind check. bASIC shows you the line; intent needs a human." |
 | "Real chips are huge." | "Today, 27 to 260 cells. Proofs take seconds. Recognising blocks at scale is the open problem." |
 
 ## Don't say
 
 - "First to decompile chips" (Sisco PLDI 2023 and Subramanyan 2014 came first; name them yourself).
 - "Trojans are everywhere."
-- That Decap reads manufactured chips. It reads design files.
+- That bASIC reads manufactured chips. It reads design files.
 
 ## Prep checklist
 

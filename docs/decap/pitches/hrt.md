@@ -3,7 +3,7 @@
 **Prize:** 1st PS5; runners-up mechanical keyboards. Data can be anything, not just financial.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 00:40.
+Status: 8 Nov 2026, 00:50. On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -48,7 +48,7 @@ Presenter mode (`D`), but click the steps **out of order**: Results first.
 
 ## The prediction framing, honestly
 
-| HRT concept | Decap | Honest caveat |
+| HRT concept | bASIC | Honest caveat |
 |---|---|---|
 | Raw data | Gate-level netlists of real chips, names stripped | Small chips: 27–260 logic cells |
 | Features | Recognised blocks (adders, counters, comparators), guessed from random input samples | Templates + exact logic, not learned |
