@@ -3,7 +3,7 @@
 **Prize:** 1st €350 per person; 2nd €150 per person. They will ask how we used AI.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 01:00 (synced with main up to #74). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 01:05 (synced with main and the board up to Ian's 00:47 model decision). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -80,7 +80,7 @@ Same hook and close. Replace 25–55 s with the **Witness drawer** (`A`):
 | They'll ask | We answer |
 |---|---|
 | "Isn't this a prompt wrapper?" | "The AI has no say in the verdict. Yosys proves every claim or edit against the circuit, for every input. The model is replaceable; the proof isn't." |
-| "Which model?" | "Witness runs on DeepSeek for the bench; the guide is model-agnostic through pydantic-ai. The decompiler and proof use no AI at all." |
+| "Which model?" | "Witness runs on Claude Sonnet. We also tried DeepSeek: the proof showed most of its first drafts were wrong, so the checker is also how we pick a model. The guide is model-agnostic through pydantic-ai. The decompiler and the proof use no AI at all." |
 | "How does this fit my workflow?" | "It's MCP, so it's in whichever agent you already use: Air, Claude Code, Cursor. And there's a web app for reviewing." |
 | "Why hardware?" | "Because a bug there is permanent. You can patch software tomorrow. A chip, never." |
 | "Who's the user?" | "An engineer editing a block they didn't write, or reviewing an AI's edit to one." |

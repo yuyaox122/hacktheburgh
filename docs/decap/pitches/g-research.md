@@ -3,7 +3,7 @@
 **Prize:** Nintendo Switch 2 + Mario Kart. **Our best-fit track.** The brief is nearly our product description.
 
 Numbers and honesty rules: [`../PITCH.md`](../PITCH.md). If this file disagrees with it, `PITCH.md` wins.
-Status: 8 Nov 2026, 01:00 (synced with main up to #74). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
+Status: 8 Nov 2026, 01:05 (synced with main and the board up to Ian's 00:47 model decision). On stage and on slides the product is **bASIC**; code and folder names (`decap/`, the `decap` CLI, API paths) stay as they are.
 
 ## What the judges want
 
@@ -59,17 +59,18 @@ Run Presenter mode (`D`). Its step buttons can be clicked in any order. Minecraf
 
 ## Ian's Witness number (pending: plug in or drop)
 
-Ian is running the Witness agent bench with DeepSeek: AI agents propose one-line claims about a chip region, and each counts only if Yosys proves it.
+Ian is running the Witness agent bench with **Claude Sonnet** (`cli:sonnet`, the model every demo result was made with): AI agents propose one-line claims about a chip region, and each counts only if Yosys proves it.
 - Dev bench (9 chips): running now.
 - Held-out bench: runs after the **02:30 freeze**.
-- Smoke test so far: 1 chip, 2 regions, both proven on the first draft, in 10 s.
+- A demo result to show while we wait: on the dev chip `kapilan_alarm`, the agent's proven claim for the alarm latch is about 5× shorter than the decompile. Label it "dev chip".
 
 **If the held-out number lands,** add one line in the "How we find it" beat:
 > "And AI agents explained ___ of ___ regions on chips they'd never seen, in one-line claims, every one proven."
 
 **Don't quote:**
 - the dev number as a held-out result;
-- the old `cli:sonnet` 80% (it errored on 19 of 27 regions; unusable).
+- the old dev 80% (the API cap made it error on 19 of 27 regions; unusable). A clean Sonnet dev re-run is going now, but it is still a dev number;
+- DeepSeek results (a tested fallback, but weak: 65% of parseable first drafts wrong, 37% unparseable). If the overnight run ends up finishing on DeepSeek, say so.
 
 ## Likely questions
 
