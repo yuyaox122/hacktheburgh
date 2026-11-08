@@ -1,3 +1,5 @@
+import { rmSync } from "node:fs";
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 // Static-first: /data/* is served from public/data (generated, gitignored); /api/* goes to the FastAPI backend;
@@ -16,4 +18,6 @@ export default defineConfig({
     proxy: { "/api": { target: api, changeOrigin: true }, "/redstone": { target: redstone, changeOrigin: true }, "/witness": { target: witness, changeOrigin: true } },
   },
   build: { target: "es2022", chunkSizeWarningLimit: 1200 },
+  // public/mc holds Mojang's textures from the local client jar (npm run mc-assets): dev only, never in a build.
+  plugins: [{ name: "strip-mc-assets", apply: "build", closeBundle() { rmSync(resolve(__dirname, "dist/mc"), { recursive: true, force: true }); } }],
 });

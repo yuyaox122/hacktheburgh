@@ -12,8 +12,10 @@ interface BlockState { variants?: Record<string, Ref | Ref[]>; multipart?: { whe
 type Cond = Record<string, string> | { OR: Cond[] } | { AND: Cond[] };
 export interface McAssets { blockstates: Record<string, BlockState>; models: Record<string, { elements: Element[] }> }
 
-/** Fetch /mc/assets.json; null when it was never generated (then the view keeps its flat colours). */
+/** Fetch /mc/assets.json; null when it was never generated (then the view keeps its flat colours).
+ *  Dev server only: Mojang's textures must never ship on the public site (vite.config also strips dist/mc). */
 export async function loadMcAssets(): Promise<McAssets | null> {
+  if (!import.meta.env.DEV) return null;
   try {
     const r = await fetch("/mc/assets.json");
     if (!r.ok) return null;
