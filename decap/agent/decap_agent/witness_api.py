@@ -239,6 +239,12 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, read
             **{k: out[k] for k in ("reply", "ideas", "dropped", "model", "prompt", "wall_s")})
         return out
 
+    @app.get("/witness/status")
+    def status() -> list[dict]:
+        """The terminal's /status: recent agent sessions (the same registry as `decap status`)."""
+        from . import lifecycle
+        return lifecycle.list_sessions()[-12:]
+
     @app.get("/witness/cache")
     def cached(chip: str = "") -> list[dict]:
         rows = []
