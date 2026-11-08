@@ -8,6 +8,7 @@ import { loadChip, loadDesign } from "../data/load";
 import { toast } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { store } from "./store";
+import * as editor from "./editor";
 
 const DOWNLOAD = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.8v7.7M4.8 7.3 8 10.5l3.2-3.2"/><path d="M2.5 10.5v1.7a1.3 1.3 0 0 0 1.3 1.3h8.4a1.3 1.3 0 0 0 1.3-1.3v-1.7"/></svg>`;
 const MAX_BYTES = 400_000;
@@ -16,7 +17,7 @@ let chip = "";
 let picker: HTMLInputElement | null = null;
 
 /** Called by the Agent panel whenever the current chip changes (both pages set it). */
-export function setChip(c: string | null) { chip = c ?? ""; }
+export function setChip(c: string | null) { if ((c ?? "") !== chip) editor.close(); chip = c ?? ""; }
 
 /** The decompiled Verilog with the agent edits you accepted applied, bottom-up so line numbers stay valid. */
 export function withAcceptedEdits(chipId: string, verilog: string): string {
@@ -80,12 +81,14 @@ function upload() {
   picker.click();
 }
 
-const bar = (kind: "dec" | "src") => `<span class="vio">
+const bar = (kind: "dec" | "src") => `<span class="vio">${kind === "dec"
+  ? `<button class="btn plain sm" type="button" data-vio="edit" title="Edit the Verilog here; Yosys checks what your edit does">Edit</button>` : ""}
   <button class="btn plain sm" type="button" data-vio="dl-${kind}" title="${kind === "dec" ? "Download the decompiled Verilog (with edits you accepted)" : "Download this source file"}">${DOWNLOAD}Download</button>
   <button class="btn plain sm" type="button" data-vio="up" title="Upload your own Verilog and Yosys checks whether this chip implements it">${icon.upload}Check my Verilog</button>
 </span>`;
 
 function decorate() {
+  if (editor.isOpen() && !document.querySelector(".ag-editor")) editor.close();   // the page re-rendered under it
   const dec = document.querySelector("#cpCode")?.closest(".pane")?.querySelector(".pane-h");
   if (dec && !dec.querySelector(".vio")) dec.insertAdjacentHTML("beforeend", bar("dec"));
   const src = document.querySelector("#stSrc")?.closest(".pane")?.querySelector(".chiphdr .meta");
@@ -104,6 +107,10 @@ export function install() {
     if (!b) return;
     const v = b.dataset.vio;
     if (v === "up") upload();
+    else if (v === "edit") {
+      const body = document.querySelector<HTMLElement>("#cpCode")?.closest<HTMLElement>(".pane-b");
+      if (body && chip) { if (editor.isOpen()) editor.close(); else void editor.open(chip, body); }
+    }
     else void download(v === "dl-dec" ? "dec" : "src");
   });
   decorate();
