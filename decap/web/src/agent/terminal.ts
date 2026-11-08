@@ -193,6 +193,19 @@ export class Terminal {
     this.stop();
   }
 
+  /** A local reply (slash commands): no request, no spinner. `lead` prefixes the body (e.g. "unknown command"). */
+  note(cmd: string, body: string, lead = "") {
+    this.stop();
+    this.el.hidden = false;
+    this.el.innerHTML = "";
+    this.line("you", esc(cmd), "ag-user");
+    this.line("bASIC", `${esc(lead)}<span class="ag-pre">${esc(body)}</span>`, "ag-thought");
+    this.setState("ready");
+    this.elapsed.textContent = "";
+  }
+
+  clear() { this.stop(); this.el.innerHTML = ""; this.el.hidden = true; this.setState("ready"); this.elapsed.textContent = ""; }
+
   error(msg: string) {
     this.hideThinking();
     this.line("agent", esc(msg), "ag-err");

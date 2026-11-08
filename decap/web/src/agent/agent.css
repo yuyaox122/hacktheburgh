@@ -222,3 +222,4 @@ ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
 .ag-outcome .ag-diff .add { background: color-mix(in srgb, var(--add) 12%, transparent); color: var(--fg); }
 .ag-outcome .ag-diff span { display: inline-block; width: 14px; color: var(--muted); }
 .ag-outcome .ag-diff i { color: var(--faint); font-style: normal; }
+.ag-line .ag-pre { white-space: pre-wrap; font-style: normal; }

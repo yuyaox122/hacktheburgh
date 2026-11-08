@@ -20,6 +20,13 @@ const STEP: Record<string, (s: Run["steps"][number]) => string> = {
   recover_blocks: () => "Listed the chip's blocks",
 };
 
+const SLASH: Array<[string, string]> = [
+  ["/explain b3", "explain a block or output"], ["/hunt", "look for hidden logic"], ["/drill", "red-team drill"],
+  ["/fault", "fault drill: break a gate, fix it"], ["/audit", "plan and audit the chip"], ["/slowest", "slowest path"],
+  ["/memory", "what we already know"], ["/check", "upload your Verilog"], ["/status", "recent sessions"],
+  ["/stop", "stop the running command"], ["/clear", "clear the terminal"], ["/help", "list commands"],
+];
+
 export class AgentPanel {
   readonly el = document.createElement("aside");
   private chip: string | null = null;
@@ -40,8 +47,8 @@ export class AgentPanel {
         <div class="ag-term" id="agTerm" hidden></div>
         <div class="ag-status" id="agStatus"><span class="ag-state ready">ready</span><span class="ag-elapsed"></span>
           <button type="button" class="btn plain sm" id="agStop" hidden title="Stop this command">Stop</button></div>
-        <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
-          placeholder="Type a message…" aria-label="Command the chip agent">
+        <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off" list="agSlash"
+          placeholder="Type a message, or / for commands" aria-label="Command the chip agent">
           <button class="btn primary" type="submit">Run</button></form>
         <div class="ag-suggest" id="agSuggest">
           <button type="button" class="ag-next" data-cmd="Audit this chip: what are its parts, and is the unrecognised logic doing anything odd?">Audit this chip</button>
@@ -53,7 +60,8 @@ export class AgentPanel {
           <button type="button" class="ag-next" data-vio="up" title="Upload a .v file; Yosys checks whether this chip implements it">Check my Verilog…</button>
         </div>
       </div>
-      <div class="ag-runs" id="agRuns" aria-live="polite"></div>`;
+      <div class="ag-runs" id="agRuns" aria-live="polite"></div>
+      <datalist id="agSlash">${SLASH.map(([c, d]) => `<option value="${c}">${d}</option>`).join("")}</datalist>`;
     document.body.append(this.el);
     this.term = new Terminal($("#agTerm", this.el), $("#agStatus", this.el));
     $("#agClose", this.el).addEventListener("click", () => this.close());
@@ -110,7 +118,36 @@ export class AgentPanel {
     $("#agStop", this.el).hidden = true;
   }
 
+  /** CLI-style slash commands in the terminal: each maps onto the same agent calls as the buttons (no shell). */
+  private slash(text: string): boolean {
+    const [cmd, ...rest] = text.slice(1).trim().split(/\s+/);
+    const arg = rest.join(" ");
+    const SAY: Record<string, string> = {
+      hunt: "Is anything hidden in this chip?", drill: "Red-team drill: plant a hidden trigger and find it blind",
+      fault: "Fault drill: switch one gate, then find and fix it", audit: "Audit this chip: what are its parts, and is the unrecognised logic doing anything odd?",
+      slowest: "What is the slowest path, and what does the block on it do?", memory: "What do we already know about this chip? Review memory and fill one gap.",
+    };
+    if (cmd === "explain") { void this.runCommand(arg ? `what does ${arg} do?` : "explain this chip"); return true; }
+    if (SAY[cmd]) { void this.runCommand(SAY[cmd]); return true; }
+    if (cmd === "ask") { void this.runCommand(arg || "what does this chip do?"); return true; }
+    if (cmd === "check") { (document.querySelector<HTMLElement>("[data-vio='up']"))?.click(); return true; }
+    if (cmd === "stop") { this.cancel("Stopped."); return true; }
+    if (cmd === "clear") { this.term.clear(); return true; }
+    if (cmd === "status") { void this.status(); return true; }
+    this.term.note(text, `Commands: ${SLASH.map((s) => s[0]).join("  ")}`, cmd === "help" ? "" : `unknown command /${cmd}. `);
+    return true;
+  }
+
+  private async status() {
+    try {
+      const rows = await (await fetch("/witness/status")).json() as Array<{ id: string; chip?: string; kind?: string; status?: string; started_at?: string; command?: string }>;
+      this.term.note("/status", rows.length ? rows.slice().reverse().map((r) =>
+        `${(r.started_at ?? "").slice(11, 19)}  ${(r.status ?? "?").padEnd(8)} ${(r.kind ?? "").padEnd(11)} ${r.chip ?? ""}  ${(r.command ?? "").slice(0, 40)}`).join("\n") : "no agent sessions yet");
+    } catch (e) { this.term.error(`/status: ${(e as Error).message}`); }
+  }
+
   private async runCommand(text: string, upload?: { verilog: string; filename?: string; repair?: boolean; suspects?: unknown[] }, chip = this.chip) {
+    if (!upload && text.startsWith("/")) { this.open(); this.slash(text); return; }
     if (!chip) return;
     this.open();
     this.cancel();
