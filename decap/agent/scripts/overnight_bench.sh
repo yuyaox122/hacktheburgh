@@ -33,7 +33,9 @@ echo "[overnight] freeze hash $GOT ${FREEZE_SHA:+matches the posted one}"
 OUT="$AGENT/runs/bench-test-$(date -u +%Y%m%d-%H%M%S)"
 for try in 1 2 3; do
   caffeinate -i "$PY" "$DECAP" --transcript "$OUT.jsonl" bench --split test --frozen --max-regions 4 --model "$MODEL" \
-    --concurrency "${DECAP_BENCH_CONC:-1}" --out "$OUT.json" && { echo "[overnight] done: $OUT.json"; exit 0; }
+    --concurrency "${DECAP_BENCH_CONC:-1}" --out "$OUT.json" && { \
+      mkdir -p "$AGENT/out"; "$PY" "$AGENT/scripts/witness_card.py" "$OUT.json" "$MODEL" -o "$AGENT/out/witness-summary.json"; \
+      echo "[overnight] done: $OUT.json"; exit 0; }
   echo "[overnight] bench crashed (try $try); restarting from the cache" >&2
 done
 exit 1
