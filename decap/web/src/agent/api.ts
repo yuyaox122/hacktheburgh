@@ -71,9 +71,10 @@ export interface Formal {
 export type TerminalEvent = AgentEvent | ({ kind: "done" } & Record<string, unknown>) | { kind: "note"; intent: string; text?: string };
 
 /** A natural-language command for the chip agent (the terminal): 'is anything hidden?', 'what does block b0 do?'... */
-export async function command(chip: string, text: string, onEvent: (e: TerminalEvent) => void, signal?: AbortSignal): Promise<void> {
+export async function command(chip: string, text: string, onEvent: (e: TerminalEvent) => void, signal?: AbortSignal,
+                              upload?: { verilog: string; filename: string }): Promise<void> {
   const res = await fetch("/witness/command", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, command: text }), signal,
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, command: text, ...upload }), signal,
   });
   if (!res.ok || !res.body) throw new Error(`The agent service answered ${res.status}. Is 'decap serve' running on port 8791?`);
   const reader = res.body.getReader();

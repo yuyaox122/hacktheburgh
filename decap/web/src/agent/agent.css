@@ -152,3 +152,5 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .ag-plain .ag-by { font-size: 11px; color: var(--faint); }
 .ag-how > summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 4px 0; }
 .ag-why { margin: 6px 0; color: var(--muted); }
+.vio { display: inline-flex; gap: 2px; margin-left: 4px; }
+.vio .btn svg { margin-right: 4px; vertical-align: -2px; }

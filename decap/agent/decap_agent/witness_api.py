@@ -50,6 +50,8 @@ class FormaliseIn(BaseModel):
 class CommandIn(BaseModel):
     chip: str
     command: str = Field(description="A natural-language command: 'is anything hidden?', 'what does block b0 do?', ...")
+    verilog: str | None = Field(None, description="Your own Verilog: check whether this chip implements it")
+    filename: str | None = None
     max_refine: int = Field(2, ge=0, le=4)
 
 
@@ -147,7 +149,8 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> F
 
         async def go():
             try:
-                res = await run_command(server, body.chip, body.command, transcript=t, model=model, max_refine=body.max_refine)
+                res = await run_command(server, body.chip, body.command, transcript=t, model=model, max_refine=body.max_refine,
+                                        verilog=body.verilog, filename=body.filename)
                 await queue.put({"kind": "done", **res})
             except Exception as e:
                 await queue.put({"kind": "error", "error": f"{type(e).__name__}: {str(e)[:400]}"})

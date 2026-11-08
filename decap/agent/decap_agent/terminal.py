@@ -105,13 +105,28 @@ def _intent(command: str) -> str:
     return "guide"
 
 
+async def _check_source(chip: str, verilog: str, filename: str, transcript: Transcript | None) -> dict:
+    """Your own Verilog vs the chip's gates (source_check.py). Not an MCP tool, so the event is recorded here."""
+    import asyncio
+    import time
+    from .source_check import check_verilog
+    t0 = time.perf_counter()
+    res = await asyncio.to_thread(check_verilog, chip, verilog, filename)
+    if transcript is not None:
+        transcript.record("tool", tool="prove_equiv", args={"chip": chip, "against": filename}, is_error=res["verdict"] == "unavailable",
+                          wall_s=round(time.perf_counter() - t0, 3), summary=res["verdict"] + (" (bounded, not a proof)" if res["verdict"] == "tested" else ""))
+    return {"intent": "check_source", "chip": chip, "filename": filename, **res}
+
+
 async def run_command(server: FastMCP, chip: str, command: str, *, transcript: Transcript | None = None,
-                      model: Any = None, max_refine: int = 2) -> dict:
+                      model: Any = None, max_refine: int = 2, verilog: str | None = None,
+                      filename: str | None = None) -> dict:
     """Interpret one natural-language command and run the matching flow (tracked as a session)."""
-    kind = _intent(command)
+    kind = "check_source" if verilog else _intent(command)
     sid = lifecycle.start(chip, kind, command, transcript=transcript) if transcript is not None else None
     try:
-        result = await _run_command(server, chip, command, transcript=transcript, model=model, max_refine=max_refine)
+        result = (await _check_source(chip, verilog, filename or "upload.v", transcript) if verilog else
+                  await _run_command(server, chip, command, transcript=transcript, model=model, max_refine=max_refine))
     except Exception as exc:
         if sid:
             lifecycle.finish(sid, "error", transcript=transcript, error=f"{type(exc).__name__}: {exc}")

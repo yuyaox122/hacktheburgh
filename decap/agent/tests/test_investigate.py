@@ -89,3 +89,18 @@ def test_plain_english_guard_rejects_invented_constants():
     bad = Plain(headline="A counter that wraps at 60", explanation="It fires at 200.", example="")
     assert unsupported_numbers(ok, material) == []          # 59 written plainly, 137 = 8'h89
     assert unsupported_numbers(bad, material) == [60, 200]
+
+
+def test_uploaded_verilog_top_module_is_lined_up_with_the_chip():
+    from decap_agent.source_check import retop
+    src = "module helper(input a, output b); assign b = a; endmodule\nmodule my_adder(input [7:0] ui_in, output [7:0] uo_out); endmodule"
+    text, was = retop(src, "tt_um_x")
+    assert was == "my_adder" and "module tt_um_x" in text and "module helper" in text
+    assert retop("module tt_um_x(); endmodule", "tt_um_x") == ("module tt_um_x(); endmodule", None)
+
+
+def test_upload_check_routes_and_fails_soft_without_the_real_core():
+    from decap_agent.terminal import run_command
+    res = asyncio.run(run_command(build_server(create_stub_app()), "not_a_chip", "check my file",
+                                  verilog="module m(); endmodule", filename="m.v"))
+    assert res["intent"] == "check_source" and res["verdict"] == "unavailable" and res["detail"]

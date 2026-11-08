@@ -32,6 +32,10 @@ interface DoneShape {
   summary?: string;
   findings?: Array<{ text: string; evidence: string; block?: string | null }>;
   next_steps?: string[];
+  filename?: string;
+  detail?: string;
+  renamed_from?: string | null;
+  top?: string;
   [k: string]: unknown;
 }
 
@@ -176,7 +180,20 @@ export class Terminal {
   private outcome(d: DoneShape) {
     const block = document.createElement("div");
     block.className = "ag-outcome";
-    if (d.intent === "drill") {
+    if (d.intent === "check_source") {
+      const v = String(d.verdict), file = esc(String(d.filename ?? "your file"));
+      const cex = d.counterexample as Record<string, number> | null | undefined;
+      const said: Record<string, string> = {
+        proven: `<b>${file}</b> matches this chip. Yosys proved your code and the chip's gates do the same thing for every input, in every state.`,
+        tested: `No difference in the first 20 clock cycles after reset. That isn't a proof: Yosys couldn't show they match forever, and some states (a counter near its limit, say) take longer than 20 cycles to reach.`,
+        failed: `<b>${file}</b> and this chip behave differently. Yosys found an input sequence from reset where their outputs differ${cex?.step != null ? ` at clock step ${esc(cex.step)}` : ""}.`,
+        unavailable: esc(String(d.detail ?? "The check couldn't run.")),
+      };
+      block.innerHTML = `<span class="pill ${v === "proven" ? "ok" : v === "failed" ? "bad" : "warn"}">${v === "proven" ? "match" : v === "failed" ? "differs" : v === "tested" ? "no difference found" : "couldn't check"}</span>` +
+        `<span class="ag-answer">${said[v] ?? esc(v)}</span>` +
+        (d.renamed_from ? `<span class="ag-sub">Your top module ${esc(String(d.renamed_from))} was matched up with the chip's ${esc(String(d.top))}.</span>` : "") +
+        (v === "failed" && cex ? `${cexHtml(Object.fromEntries(Object.entries(cex).filter(([k]) => k !== "step")))}<span class="ag-sub">Inputs at that step. On clocked logic the cause can be an earlier input that a register is still holding.</span>` : "");
+    } else if (d.intent === "drill") {
       const ok = d.verdict === "caught";
       block.innerHTML = `<span class="pill ${ok ? "ok" : "bad"}">${ok ? "caught" : esc(String(d.verdict))}</span>` +
         `<span class="ag-sub">${ok ? "We hid a backdoor in a copy of this chip; the agent found the exact input that wakes it — blind." : "The planted trigger was not recovered."}</span>` +

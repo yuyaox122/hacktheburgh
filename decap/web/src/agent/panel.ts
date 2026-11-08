@@ -10,6 +10,7 @@ import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
 import { Terminal } from "./terminal";
 import { plainHtml, verdictWords } from "./words";
+import * as verilogIO from "./verilogIO";
 
 const STEP: Record<string, (s: Run["steps"][number]) => string> = {
   get_region: () => "Read this part's inputs, outputs and code",
@@ -45,6 +46,7 @@ export class AgentPanel {
           <button type="button" class="ag-next" data-cmd="Red-team drill: plant a hidden trigger and find it blind">Red-team drill</button>
           <button type="button" class="ag-next" data-cmd="What is the slowest path, and what does the block on it do?">Slowest path</button>
           <button type="button" class="ag-next" data-cmd="What do we already know about this chip? Review memory and fill one gap.">What do we know?</button>
+          <button type="button" class="ag-next" data-vio="up" title="Upload a .v file; Yosys checks whether this chip implements it">Check my Verilog…</button>
         </div>
       </div>
       <div class="ag-runs" id="agRuns" aria-live="polite"></div>`;
@@ -60,11 +62,18 @@ export class AgentPanel {
     this.el.addEventListener("click", (e) => this.onClick(e));
     store.on((chip) => { if (chip === this.chip) this.schedule(); });
     document.addEventListener("agent:open", () => this.open());
+    verilogIO.install();
+    document.addEventListener("agent:upload", (e) => {
+      const d = (e as CustomEvent<{ chip: string; filename: string; text: string }>).detail;
+      void this.runCommand(`Check my file ${d.filename} (${d.text.split("\n").length} lines) against this chip`,
+        { verilog: d.text, filename: d.filename }, d.chip);
+    });
     void agentUp().then((ok) => { if (!ok) $("#agIntro", this.el).innerHTML = `<div class="callout bad">The agent service isn't reachable. Start it with <code>decap serve --port 8791</code> (decap/agent).</div>`; });
   }
 
   setChip(chip: string | null, verilog?: string) {
     this.chip = chip;
+    verilogIO.setChip(chip);
     if (chip && verilog) this.verilog.set(chip, verilog);
     this.schedule();
   }
@@ -74,13 +83,13 @@ export class AgentPanel {
   toggle() { this.isOpen ? this.close() : this.open(); }
 
   /** The terminal: run one natural-language command and stream its tool calls + result into the drawer. */
-  private async runCommand(text: string) {
-    if (!this.chip) return;
+  private async runCommand(text: string, upload?: { verilog: string; filename: string }, chip = this.chip) {
+    if (!chip) return;
     this.open();
     const seq = ++this.runSeq;
     this.term.begin(text);
     try {
-      await command(this.chip, text, (e: TerminalEvent) => { if (seq === this.runSeq) this.term.event(e); });
+      await command(chip, text, (e: TerminalEvent) => { if (seq === this.runSeq) this.term.event(e); }, undefined, upload);
     } catch (err) {
       if (seq === this.runSeq) this.term.error((err as Error).message);
     }
