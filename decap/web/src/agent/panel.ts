@@ -15,7 +15,9 @@ import * as verilogIO from "./verilogIO";
 const STEP: Record<string, (s: Run["steps"][number]) => string> = {
   get_region: () => "Read this part's inputs, outputs and code",
   probe_truth: (s) => `Tried ${Number((s.args as { n?: number } | undefined)?.n ?? 1024).toLocaleString()} random inputs to see what it does (a hint, not a proof)`,
-  propose_claim: () => "Asked Yosys to prove the explanation",
+  propose_claim: () => "Asked Yosys to prove a short summary",
+  decompile: () => "Read the decompiled Verilog",
+  recover_blocks: () => "Listed the chip's blocks",
 };
 
 export class AgentPanel {
@@ -110,13 +112,15 @@ export class AgentPanel {
   private card(r: Run): string {
     const secs = ((r.t1 ?? Date.now()) - r.t0) / 1000;
     const status = r.status === "running" ? `<span class="pill gold"><span class="spin"></span> working</span>`
-      : r.status === "error" ? `<span class="pill bad">error</span>` : pill(r.final);
+      : r.status === "error" ? `<span class="pill bad">error</span>`
+      : !r.explained && r.plain?.source === "code" ? `<span class="pill ok" title="Read from the decompiled code, which is proven equal to the gates">explained</span>`
+      : pill(r.final);
     const steps = r.steps.filter((s) => s.tool !== "propose_claim").map((s) => `<li>${esc(STEP[s.tool]?.(s) ?? s.tool)}</li>`).join("");
     const atts = r.attempts.map((a) => `
       <div class="ag-att">
         <div class="ag-att-h"><span class="ag-tag">${a.first_draft ? "First try" : `Try ${a.attempt + 1}`}</span>${pill(a.verdict)}${a.checker_s != null ? `<span class="muted">Yosys ${a.checker_s.toFixed(2)} s</span>` : ""}</div>
         <code class="ag-claim">${esc(a.claim ?? "(no claim)")}</code>
-        ${a.english ? `<p class="muted">${esc(a.english)}</p>` : ""}
+        ${a.english ? `<p class="muted ag-clamp">${esc(a.english)}</p>` : ""}
         ${a.verdict === "refuted" ? cexHtml(a.counterexample) : ""}
         ${a.error ? `<p class="muted">${esc(a.error)}</p>` : ""}
         ${a.credit?.reason && a.verdict !== "proven" && a.verdict !== "inductive" ? `<p class="muted">${esc(a.credit.reason)}</p>` : ""}
@@ -128,7 +132,9 @@ export class AgentPanel {
       ${r.status === "running" ? `<ol class="ag-steps">${steps || `<li><span class="spin"></span> Reading this part of the chip…</li>`}</ol>` : ""}
       ${r.note ? `<p class="ag-why">${esc(r.note)}</p>` : ""}
       ${plainHtml(r.plain)}
-      ${r.status === "done" && !r.plain && !r.explained ? `<p class="ag-why">${esc(verdictWords(r.final ?? "", true))}</p>` : ""}
+      ${r.status === "done" && !r.explained ? `<p class="ag-why">${r.plain?.source === "code"
+        ? `No shorter proven summary yet${r.attempts.length ? ` (Yosys checked ${r.attempts.length} tr${r.attempts.length === 1 ? "y" : "ies"})` : ""}. The explanation above is read from the decompiled code itself.`
+        : r.plain ? "" : esc(verdictWords(r.final ?? "", true))}</p>` : ""}
       ${r.status !== "running" && (atts || steps) ? `<details class="ag-how"${r.plain ? "" : " open"}><summary>How it was checked (${r.attempts.length} attempt${r.attempts.length === 1 ? "" : "s"})</summary>${steps ? `<ol class="ag-steps">${steps}</ol>` : ""}${atts}</details>` : ""}
       ${r.error ? `<div class="callout bad">${esc(r.error)}</div>` : ""}
       <div class="ag-actions">

@@ -53,7 +53,8 @@ How you work:
 5. Use `hunt` only when the user asks about hidden, suspicious, trojan, backdoor or "anything wrong".
 6. Use `slowest_path` only for speed/timing/optimisation questions.
 7. Finish with the report. Every finding cites its evidence: 'yosys' (a proven/inductive/refuted verdict),
-   'proof' (prove_equiv), 'structure' (overview/blocks), 'estimate' (timing), or 'memory'.
+   'proof' (prove_equiv), 'structure' (overview/blocks), 'code' (an explanation read from the proven decompiled code, when no short
+   claim was proven), 'estimate' (timing), or 'memory'.
 
 Writing the report: the reader is a sharp engineer new to this chip. Say what the chip does first, in hardware
 terms ("a clock with an alarm"), then the findings. Where an explain result has `plain`, reuse its wording rather
@@ -192,8 +193,9 @@ def build_investigator(model: Any = None) -> Agent[Deps, Report]:
                "english": final.get("english"), "attempts": len(run["attempts"]),
                "counterexample": final.get("counterexample") if verdict == "refuted" else None,
                "credit_reason": (final.get("credit") or {}).get("reason")}
-        from .plain import plain_for_run
-        plain = await plain_for_run(ctx.deps.client, run, model=ctx.deps.model)
+        from .plain import plain_for_run, reading_for_scope
+        plain = (await plain_for_run(ctx.deps.client, run, model=ctx.deps.model)
+                 or await reading_for_scope(ctx.deps.client, ctx.deps.chip, scope, model=ctx.deps.model))
         if plain:   # the readable version, so the report can say it the same way the card does
             out["plain"] = {"headline": plain["headline"], "explanation": plain["explanation"]}
         ctx.deps.trail.append({"explain": out})

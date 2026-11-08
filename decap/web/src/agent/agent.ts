@@ -59,8 +59,11 @@ export async function runAgent(o: StartOpts): Promise<Run> {
         if (e.cells?.length) run.cells = e.cells;
       } else if (e.kind === "thought") {
         run.note = e.why;
+      } else if (e.kind === "reading") {          // the code reading lands first; a proven claim may replace it
+        const { kind: _k, ...p } = e;
+        if (!run.plain) run.plain = p;
       } else if (e.kind === "done") {
-        run.status = "done"; run.final = e.shown ?? e.final; run.explained = e.explained; run.cached = e.cached; run.plain = e.plain ?? null; run.t1 = Date.now();
+        run.status = "done"; run.final = e.shown ?? e.final; run.explained = e.explained; run.cached = e.cached; run.plain = e.plain ?? run.plain ?? null; run.t1 = Date.now();
         if (e.cells?.length) run.cells = e.cells;
       } else if (e.kind === "error") {
         run.status = "error"; run.error = e.error; run.t1 = Date.now();
@@ -111,7 +114,7 @@ export async function comment(chip: string, line: number, text: string, ask: boo
       const last = run.attempts[run.attempts.length - 1];
       store.updateComment(reply.id, {
         pending: false,
-        text: run.plain ? `${run.plain.headline}. ${run.plain.explanation}${run.plain.verdict === "proven" || run.plain.verdict === "inductive" ? "" : ` (${verdictWords(run.plain.verdict)})`}`
+        text: run.plain ? `${run.plain.headline}. ${run.plain.explanation}${run.plain.verdict === "proven" || run.plain.verdict === "inductive" || run.plain.source === "code" ? "" : ` (${verdictWords(run.plain.verdict)})`}`
           : run.explained ? (last.english ?? last.claim ?? "") : verdictWords(run.final ?? "", true),
         claim: last.claim ?? undefined, english: last.english, verdict: run.final, counterexample: last.counterexample ?? null,
       });

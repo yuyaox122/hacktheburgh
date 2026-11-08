@@ -268,7 +268,7 @@ def test_timeline_renders_only_checked_runs(tmp_path):
 def test_witness_api_streams_a_region_run(tmp_path):
     from fastapi.testclient import TestClient
     from decap_agent.witness_api import create_witness_app
-    app = create_witness_app(create_stub_app(), model=scripted([WRONG, RIGHT], {}), runs=tmp_path)
+    app = create_witness_app(create_stub_app(), model=scripted([WRONG, RIGHT], {}), runs=tmp_path, readings=False)
     client = TestClient(app)
     with client.stream("POST", "/witness/explain", json={"chip": CHIP, "scope": NEXT}) as r:
         events = [json.loads(line[6:]) for line in r.iter_lines() if line.startswith("data: ")]

@@ -23,7 +23,11 @@ export interface Attempt {
 export interface ToolStep { tool: string; args?: Record<string, unknown>; cells?: string[]; lines?: number[]; wall_s?: number; is_error?: boolean }
 
 /** The plain-English reading written after Yosys decided (decap_agent/plain.py). The formal claim stays the source. */
-export interface Plain { headline: string; explanation: string; example?: string; verdict: string }
+export interface Plain {
+  headline: string; explanation: string; example?: string; verdict: string;
+  source?: "claim" | "code";   // claim: reading of a checked claim; code: read from the (proven) decompiled lines
+  proof?: string | null;       // for source code: the decompile's own verdict (proven = code equals the gates)
+}
 
 export interface Done {
   final: string; first_draft: string; explained: boolean; proof?: boolean; claim: string | null; english: string | null;
@@ -36,10 +40,11 @@ export type AgentEvent =
   | ({ kind: "claim" } & Attempt)
   | ({ kind: "done" } & Done)
   | { kind: "thought"; step?: string; why?: string }
+  | ({ kind: "reading" } & Plain)
   | { kind: "error"; error: string };
 
 /** Interactive runs may refine up to 4 times; the frozen bench keeps the plan's 2 (decap/agent bench). */
-export const INTERACTIVE_REFINES = 4;
+export const INTERACTIVE_REFINES = 2;   // the code reading always answers; the proof search is the bonus
 
 /** POST /witness/explain and read its Server-Sent Events as they arrive. `fresh` skips the server's run cache. */
 export async function explain(chip: string, scope: Scope, onEvent: (e: AgentEvent) => void, signal?: AbortSignal,

@@ -90,7 +90,8 @@ def _slim(ev: dict) -> dict:
     return out
 
 
-def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> FastAPI:
+def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, readings: bool = True) -> FastAPI:
+    """`readings`: also stream the plain explanation read from the decompiled code (off in tests with scripted models)."""
     app = FastAPI(title="Decap Witness agent API")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"], allow_headers=["*"])
     cache = runs / "cache"
@@ -112,24 +113,34 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> F
         async def go():
             try:
                 from fastmcp import Client
-                from .plain import plain_for_run
+                from .plain import plain_for_run, reading_for_scope
                 from .scoping import best_attempt, mcp_caller, narrow_scope
-                async with Client(server) as client:
+                quiet = build_server(core_app)            # lookups for the explanations stay out of the run's steps
+                async with Client(quiet) as client:
                     scope, why = await narrow_scope(mcp_caller(client), body.chip, body.scope)
                 if why:
                     t.record("thought", step="aim", why=why)
+
+                async def read_code():                   # the always-available explanation, streamed as soon as ready
+                    async with Client(quiet) as c:
+                        r = await reading_for_scope(c, body.chip, scope, model=model)
+                    if r:
+                        await queue.put({"kind": "reading", **r})
+                    return r
+                reading_task = asyncio.create_task(read_code()) if readings else None
                 run = await explain_region(body.chip, scope, server, model=model, transcript=t,
                                            max_refine=body.max_refine, cache_dir=cache if body.cache else None)
                 final = best_attempt(run["attempts"])     # what people see; the bench keeps run["final"]
-                async with Client(server) as client:
+                async with Client(quiet) as client:
                     plain = await plain_for_run(client, run, model=model)
+                reading = await reading_task if reading_task else None
                 shown = final.get("verdict")
                 await queue.put({"kind": "done", "chip": body.chip, "scope": body.scope, "aimed": scope if why else None,
                                  "first_draft": run["first_draft"], "final": run["final"], "shown": shown,
                                  "explained": shown in ("proven", "inductive") and bool((final.get("credit") or {}).get("cleared")),
                                  "proof": run.get("proof"),
                                  "claim": final.get("claim"), "english": final.get("english"), "cells": final.get("cells"),
-                                 "cached": run.get("cached", False), "plain": plain})
+                                 "cached": run.get("cached", False), "plain": plain or reading, "reading": reading})
             except Exception as e:  # shown to the user, not swallowed
                 await queue.put({"kind": "error", "error": f"{type(e).__name__}: {str(e)[:400]}"})
 

@@ -107,7 +107,9 @@ class Store {
     const m = new Map<string, string>();
     for (const r of [...this.runs(chip)].reverse()) {
       if (r.status !== "done" || !r.cells.length) continue;
-      const col = r.explained ? "#4cc38a" : r.final === "refuted" ? "#ef6b73" : "#e9a23b";
+      // green: a short claim proven; amber: explained from the (proven) decompiled code, no short proof yet;
+      // red only when there is no explanation at all and the agent's claim was refuted
+      const col = r.explained ? "#4cc38a" : r.plain ? "#e9a23b" : r.final === "refuted" ? "#ef6b73" : "#e9a23b";
       for (const c of r.cells) m.set(c, col);
     }
     for (const e of this.edits(chip)) if (e.state === "accepted") for (const c of e.cells) m.set(c, "#5ec8ff");
