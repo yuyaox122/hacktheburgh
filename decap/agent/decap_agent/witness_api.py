@@ -47,6 +47,12 @@ class FormaliseIn(BaseModel):
     check: bool = False
 
 
+class CommandIn(BaseModel):
+    chip: str
+    command: str = Field(description="A natural-language command: 'is anything hidden?', 'what does block b0 do?', ...")
+    max_refine: int = Field(2, ge=0, le=4)
+
+
 def _slim(ev: dict) -> dict:
     return {k: v for k, v in ev.items() if k not in SLIM_DROP}
 
@@ -80,6 +86,35 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> F
                                  "claim": final.get("claim"), "english": final.get("english"), "cells": final.get("cells"),
                                  "cached": run.get("cached", False)})
             except Exception as e:  # shown to the user, not swallowed
+                await queue.put({"kind": "error", "error": f"{type(e).__name__}: {str(e)[:400]}"})
+
+        task = asyncio.create_task(go())
+
+        async def stream():
+            while True:
+                ev = await queue.get()
+                yield f"data: {json.dumps(ev, ensure_ascii=False, default=str)}\n\n"
+                if ev.get("kind") in ("done", "error"):
+                    break
+            await task
+
+        return StreamingResponse(stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/witness/command")
+    async def command(body: CommandIn) -> StreamingResponse:
+        from .terminal import run_command
+        queue: asyncio.Queue = asyncio.Queue()
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        t = Transcript(runs / f"terminal-{stamp}-{body.chip}.jsonl")
+        t.listeners.append(lambda ev: queue.put_nowait(_slim(ev)))
+        server = build_server(core_app, transcript=t)
+
+        async def go():
+            try:
+                res = await run_command(server, body.chip, body.command, transcript=t, model=model, max_refine=body.max_refine)
+                await queue.put({"kind": "done", **res})
+            except Exception as e:
                 await queue.put({"kind": "error", "error": f"{type(e).__name__}: {str(e)[:400]}"})
 
         task = asyncio.create_task(go())

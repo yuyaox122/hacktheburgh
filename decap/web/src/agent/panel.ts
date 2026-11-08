@@ -4,7 +4,7 @@
 import { $, esc } from "../ui/dom";
 import { app } from "../ui/state";
 import { icon } from "../ui/icons";
-import { agentUp } from "./api";
+import { agentUp, command, type TerminalEvent } from "./api";
 import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
@@ -29,10 +29,19 @@ export class AgentPanel {
         <button class="btn plain sm" type="button" id="agClear" title="Forget this chip's runs, edits and comments">Clear</button>
         <button class="btn plain icon" type="button" id="agClose" aria-label="Close the agent panel" title="Close (Esc)">${icon.close}</button></div>
       <div class="ag-intro" id="agIntro"></div>
+      <form class="ag-cmd" id="agCmd"><input class="text" id="agCmdIn" autocomplete="off"
+        placeholder="Command the chip agent… e.g. “is anything hidden?”" aria-label="Command the chip agent">
+        <button class="btn primary" type="submit">Run</button></form>
+      <div class="ag-term" id="agTerm" hidden></div>
       <div class="ag-runs" id="agRuns" aria-live="polite"></div>`;
     document.body.append(this.el);
     $("#agClose", this.el).addEventListener("click", () => this.close());
     $("#agClear", this.el).addEventListener("click", () => { if (this.chip) store.clear(this.chip); });
+    $("#agCmd", this.el).addEventListener("submit", (e) => {
+      e.preventDefault();
+      const i = $<HTMLInputElement>("#agCmdIn", this.el), text = i.value.trim();
+      if (text) { i.value = ""; void this.runCommand(text); }
+    });
     this.el.addEventListener("click", (e) => this.onClick(e));
     store.on((chip) => { if (chip === this.chip) this.schedule(); });
     document.addEventListener("agent:open", () => this.open());
@@ -48,6 +57,32 @@ export class AgentPanel {
   open() { this.el.classList.add("open"); this.schedule(); }
   close() { this.el.classList.remove("open"); }
   toggle() { this.isOpen ? this.close() : this.open(); }
+
+  /** The terminal: run one natural-language command and stream its tool calls + result into the drawer. */
+  private async runCommand(text: string) {
+    if (!this.chip) return;
+    this.open();
+    const term = $("#agTerm", this.el);
+    term.hidden = false;
+    term.innerHTML = `<div class="ag-trow me">${esc(text)}</div><div class="ag-trow spin"><span class="spin"></span> thinking…</div>`;
+    const row = (cls: string, html: string) => term.insertAdjacentHTML("beforeend", `<div class="ag-trow ${cls}">${html}</div>`);
+    try {
+      await command(this.chip, text, (e: TerminalEvent) => {
+        if (e.kind === "tool") row("tool", `<b>▶ ${esc(e.tool)}</b>`);
+        else if (e.kind === "claim") {
+          row("claim", `<b>${e.first_draft ? "First draft" : `Refine ${e.attempt}`}</b> ${pill(e.verdict)}<code>${esc(e.claim ?? "")}</code>${e.verdict === "refuted" ? cexHtml(e.counterexample) : ""}`);
+        } else if (e.kind === "done") {
+          const d = e as Record<string, unknown>;
+          if (d.intent === "hunt") row("done", `Verdict: <b>${esc(String(d.verdict))}</b>${d.counterexample ? cexHtml(d.counterexample as Record<string, number>) : ""}`);
+          else if (d.intent === "explain") row("done", `${pill(String(d.verdict))}<code>${esc(String(d.claim ?? ""))}</code>`);
+          else if (d.intent === "guide") row("done", esc(String(d.answer ?? "")));
+        } else if (e.kind === "error") row("err", esc(String(e.error)));
+      });
+    } catch (err) {
+      row("err", esc((err as Error).message));
+    }
+    term.querySelector(".spin")?.remove();
+  }
 
   private schedule() { cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(() => this.render()); }
 
