@@ -52,7 +52,7 @@ Run Presenter mode (`D`). Its step buttons can be clicked in any order. Minecraf
 | Question | Answer |
 |---|---|
 | **Data source** | Tiny Tapeout 08: 121 netlists fetched with `gh api` (14 failed, mostly analog/ROM). Each digital chip ships a netlist, a GDS, and `commit_id.json` pointing at the author's repo + commit. |
-| **The hidden join** | The GDS keeps each netlist instance name as **property 61**, so every gate can be placed in 3D without a DEF (25 of 27 chips match fully: every cell matched, no shorts or split nets; re-measured 2026-11-08 with `ingest/ingest_gds.py --all`; the two `micro_tiles` chips are skipped. `PITCH.md` §5 still says 24). |
+| **The hidden join** | The GDS keeps each netlist instance name as **property 61**, so every gate can be placed in 3D without a DEF (25 of 27 chips match fully: every cell matched, no shorts or split nets; re-measured 2026-11-08 with `ingest/ingest_gds.py --all`; the two `micro_tiles` chips are skipped. Same figure as `PITCH.md` §5.) |
 | **Leak we had to close** | TT08 netlists keep the author's wire names (`co`, `s_w[0]`). We strip them before anything "blind". |
 | **Evaluation** | 27 chips: 9 dev, 18 test, **split frozen before tuning**. Both scored runs reported (first run: 15/18 proven, 15/16 caught). |
 | **Readability, not just correctness** | A gate-by-gate copy would pass the proof trivially, so we also measure: 52% of logic cells explained by recognised blocks (mean; 37% weighted), and the decompile is shorter than the author's code on all 9 test chips with hand-written Verilog (480 vs 1,307 lines). |
