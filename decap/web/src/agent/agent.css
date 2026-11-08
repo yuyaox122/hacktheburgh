@@ -78,10 +78,14 @@ ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
 
 /* ---------- agent drawer ---------- */
 .ag-drawer { width: min(480px, 100%); }
+/* The whole drawer scrolls as one (header pinned), so a long terminal answer never squeezes the explanations below it. */
+.drawer.ag-drawer { overflow-y: auto; overscroll-behavior: contain; }
+.ag-drawer > * { flex-shrink: 0; }
+.ag-drawer > .pane-h { position: sticky; top: 0; z-index: 3; background: var(--panel); }
 .ag-drawer .pane-h b { font-weight: 500; }
 .ag-intro { padding: 10px 14px 0; font-size: 13px; }
 .ag-intro p { margin: 0; }
-.ag-runs { flex: 1; overflow-y: auto; padding: 12px 14px 20px; display: grid; gap: 12px; align-content: start; }
+.ag-runs { flex: 1 0 auto; padding: 12px 14px 20px; display: grid; gap: 12px; align-content: start; }
 .ag-run { display: grid; gap: 8px; padding: 12px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line); }
 .ag-run.running { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .ag-run.explained { border-color: color-mix(in srgb, var(--add) 45%, var(--line)); }

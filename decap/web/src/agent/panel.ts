@@ -34,6 +34,7 @@ export class AgentPanel {
   private verilog = new Map<string, string>();   // chip -> decompiled Verilog (for "Suggest as edit")
   private term: Terminal;
   private runSeq = 0;
+  private renderedChip: string | null | undefined = undefined;
 
   constructor() {
     this.el.className = "drawer ag-drawer";
@@ -173,14 +174,20 @@ export class AgentPanel {
     }
     const runs = this.chip ? store.runs(this.chip) : [];
     const host = $("#agRuns", this.el);
-    const top = host.scrollTop;
+    const top = this.el.scrollTop;   // the whole drawer scrolls (agent.css), not just the runs list
+    const sameChip = this.renderedChip === this.chip;
+    this.renderedChip = this.chip;
+    const before = new Set([...host.querySelectorAll<HTMLElement>("[data-run]")].map((a) => a.dataset.run));
     const open = new Set([...host.querySelectorAll<HTMLDetailsElement>("details[open]")].map((d) => `${d.closest<HTMLElement>("[data-run]")?.dataset.run}|${d.className}`));
     host.innerHTML = runs.length ? runs.map((r) => this.card(r)).join("")
       : `<div class="empty"><p>No agent runs on ${esc(this.chip ?? "this page")} yet.</p></div>`;
     host.querySelectorAll<HTMLDetailsElement>("details").forEach((d) => {
       if (open.has(`${d.closest<HTMLElement>("[data-run]")?.dataset.run}|${d.className}`)) d.open = true;
     });
-    host.scrollTop = top;
+    this.el.scrollTop = top;
+    // A new run (e.g. Explain on a hovered line) scrolls into view instead of landing below the terminal.
+    const fresh = sameChip && [...host.querySelectorAll<HTMLElement>("[data-run]")].find((a) => !before.has(a.dataset.run));
+    if (fresh && this.isOpen) fresh.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
   private card(r: Run): string {
