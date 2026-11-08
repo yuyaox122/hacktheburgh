@@ -101,6 +101,10 @@ class Parser:
         if not self.toks:
             raise ClaimSyntaxError("empty claim")
         node = self.claim()
+        # a top-level comma is a loose '&&' (models often write a, b, c for a && b && c)
+        while self.peek() == ",":
+            self.take()
+            node = Node("&&", [node, self.claim()])
         if self.i != len(self.toks):
             raise ClaimSyntaxError(f"unexpected {self.peek()!r} after the claim")
         return node
@@ -169,7 +173,7 @@ class Parser:
         if text == "(":
             node = self.claim()
             self.take(")")
-            return node
+            return self.select(node)   # allow (a + b)[7:1]
         if text == "{":
             parts = [self.claim()]
             while self.peek() == ",":
@@ -190,8 +194,36 @@ class Parser:
         raise ClaimSyntaxError(f"unexpected {text!r}")
 
 
+_PROSE = re.compile(r"\b(i\.e\.|in the|samples|where|truncated|otherwise|bits of|the)\b", re.I)
+_ASSIGN = re.compile(r"(?<![=!<>])=(?!=)")   # a standalone '=' (prose like 'out = in'), not == != <= >=
+
+
+def _strip_trailing_prose(src: str) -> str:
+    """Models append English asides like `… (i.e. out = in + 1)` or `… (bit 7:1 of the sum)`. Drop a trailing
+    balanced (...) group only when its content is prose (an `=` assignment or an English word), never an expression."""
+    s = src.rstrip()
+    while s.endswith(")"):
+        depth, start = 0, None
+        for i in range(len(s) - 1, -1, -1):
+            if s[i] == ")":
+                depth += 1
+            elif s[i] == "(":
+                depth -= 1
+                if depth == 0:
+                    start = i
+                    break
+        if start is None:
+            break
+        inside = s[start + 1:-1]
+        if _ASSIGN.search(inside) or _PROSE.search(inside):
+            s = s[:start].rstrip()
+        else:
+            break
+    return s
+
+
 def parse(src: str) -> Node:
-    return Parser(src).parse()
+    return Parser(_strip_trailing_prose(src)).parse()
 
 
 def names(node: Node) -> set[tuple[str, str]]:
@@ -235,10 +267,12 @@ class Evaluator:
 
     def sw(self, n: Node) -> int:
         """Self-determined width."""
+        if n.hi is not None:
+            return n.hi - n.lo + 1
         if n.op == "num":
             return n.width
         if n.op in ("sig", "next"):
-            return self.widths[n.name] if n.hi is None else n.hi - n.lo + 1
+            return self.widths[n.name]
         if n.op in ("u~", "u-"):
             return self.sw(n.args[0])
         if n.op in ("+", "-", "*", "&", "|", "^"):
@@ -252,6 +286,10 @@ class Evaluator:
         return 1  # comparisons, logical ops, reductions, implication
 
     def ev(self, n: Node, env: dict, w: int | None = None) -> int:
+        if n.hi is not None and n.op not in ("sig", "next"):
+            # a bit/part-select on a sub-expression, e.g. (a + b)[7:1]: evaluate it whole, then slice
+            inner = Node(n.op, n.args, n.value, n.width, n.name)
+            return (self.ev(inner, env) >> n.lo) & _mask(n.hi - n.lo + 1)
         w = self.sw(n) if w is None else w
         op, a = n.op, n.args
         if op == "num":
@@ -307,18 +345,23 @@ class Evaluator:
 
 def unparse(n: Node) -> str:
     """Canonical text of a parsed claim (fully parenthesised where it matters)."""
+    sel = "" if n.hi is None else (f"[{n.hi}]" if n.hi == n.lo else f"[{n.hi}:{n.lo}]")
     if n.op == "num":
         return f"{n.width}'d{n.value}" if n.width != 32 else str(n.value)
     if n.op in ("sig", "next"):
-        sel = "" if n.hi is None else (f"[{n.hi}]" if n.hi == n.lo else f"[{n.hi}:{n.lo}]")
         return f"next({n.name}{sel})" if n.op == "next" else f"{n.name}{sel}"
+    inner = ""
     if n.op[0] in "ur" and len(n.args) == 1:
-        return n.op[1] + _wrap(n.args[0])
-    if n.op == "?:":
-        return f"{_wrap(n.args[0])} ? {_wrap(n.args[1])} : {_wrap(n.args[2])}"
-    if n.op == "{}":
-        return "{" + ", ".join(unparse(a) for a in n.args) + "}"
-    return f"{_wrap(n.args[0])} {n.op} {_wrap(n.args[1])}"
+        inner = n.op[1] + _wrap(n.args[0])
+    elif n.op == "?:":
+        inner = f"{_wrap(n.args[0])} ? {_wrap(n.args[1])} : {_wrap(n.args[2])}"
+    elif n.op == "{}":
+        inner = "{" + ", ".join(unparse(a) for a in n.args) + "}"
+    else:
+        inner = f"{_wrap(n.args[0])} {n.op} {_wrap(n.args[1])}"
+    if sel and n.op not in ("num", "sig", "next"):
+        inner = f"({inner})"
+    return inner + sel if sel else inner
 
 
 def _wrap(n: Node) -> str:
