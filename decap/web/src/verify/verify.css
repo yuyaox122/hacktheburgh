@@ -88,3 +88,6 @@
   .vf-verdict { display: none; }
   .vf-steps li small { display: none; }
 }
+.vf-count #vfSpace { display: block; font-size: 11px; margin-top: -2px; }
+.vf-pred { font-size: 13px; margin-top: 8px; }
+.vf-pred b { font-variant-numeric: tabular-nums; font-size: 15px; }
