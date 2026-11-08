@@ -42,7 +42,8 @@ def load_secrets(path: str | None = None) -> list[str]:
         for line in p.read_text().splitlines():
             k, sep, v = line.strip().partition("=")
             if sep and k and not k.startswith("#") and k not in os.environ:
-                os.environ[k] = v.strip().strip('"').strip("'")
+                v = v.split("#", 1)[0].strip()   # drop inline '# comment' (e.g. DECAP_GUIDE_CLI=1  # default)
+                os.environ[k] = v.strip('"').strip("'")
                 loaded.append(k)
     except OSError:
         pass
