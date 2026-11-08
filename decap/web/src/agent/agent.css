@@ -169,3 +169,20 @@ ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 
 .md th, .md td { border: 1px solid var(--line-2); padding: 3px 8px; text-align: left; vertical-align: top; }
 .md th { color: var(--muted); font-weight: 500; }
 .ag-ftext .md p { display: inline; }
+
+/* The 3D "Witness agent" legend behaves like a notification: it shows in full when a result lands (the page
+   re-creates it on every new result), folds to a small faded tab after ~6 s, and opens again on hover/focus so
+   the rows stay clickable (fly to the cells). The raw claim only shows while it's open. */
+.ag-legend { animation: ag-leg-in .18s ease-out, ag-leg-dim .4s ease 6s forwards; }
+.ag-legend { gap: 0; }
+.ag-legend button { max-height: 160px; max-width: 420px; margin-top: 4px; overflow: hidden; animation: ag-leg-fold .4s ease 6s forwards; }
+.ag-legend code { display: none; }
+.ag-legend:hover, .ag-legend:focus-within { animation: none; opacity: 1; }
+.ag-legend:hover button, .ag-legend:focus-within button { animation: none; max-height: 160px; max-width: 420px; opacity: 1; padding: 2px 0; margin-top: 4px; }
+.ag-legend:hover code, .ag-legend:focus-within code { display: block; margin-top: 2px; font-size: 11px; color: var(--muted);
+  max-height: 3.2em; overflow: hidden; word-break: break-all; }
+.ag-legend b { cursor: default; }
+@keyframes ag-leg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ag-leg-fold { to { max-height: 0; max-width: 0; opacity: 0; padding: 0; margin-top: 0; } }
+@keyframes ag-leg-dim { to { opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .ag-legend, .ag-legend button { animation-duration: .01s; } }
