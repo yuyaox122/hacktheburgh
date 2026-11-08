@@ -229,3 +229,35 @@ Stream one: `decap stream runs/<file>.jsonl --port 8790`, then `EventSource("htt
 - [Pydantic AI](https://github.com/pydantic/pydantic-ai) (MIT): agents, model providers, MCP toolset, token usage.
 - Design borrowed from [DimOS](https://github.com/dimensionalOS/dimos): skills over MCP, a CLI for agents, the
   transcript as a stream, replay, and the terminal's look.
+
+## Ideas: edit the decompiled Verilog, Yosys reviews it (issue #68, JetBrains "Help the Developer")
+
+In the web app's code pane: hover a line, click **Ideas**, optionally say what you want. The agent proposes 2-3 edits;
+**Apply** puts one into the Verilog and the core checks it against the chip's real gates. Same rule as Witness: the
+LLM only proposes, Yosys decides, and the verdict text is written by code.
+
+```
+POST /witness/ideas   {chip, line, lines: [a, b], verilog, ask, history: [{role: user|agent, text}]}
+  -> {reply, ideas: [{id, title, why, intent: same|change, lines: [a, b], replacement: [lines]}], model, dropped}
+POST /api/chips/{chip}/review-edit  {verilog, baseline?}      (core; MCP tool review_edit)
+  -> {verdict: same|tested_same|changed|broken, headline, detail, counterexample, seconds, this_edit?}
+```
+
+- `decap_agent/ideas.py`: one LLM call (pydantic-ai, output `IdeasOut`), same model resolution as Witness
+  (`create_witness_app(model=...)`, else `DECAP_WITNESS_MODEL`, else `witness.DEFAULT_MODEL`; `cli:sonnet` works). The
+  prompt is small: the region with line numbers, the whole module (a window around the region above 400 lines), the
+  ask and the last 10 turns.
+- **Validation in code**, not trusted to the model: an idea is dropped if its lines are outside the file, touch the
+  `module ... );` header or `endmodule`, add `module`/`endmodule`, or change nothing; at most 3 are kept, and `dropped`
+  says why the rest went (and the reply says how many were dropped). Bad requests are 400, a model failure is 502
+  with the error. The run log's file name uses a cleaned chip id, so a request can't write outside runs/.
+- **`review_edit` is a normal core tool**, so Claude Code, JetBrains Air/Junie or Cursor can call it over MCP: decompile
+  a chip, edit the Verilog, then ask Yosys whether the edit is a safe refactor (`same`), only tested (`tested_same`),
+  a behaviour change (`changed`, with the first clock step and inputs where the outputs differ, or a changed clock)
+  or can't be kept (`broken`: doesn't compile, ports changed, a wiring problem, x/z, simulation-only code, or Yosys
+  couldn't finish). Pass `baseline` (the text before this edit) to also get `this_edit`, what this edit alone does.
+  See decap/CONTRACTS.md section 4.
+- Live check (`tt_um_Electom_cla_4bits`, line 15, no ask, `cli:sonnet`, 5.8 s): "Name the adder inputs" (same) and
+  "Widen sum explicitly" (same) were both proven the same circuit; "Gate update with ena" (change) was reported as
+  changed at clock cycle 3. Each review took 0.1-0.3 s.
+

@@ -7,6 +7,9 @@
                            {kind: "done", ...summary} or {kind: "error", error}. Cached regions replay instantly.
   POST /witness/formalise  {chip, sentence, scope?, check?}     -> formal line + the checker's English (confirm step);
                            check=true also returns the verdict (after the person clicked "Yes, that's what I meant")
+  POST /witness/ideas      {chip, line, lines: [a, b], verilog, ask, history}  -> {reply, ideas: [{id, title, why,
+                           intent: same|change, lines, replacement}], model}: 2-3 edits of that part (decap_agent/ideas.py).
+                           The LLM only proposes; the web then calls the core's review_edit (Yosys decides).
   GET  /witness/cache?chip=X                                   -> cached region runs (the demo plays these)
   GET  /healthz
 CORS is open so the Vite dev server and a static page can call it. Every run is also written to runs/.
@@ -16,11 +19,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -81,6 +85,25 @@ def tool_summary(tool: str, r: Any) -> str | None:
     return None
 
 
+class Turn(BaseModel):
+    role: Literal["user", "agent"]
+    text: str
+
+
+class IdeasIn(BaseModel):
+    chip: str
+    line: int = Field(description="The line the person pointed at (1-based, in `verilog`).")
+    lines: list[int] = Field(min_length=2, max_length=2, description="[a, b]: the region's line range, 1-based.")
+    verilog: str = Field(description="The full text shown, with already-kept edits applied.")
+    ask: str = ""
+    history: list[Turn] = Field(default_factory=list)
+
+
+def _safe(chip: str) -> str:
+    """The chip id as a file-name part: no path separators or leading dots (the id comes from the request)."""
+    return re.sub(r"[^A-Za-z0-9_+.-]", "_", chip).lstrip(".")[:80] or "chip"
+
+
 def _slim(ev: dict) -> dict:
     out = {k: v for k, v in ev.items() if k not in SLIM_DROP}
     if ev.get("kind") == "tool" and "summary" not in out:
@@ -105,7 +128,7 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> F
         from .witness import explain_region
         queue: asyncio.Queue = asyncio.Queue()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        t = Transcript(runs / f"witness-{stamp}-{body.chip}.jsonl")
+        t = Transcript(runs / f"witness-{stamp}-{_safe(body.chip)}.jsonl")
         t.listeners.append(lambda ev: queue.put_nowait(_slim(ev)))
         server = build_server(core_app, transcript=t)
 
@@ -181,6 +204,22 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS) -> F
         from .formalise import formalise
         return await formalise(body.sentence, server=build_server(core_app), chip=body.chip, scope=body.scope,
                                model=model, check=body.check)
+
+    @app.post("/witness/ideas")
+    async def ideas_route(body: IdeasIn) -> dict:
+        from .ideas import IdeasInputError, propose_ideas
+        try:
+            out = await propose_ideas(body.chip, body.line, body.lines, body.verilog, body.ask,
+                                      [h.model_dump() for h in body.history], model=model)
+        except IdeasInputError as e:   # only the request's own problems are 400; anything from the model is 502
+            raise HTTPException(400, str(e))
+        except Exception as e:  # model or CLI failure: say so, never an empty answer
+            raise HTTPException(502, f"The ideas agent failed: {type(e).__name__}: {str(e)[:300]}")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        Transcript(runs / f"ideas-{stamp}-{_safe(body.chip)}.jsonl").record(
+            "ideas", chip=body.chip, line=body.line, lines=body.lines, ask=body.ask,
+            **{k: out[k] for k in ("reply", "ideas", "dropped", "model", "prompt", "wall_s")})
+        return out
 
     @app.get("/witness/cache")
     def cached(chip: str = "") -> list[dict]:
