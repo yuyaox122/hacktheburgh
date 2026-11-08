@@ -10,6 +10,7 @@ import { loadDesign } from "../data/load";
 import type { Design, Lib } from "../data/types";
 import { Stage3D } from "../view/stage3d";
 import { SAMPLES, verify, type Result } from "./engine";
+import { findFix, explainFix } from "./agentFix";
 
 const CHIP = "tt_um_Electom_cla_4bits";
 const BUG = { cell: "c53", to: "and2_1" };   // rev B: one OR gate in the carry logic became an AND
@@ -41,6 +42,7 @@ root.innerHTML = `
     <ol class="vf-steps">
       <li data-step="1"><b>1</b>4-bit CLA <small>as taped out</small></li>
       <li data-step="2"><b>2</b>CLA rev B <small>one change, unknown</small></li>
+      <li data-step="3"><b>3</b>CLA rev B fix <small>agent + re-verify</small></li>
     </ol>
   </header>
   <aside class="vf-panel">
@@ -66,6 +68,7 @@ root.innerHTML = `
   <footer class="vf-ctrl">
     <button class="vf-btn primary" id="vfGo" type="button">Verify the 4-bit CLA</button>
     <button class="vf-btn" id="vfRevB" type="button" disabled>Introduce rev B</button>
+    <button class="vf-btn primary" id="vfFix" type="button" disabled hidden>Fix it with the agent</button>
     <button class="vf-btn plain" id="vfReplay" type="button" disabled>Replay</button>
   </footer>`;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector(`#${id}`) as T;
@@ -74,7 +77,8 @@ const btn = (id: string) => $<HTMLButtonElement>(id);
 let design: Design, lib: Lib, view: Stage3D;
 let bugCell: Design["cells"][number], bugFrom = "";
 let proof: { method?: string; seconds?: number; proven?: boolean } | null = null;
-let step: 1 | 2 = 1;
+let step: 1 | 2 | 3 = 1;
+let fixedFrom = "", fixedTo = "", wrongBefore = 0;
 let R: Result | null = null;
 let auto = false;   // #/verify/auto plays both steps hands-free (presenter mode)
 let running = false, selected: string | null = null, shown = 0;
@@ -96,18 +100,20 @@ function renderPipe(active: string | null, doneKeys: Set<string>) {
   }).join("");
 }
 
-function setStep(n: 1 | 2) {
+function setStep(n: 1 | 2 | 3) {
   step = n;
   document.querySelectorAll<HTMLElement>(".vf-steps li").forEach((li) => li.classList.toggle("on", +li.dataset.step! === n));
   // Rev B: the same layout with one gate swapped in place, so the 3D view and its labels show the changed chip.
-  bugCell.type = n === 1 ? bugFrom : BUG.to;
+  bugCell.type = n === 1 ? bugFrom : n === 2 ? BUG.to : fixedTo;
   R = verify(design, lib);
   for (const l of R.levels) level.set(l.id, l.level);
   shown = 0; selected = null; view.select(null);
   $("vfTotal").textContent = String(R.patterns);
   $("vfSpace").textContent = `drawn at random from ${R.space} possible inputs (a big chip has 2^n, too many to try)`;
   $("vfPred").hidden = true;
-  $("vfChip").textContent = n === 1 ? "tt_um_Electom_cla_4bits · Tiny Tapeout 8" : "Same layout, same pins. Something inside changed.";
+  $("vfChip").textContent = n === 1 ? "tt_um_Electom_cla_4bits · Tiny Tapeout 8"
+    : n === 2 ? "Same layout, same pins. Something inside changed."
+    : `One gate changed back: ${fixedFrom} → ${fixedTo} on cell ${BUG.cell}. Re-verified below.`;
   $("vfSusSec").hidden = true; $("vfLogSec").hidden = true; $("vfInsp").hidden = true;
   $("vfVerdict").hidden = true; $("vfVerdict").className = "vf-verdict";
   $("vfNote").textContent = n === 1
@@ -254,8 +260,17 @@ function finish(traced: Set<string>) {
     btn("vfRevB").disabled = false;
     view.setHighlight(null);
     if (auto) setTimeout(() => { setStep(2); start(); }, 2500);
+  } else if (step === 3) {
+    const ok = R!.wrong === 0;
+    V.className = `vf-verdict ${ok ? "good" : "bad"}`;
+    V.innerHTML = `<span class="ey">${ok ? "Fixed ✓" : "Still differs"}</span><h2>${R!.patterns - R!.wrong} / ${R!.patterns} random vectors correct</h2>
+      <p>${ok ? `One gate changed back (${esc(fixedFrom)} → ${esc(fixedTo)} on cell ${BUG.cell}), and it now passes on <b>every</b> of the ${R!.space} inputs — a complete check, not a sample.` : `The fix didn't hold on all inputs.`}</p>`;
+    btn("vfGo").textContent = "Back to the CLA";
+    btn("vfFix").hidden = true;
   } else {
     $("vfSusSec").hidden = false; renderSuspects(1);
+    wrongBefore = R!.wrong;
+    btn("vfFix").hidden = false; btn("vfFix").disabled = false;
     const s = R!.suspects[0], tied = R!.suspects.filter((x) => Math.abs(x.p - s.p) < 1e-6);
     V.className = "vf-verdict bad";
     V.innerHTML = `<span class="ey">Fault found</span><h2>${rate(R!.rate)}% of inputs predicted wrong</h2>
@@ -269,6 +284,38 @@ function finish(traced: Set<string>) {
     setTimeout(() => view.setHighlight(hot, nets), 80);   // re-apply after the last animation frame
     view.flyTo([s.id]); select(s.id);
     setTimeout(() => { const r = document.getElementById("vfReveal"); if (r) r.hidden = false; }, 1500 / SPEED);
+  }
+}
+
+/** "Fix it with the agent": search the top suspects for the one gate to change, then re-verify on every input. */
+async function fix() {
+  if (running || step !== 2) return;
+  const V = $("vfVerdict"); V.hidden = false; V.className = "vf-verdict";
+  V.innerHTML = `<span class="ey">Fixing</span><h2>Searching for the one gate to change…</h2><p class="muted">Trying alternative cells on the top suspects, re-running the same ${R!.patterns} random vectors each time.</p>`;
+  btn("vfGo").disabled = true; btn("vfRevB").disabled = true; btn("vfReplay").disabled = true; btn("vfFix").disabled = true;
+  await new Promise((r) => setTimeout(r, 40));   // let the panel paint before the synchronous search
+  const out = findFix(design, lib, R!.suspects, 3);
+  if ("cell" in out) {
+    design.cells.find((x) => x.id === out.cell)!.type = out.to;   // keep the fix on the design
+    fixedFrom = out.from; fixedTo = out.to;
+    step = 3;
+    document.querySelectorAll<HTMLElement>(".vf-steps li").forEach((li) => li.classList.toggle("on", +li.dataset.step! === 3));
+    R = verify(design, lib);
+    $("vfChip").textContent = `One gate changed back: ${fixedFrom} → ${fixedTo} on cell ${BUG.cell}. Re-verified below.`;
+    $("vfSusSec").hidden = true; $("vfLogSec").hidden = true; $("vfInsp").hidden = true;
+    view.setHighlight(null); view.flyTo([out.cell]); select(out.cell);
+    V.className = "vf-verdict good";
+    V.innerHTML = `<span class="ey">Fixed ✓</span><h2>${out.from} → ${out.to} on cell ${out.cell}</h2>
+      <p>${out.exhaustive.n} of ${out.exhaustive.n} inputs correct — checked on <b>every</b> input, not sampled.</p>
+      <p class="muted">Tried ${out.tried.length} single-gate changes across the top suspects.</p>`;
+    btn("vfFix").hidden = true; btn("vfGo").disabled = false; btn("vfReplay").disabled = false;
+    btn("vfGo").textContent = "Back to the CLA";
+    const ex = await explainFix(CHIP, out, wrongBefore, lib);
+    if (ex) V.innerHTML += `<p class="vf-fixwhy">${esc(ex)}</p>`;
+  } else {
+    V.className = "vf-verdict bad";
+    V.innerHTML = `<span class="ey">No fix found</span><h2>${out.tried.length} single-gate changes tried</h2><p class="muted">None made all ${R!.patterns} sampled vectors correct. The bug may need more than one gate.</p>`;
+    btn("vfReplay").disabled = false; btn("vfGo").disabled = false; btn("vfFix").disabled = false;
   }
 }
 
@@ -297,6 +344,7 @@ async function boot() {
   $("vfGo").onclick = () => { setStep(1); start(); };
   $("vfRevB").onclick = () => { setStep(2); start(); };
   $("vfReplay").onclick = () => start();
+  $("vfFix").onclick = () => void fix();
   $("vfSus").onclick = (e) => { const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-id]"); if (li && !running) { select(li.dataset.id!); view.flyTo([li.dataset.id!]); } };
   addEventListener("keydown", (e) => {
     if (!root.isConnected || running || e.key !== " " || /^(INPUT|TEXTAREA|BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) return;

@@ -171,8 +171,18 @@ export function claSpec(ins: Record<string, number>): Record<string, number> {
 
 const popcount = (x: number) => { x -= (x >>> 1) & 0x55555555; x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24; };
 
-export function verify(d: Design, lib: Lib, spec = claSpec, samples = SAMPLES): Result {
-  const pats = sampleInputs(d, samples);
+/** Every input combination (for small input spaces): a check over these is complete, not sampled. */
+export function allInputs(d: Design): Record<string, number>[] {
+  const fs = d.io?.in ?? [];
+  const n = inputSpace(d);
+  return Array.from({ length: n }, (_, k) => {
+    let r = k;
+    return Object.fromEntries(fs.map((f) => { const v = r & ((1 << f.bits.length) - 1); r >>>= f.bits.length; return [f.name, v]; }));
+  });
+}
+
+export function verify(d: Design, lib: Lib, spec = claSpec, samples = SAMPLES, patterns?: Record<string, number>[]): Result {
+  const pats = patterns ?? sampleInputs(d, samples);
   const P = pats.length;
   const N = new Netlist(d, lib, P), W = N.W;   // compiling the netlist is one-off set-up, not timed
   const inBits = (d.io?.in ?? []).flatMap((f) => f.bits.map((b, i) => ({ f: f.name, i, net: N.nets.get(b) })));
