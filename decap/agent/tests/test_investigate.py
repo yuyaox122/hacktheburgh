@@ -19,6 +19,13 @@ def test_intent_routing():
     assert _intent("what does b2 do, then is anything hidden?") == "investigate"
     assert _intent("what is the slowest path?") == "investigate"
     assert _intent("hello") == "guide"
+    assert _intent("red-team drill: plant a trigger") == "drill"
+
+
+def test_drill_catches_the_planted_value():
+    from decap_agent.terminal import run_command
+    res = asyncio.run(run_command(build_server(create_stub_app()), "stub_counter8", "red team drill"))
+    assert res["intent"] == "drill" and res["caught"] and res["found_value"] == res["secret"]
 
 
 def _scripted(calls):

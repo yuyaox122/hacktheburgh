@@ -41,6 +41,7 @@ export class AgentPanel {
         <div class="ag-suggest" id="agSuggest">
           <button type="button" class="ag-next" data-cmd="Audit this chip: what are its parts, and is the unrecognised logic doing anything odd?">Audit this chip</button>
           <button type="button" class="ag-next" data-cmd="Is anything hidden in this chip?">Is anything hidden?</button>
+          <button type="button" class="ag-next" data-cmd="Red-team drill: plant a hidden trigger and find it blind">Red-team drill</button>
           <button type="button" class="ag-next" data-cmd="What is the slowest path, and what does the block on it do?">Slowest path</button>
           <button type="button" class="ag-next" data-cmd="What do we already know about this chip? Review memory and fill one gap.">What do we know?</button>
         </div>

@@ -13,6 +13,7 @@ Intents (keyword-dispatch, honest about what it is):
           region agent (look -> claim -> Yosys checks -> refine).
   investigate  "audit / review / walk me through / ... and ...?" -> the investigator (investigate.py): plans,
           picks skills from what it sees, writes chip memory, ends with an evidence-tagged report.
+  drill   "red team / plant / test yourself" -> plant a trigger at a secret value, hunt it blind, reveal.
   guide   anything else -> the guide agent answers with facts, quoted from tool results.
 """
 
@@ -26,6 +27,7 @@ from fastmcp import Client, FastMCP
 from . import lifecycle
 from .transcript import Transcript, result_payload
 
+DRILL = re.compile(r"drill|red.?team|plant|test (yourself|the hunt)|prove it works", re.I)
 HUNT = re.compile(r"hidden|trigger|trojan|suspicious|backdoor|planted|anything (extra|wrong|else|weird)", re.I)
 INVESTIGATE = re.compile(r"audit|investigat|review|report|overview|walk me|tour|everything|plan|deep|\bthen\b|\band\b.*\?|"
                          r"slow|speed|timing|critical|faster|memory|remember|what do (you|we) know", re.I)
@@ -64,9 +66,36 @@ async def _hunt(client: Client, chip: str, transcript: Transcript | None) -> dic
                      "no proof was possible (only random testing passed); rare flags above are still open")}
 
 
+async def _drill(client: Client, chip: str, transcript: Transcript | None) -> dict:
+    """Red-team drill: plant a trigger at a secret random value in a copy of the chip, then hunt it blind.
+
+    The hunt never sees N: find_rare_triggers and prove_equiv only get the planted chip id (names are re-stripped,
+    so nothing marks the new cells). The drill passes only if the proof's counterexample is exactly N."""
+    import secrets
+    n = secrets.randbelow(254) + 1
+    if "+t" in chip:
+        chip = chip.split("+t")[0]
+    err, planted = await _call(client, "plant_trigger", chip=chip, n=n)
+    if err:
+        return {"intent": "drill", "chip": chip, "verdict": "error", "error": str(planted)[:300]}
+    target = planted["chip"]
+    if transcript is not None:
+        transcript.record("thought", step="drill", why=f"planted a hidden trigger in a copy ({target.split('+')[0]}+t?, "
+                                                        f"{planted.get('inserted_cells')} cells, value sealed); now hunting it blind")
+    res = await _hunt(client, target, transcript)
+    got = (res.get("counterexample") or {}).get("ui_in")
+    caught = res["verdict"] == "found" and got == n
+    return {**res, "intent": "drill", "base": chip, "secret": n, "found_value": got, "caught": caught,
+            "verdict": "caught" if caught else "missed",
+            "note": (f"planted at ui_in == {n}; the proof's counterexample is ui_in == {got}" if got is not None
+                     else f"planted at ui_in == {n}; no counterexample came back")}
+
+
 def _intent(command: str) -> str:
     """Single-skill commands take the fast fixed flow; compound or open-ended ones go to the investigator,
     which plans its own steps. A bare question with no chip verb falls through to the guide."""
+    if DRILL.search(command):
+        return "drill"
     if INVESTIGATE.search(command):
         return "investigate"
     if HUNT.search(command):
@@ -102,6 +131,8 @@ async def _run_command(server: FastMCP, chip: str, command: str, *, transcript: 
         return await investigate(server, chip, command, transcript=transcript, model=model,
                                  max_refine=min(max_refine, 2))
     async with Client(server) as client:
+        if kind == "drill":
+            return await _drill(client, chip, transcript)
         if kind == "hunt":
             return await _hunt(client, chip, transcript)
 

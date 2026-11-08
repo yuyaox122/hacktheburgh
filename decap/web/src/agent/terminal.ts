@@ -174,7 +174,12 @@ export class Terminal {
   private outcome(d: DoneShape) {
     const block = document.createElement("div");
     block.className = "ag-outcome";
-    if (d.intent === "hunt") {
+    if (d.intent === "drill") {
+      const ok = d.verdict === "caught";
+      block.innerHTML = `<span class="pill ${ok ? "ok" : "bad"}">${ok ? "caught" : esc(String(d.verdict))}</span>` +
+        `<span class="ag-sub">${ok ? "We hid a backdoor in a copy of this chip; the agent found the exact input that wakes it — blind." : "The planted trigger was not recovered."}</span>` +
+        `<span class="ag-answer">${esc(String(d.note ?? ""))}</span>${cexHtml(d.counterexample ?? null)}`;
+    } else     if (d.intent === "hunt") {
       block.innerHTML = d.verdict === "found"
         ? `<span class="pill warn">found</span><span class="ag-sub">hidden logic — equivalence with the author's source fails</span>${cexHtml(d.counterexample ?? null)}`
         : d.verdict === "clean"
