@@ -23,6 +23,7 @@ at 255 (the 1 is 32 bits) while `next(count) == count + 8'd1` does, exactly as Y
 
 from __future__ import annotations
 
+import itertools
 import re
 from dataclasses import dataclass, field
 
@@ -521,3 +522,37 @@ def english(n: Node) -> str:
 
 def _has_op(n: Node, ops) -> bool:
     return n.op in ops or any(_has_op(x, ops) for x in n.args)
+
+
+def shape_ok(label: str, node: Node) -> bool:
+    """The claim names a known shape (`label`) and uses one of that shape's operators ('constant' needs none)."""
+    ops = SHAPES.get(label)
+    return ops is not None and (label == "constant" or _has_op(node, ops))
+
+
+# ------------------------------------------------------------------------------------------------- checking helpers
+def parse_checked(src: str, widths: dict[str, int], nextable, fixed: dict[str, int] | None = None) -> tuple[Node, Evaluator]:
+    """Parse a claim and check its names against one chip: every name known (`widths`), next() only on a register or
+    flip-flop (`nextable(name)`), and no pin the checker holds fixed (`fixed`, e.g. rst_n). Raises ClaimSyntaxError."""
+    node = parse(src)
+    ev = Evaluator(widths)
+    ev.check_names(node)
+    for kind, name in names(node):
+        if kind == "next" and not nextable(name):
+            raise ClaimSyntaxError(f"next() takes a register or flip-flop, not {name!r}")
+        if kind == "sig" and fixed and name in fixed:
+            raise ClaimSyntaxError(f"{name} is fixed at {fixed[name]} for every claim; leave it out")
+    return node, ev
+
+
+def readings(node: Node, formal: Node | None = None) -> dict:
+    """What every checker returns for a parsed claim: its canonical text, the code-written English, its literal count."""
+    return {"formal": unparse(formal or node), "english": english(node), "literals": literals(node)}
+
+
+def is_tautology(ev: Evaluator, node: Node, max_bits: int = 16) -> bool:
+    """True for every value of every name it uses (by brute force; False if those names have more than max_bits bits)."""
+    refs = sorted(names(node))
+    if sum(ev.widths[n] for _, n in refs) > max_bits:
+        return False
+    return all(ev.holds(node, dict(zip(refs, vals))) for vals in itertools.product(*[range(1 << ev.widths[n]) for _, n in refs]))

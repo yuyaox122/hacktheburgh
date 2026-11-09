@@ -18,8 +18,8 @@ from __future__ import annotations
 import itertools
 import random
 
-from decap.core.claim_expr import (SHAPES, ClaimSyntaxError, Evaluator, _has_op, english, is_complete, literals, names,
-                                   output_bits, parse, unparse)
+from decap.core.claim_expr import (ClaimSyntaxError, is_complete, is_tautology, names, output_bits, parse_checked, readings,
+                                   shape_ok)
 
 SOURCES = {"en": 1, "ui_in": 8, "count": 8}
 FLOPS = [f"q_ff_{k}" for k in range(8)]
@@ -135,25 +135,17 @@ def probe(cones: list[str], planted: int | None, n: int, seed: int, fix: dict | 
 def check(claim: str, cones: list[str], planted: int | None, label: str = "", run: bool = True) -> dict:
     """The stub checker: exhaustive simulation over every source the claim depends on."""
     try:
-        node = parse(claim)
-        ev = Evaluator(WIDTHS)
-        ev.check_names(node)
-        for kind, name in names(node):
-            if kind == "next" and name not in FLOPS + ["count"]:
-                raise ClaimSyntaxError(f"next() takes a register or flip-flop, not {name!r}")
+        node, ev = parse_checked(claim, WIDTHS, lambda name: name in FLOPS or name == "count")
     except ClaimSyntaxError as e:
         return {"verdict": "unparseable", "error": str(e)}
-    out = {"formal": unparse(node), "english": english(node), "literals": literals(node)}
+    out = readings(node)
     if not run:
         return {"verdict": "unchecked", **out}
 
     # tautology: true whatever the chip does (every name free); skipped when that space is too big
+    if is_tautology(ev, node):
+        return {"verdict": "tautology", "truth": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
     refs = sorted(names(node))
-    free_bits = sum(8 if (k == "next" and n == "count") else WIDTHS[n] for k, n in refs)
-    if free_bits <= 16:
-        sizes = [1 << (8 if (k == "next" and n == "count") else WIDTHS[n]) for k, n in refs]
-        if all(ev.holds(node, dict(zip(refs, vals))) for vals in itertools.product(*[range(s) for s in sizes])):
-            return {"verdict": "tautology", "truth": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
 
     srcs = sorted(set().union(*[_deps(k, n, planted is not None) for k, n in refs]))
     for a in _assignments(srcs):
@@ -167,8 +159,7 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
             return {"verdict": "refuted", "truth": "refuted", **out, "counterexample": cex, "refute_kind": "semantic"}
 
     cone_lits = get_region(cones)["cone_literals"] if cones else None
-    shape_ops = SHAPES.get(label)
-    label_ok = shape_ops is not None and (label == "constant" or _has_op(node, shape_ops))
+    label_ok = shape_ok(label, node)
     short = cone_lits is not None and out["literals"] * 3 <= cone_lits
     want = {("next", "count")} | {("next", f) for f in FLOPS} if "c0" in cones else set()
     if {"c1", "c2"} & set(cones):

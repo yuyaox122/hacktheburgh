@@ -113,15 +113,14 @@ def touched(v, cells) -> dict:
 # A region = the observable outputs its cells feed (output-port bits, flip-flop D pins) + the ports and flip-flops
 # those depend on. Ports and flip-flops are the only names a claim may use: internal nets have no names after
 # stripping. Flip-flops are q_<cell id>; the decompiler's register names (acc0) are aliases for their flip-flops.
-import hashlib  # noqa: E402
 import random  # noqa: E402
 import re  # noqa: E402
-import subprocess  # noqa: E402
-from pathlib import Path  # noqa: E402
 
+from ..core import claims  # noqa: E402
+from ..core.claims import DECOMPILER, netlist_sha  # noqa: E402,F401  (region records carry both)
 from ..core.sim import Sim  # noqa: E402
 
-FIXED = {"rst_n": 1, "ena": 1, "clk": 0}   # the claim checker's setup: running, not in reset
+FIXED = {**claims.FIXED, "clk": 0}   # the claim checker's setup (running, not in reset); the clock is not an input here
 EXHAUSTIVE_BITS = 14
 _KEYWORDS = {"module", "input", "output", "wire", "reg", "assign", "always", "posedge", "negedge", "if", "else",
              "begin", "end", "endmodule", "case", "endcase", "default"}
@@ -151,6 +150,14 @@ class Model:
 
     def bits_of(self, kind: str, name: str) -> list:
         return (self.nxt if kind == "next" else self.sig)[name]
+
+    def nextable(self, name: str) -> bool:
+        """next(name) is allowed: a register or a flip-flop q_<id>."""
+        return name in self.nxt
+
+    def fids(self, name: str) -> list[str]:
+        """Flip-flop ids behind a register or q_<id> name, LSB first."""
+        return self.regs[name] if name in self.regs else [name[2:]]
 
     def support(self, bits) -> set[int]:
         """Source bits (inputs, flip-flop Qs) these bits depend on through combinational logic; fixed pins excluded."""
@@ -195,24 +202,6 @@ def model(v) -> Model:
     if v.id not in _models:
         _models[v.id] = Model(v)
     return _models[v.id]
-
-
-def netlist_sha(v) -> str:
-    raw = v.text if v.text else repr(sorted((i.id, str(getattr(i.cell, "name", i.cell)), sorted(i.conns.items(), key=str))
-                                            for i in v.nl.insts))
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
-
-
-def _decompiler_commit() -> str:
-    try:
-        root = Path(__file__).resolve().parents[1]
-        return subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%h", "--", "core"], capture_output=True,
-                              text=True, timeout=5).stdout.strip() or "unknown"
-    except Exception:
-        return "unknown"
-
-
-DECOMPILER = _decompiler_commit()
 
 
 def _expand_focus(text: list[str], lines: list[int]) -> list[int]:
