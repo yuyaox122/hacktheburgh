@@ -303,26 +303,25 @@ async function boot() {
   byId("vfRevB").onclick = () => { setStep(2); start(); };
   byId("vfReplay").onclick = () => start();
   byId("vfSus").onclick = (e) => { const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-id]"); if (li && !running) { select(li.dataset.id!); view.flyTo([li.dataset.id!]); } };
-  addEventListener("keydown", (e) => {
-    if (!root.isConnected || running || e.key !== " " || /^(INPUT|TEXTAREA|BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) return;
-    e.preventDefault(); (step === 1 && shown ? byId("vfRevB") : byId("vfGo")).click();
-  });
   addEventListener("resize", () => drawStrip(shown / (R?.patterns || 1)));
 }
 
-/** Header button icon: a shield with a tick, in the style of ui/icons.ts. */
-export const verifyIcon = `<svg class="ic" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6L8 1.8Z"/><path d="m5.6 8 1.7 1.7 3.2-3.4"/></svg>`;
-
 let booted: Promise<void> | null = null;
-/** The page for the app router: build the 3D view on first mount (it needs the element on screen). */
-export const verifyPage = {
-  el: root,
+/** The page for the app router (one instance: the page keeps its state at module level). The 3D view is built on the
+ *  first mount, because it needs the element on screen. */
+export class VerifyPage {
+  readonly el = root;
   mount(arg: string | null = null) {
     auto = arg === "auto";
     if (!booted) booted = boot().catch((e) => { root.insertAdjacentHTML("beforeend", `<div class="vf-err">Couldn't load the CLA layout (${esc(String(e?.message ?? e))}). Run <code>npm run stage-data</code> in web/.</div>`); });
     else view?.start();
     if (auto) void booted.then(() => setTimeout(() => { if (!running) { setStep(1); start(); } }, 1200));
     if (arg === "revb") void booted.then(() => setTimeout(() => { if (!running) { setStep(2); start(); } }, 1200));
-  },
-  unmount() { view?.stop(); },
-};
+  }
+  unmount() { view?.stop(); }
+  /** Space (from the app's key handler): run the next step. */
+  space() {
+    if (running || !booted) return;
+    (step === 1 && shown ? byId("vfRevB") : byId("vfGo")).click();
+  }
+}

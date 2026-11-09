@@ -15,6 +15,7 @@ export const icon = {
   sparkle: svg(`<path d="M8 1.8c.4 2.9 1.4 3.9 4.2 4.2-2.8.4-3.8 1.4-4.2 4.2-.4-2.8-1.4-3.8-4.2-4.2C6.6 5.7 7.6 4.7 8 1.8Z" fill="currentColor" stroke="none"/><path d="M12.6 10.2c.2 1.2.6 1.6 1.8 1.8-1.2.2-1.6.6-1.8 1.8-.2-1.2-.6-1.6-1.8-1.8 1.2-.2 1.6-.6 1.8-1.8Z" fill="currentColor" stroke="none"/>`),
   more: `<svg class="ic" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg>`,
   close: svg(`<path d="m4 4 8 8M12 4l-8 8"/>`),
+  shield: svg(`<path d="M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6L8 1.8Z"/><path d="m5.6 8 1.7 1.7 3.2-3.4"/>`),
   cube: svg(`<path d="M8 1.8 13.5 5v6L8 14.2 2.5 11V5L8 1.8Z"/><path d="M2.5 5 8 8.2 13.5 5M8 8.2v6"/>`),
   code: svg(`<path d="m5.5 4.5-3.5 3.5 3.5 3.5M10.5 4.5 14 8l-3.5 3.5"/>`),
   info: svg(`<circle cx="8" cy="8" r="6"/><path d="M8 7.2v3.6"/><circle cx="8" cy="5" r=".4" fill="currentColor"/>`),

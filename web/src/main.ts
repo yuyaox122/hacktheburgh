@@ -7,7 +7,7 @@ import { WallPage } from "./pages/wallPage";
 import { ChipPage } from "./pages/chipPage";
 import { ComparePage } from "./pages/comparePage";
 import { MinecraftPage } from "./pages/minecraftPage";
-import { verifyIcon, verifyPage } from "./pages/verifyPage";
+import { VerifyPage } from "./pages/verifyPage";
 import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
@@ -34,7 +34,7 @@ root.innerHTML = `
     <div class="actions">
       <span class="status" id="apiStatus"><i></i><span>Connecting</span></span>
       <button class="search" type="button" id="btnPal" aria-label="Search and commands">${icon.search}<span class="lbl">Search</span><span class="k">${isMac ? "⌘K" : "Ctrl K"}</span></button>
-      <a class="btn plain" href="#/verify" id="btnVerify" title="Verify a chip: every input pattern at once, then trace a fault to its cell (V)">${verifyIcon}<span>Verify</span></a>
+      <a class="btn plain" href="#/verify" id="btnVerify" title="Verify a chip: every input pattern at once, then trace a fault to its cell (V)">${icon.shield}<span>Verify</span></a>
       <button class="btn plain" type="button" id="btnAgent" title="Witness agent: explains a region in one line; Yosys decides (A)">${icon.cube}<span>Agent</span></button>
       <button class="btn plain" type="button" id="btnGuide" title="Ask about what's on screen (G)">${icon.sparkle}<span>Ask</span></button>
       <div class="menuwrap">
@@ -70,6 +70,7 @@ let wall: WallPage | null = null;
 let chip: ChipPage | null = null;
 let comparePg: ComparePage | null = null;
 let mcPg: MinecraftPage | null = null;
+let verifyPg: VerifyPage | null = null;
 let current: { el: HTMLElement; unmount?: () => void } | null = null;
 
 /** Load the Stage for a chip (null = the current one, else the default); switching chips frees the old 3D view. */
@@ -143,8 +144,10 @@ async function route() {
     await m.mount(arg ? decodeURIComponent(arg) : null);
     app.guideContext = () => m.context(); app.guideHighlight = undefined; app.pageCommands = () => [];
   } else if (r === "verify") {
-    show(verifyPage.el, false, () => verifyPage.unmount());
-    verifyPage.mount(arg ? decodeURIComponent(arg) : null);
+    verifyPg ??= new VerifyPage();
+    const v = verifyPg;
+    show(v.el, false, () => v.unmount());
+    v.mount(arg ? decodeURIComponent(arg) : null);
     app.guideContext = undefined; app.guideHighlight = undefined; app.pageCommands = () => [];
   } else { location.hash = "#/stage"; }
 }
@@ -239,6 +242,8 @@ addEventListener("keydown", (e) => {
     else if (k === "r" || k === "R") stage.reset();
     else if (k === "x" || k === "X") stage.toggleExplode();
     else if (k === "f" || k === "F") stage.fit();
+  } else if (app.route === "verify" && verifyPg && k === " " && !/^(BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) {
+    e.preventDefault(); verifyPg.space();
   }
 });
 
