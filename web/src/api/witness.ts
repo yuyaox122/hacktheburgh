@@ -46,7 +46,7 @@ export type AgentEvent =
   | { kind: "error"; error: string };
 
 /** Interactive runs may refine up to 4 times; the frozen bench keeps the plan's 2 (decap/agent bench). */
-export const INTERACTIVE_REFINES = 2;   // the code reading always answers; the proof search is the bonus
+const INTERACTIVE_REFINES = 2;   // the code reading always answers; the proof search is the bonus
 
 /** POST /witness/explain and read its Server-Sent Events as they arrive. `fresh` skips the server's run cache. */
 export const explain = (chip: string, scope: Scope, onEvent: (e: AgentEvent) => void, signal?: AbortSignal, fresh = false) =>
@@ -113,7 +113,7 @@ export interface Review extends Verdict {
   seconds: number;
 }
 
-export const REVIEW_TIMEOUT_MS = 150_000;   // the core gives the review 90 s; allow for the request around it
+const REVIEW_TIMEOUT_MS = 150_000;   // the core gives the review 90 s; allow for the request around it
 
 /** POST /api/chips/{chip}/review-edit: Yosys checks the full edited module against the chip's real gates, and (with
  * `baseline`, the text before this edit) what this edit alone does. */

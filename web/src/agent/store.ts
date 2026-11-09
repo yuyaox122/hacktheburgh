@@ -200,11 +200,18 @@ class Store {
 }
 
 const overlaps = (a: [number, number], b: [number, number]) => a[0] <= b[1] && b[0] <= a[1];
+/** The decompiled Verilog with the agent edits you accepted applied, bottom-up so line numbers stay valid. */
+export function withAcceptedEdits(chipId: string, verilog: string): string {
+  const lines = verilog.split("\n");
+  const accepted = store.edits(chipId).filter((e) => e.state === "accepted").sort((a, b) => b.lines[0] - a.lines[0]);
+  for (const e of accepted) lines.splice(e.lines[0] - 1, e.lines[1] - e.lines[0] + 1, ...e.replacement);
+  return lines.join("\n");
+}
 export const uid = () => Math.random().toString(36).slice(2, 10);
 export const store = new Store();
 
 /** Top-level `&&` conjuncts of a claim (respects parentheses and braces). */
-export function conjuncts(claim: string): string[] {
+function conjuncts(claim: string): string[] {
   const out: string[] = [];
   let depth = 0, start = 0;
   for (let i = 0; i < claim.length; i++) {

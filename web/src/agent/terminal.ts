@@ -4,9 +4,8 @@
 
 import { esc } from "../ui/dom";
 import { md } from "../lib/md";
-import { cexHtml, pill } from "./codeAgent";
 import type { Plain, TerminalEvent } from "../api/witness";
-import { plainHtml } from "./words";
+import { cexHtml, pill, plainHtml } from "./words";
 
 /** Format a seconds float as a short duration: "12ms", "1.24s", "3.5s". */
 function fmtDur(s: number): string {

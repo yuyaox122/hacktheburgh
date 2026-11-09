@@ -68,6 +68,11 @@ function act(what: "explain" | "edit" | "comment") {
     document.dispatchEvent(new CustomEvent("agent:open"));
     return;
   }
+  explainCell(chipId, cellId, what === "edit");
+}
+
+/** Open the agent drawer and explain the block a 3D cell belongs to (also the inspector's "Explain block" button). */
+export function explainCell(chipId: string, cellId: string, suggestEdit = false) {
   document.dispatchEvent(new CustomEvent("agent:open"));
   void loadChip(chipId).then(({ data }) => {
     const reg = regionForCell(data, cellId);
@@ -75,7 +80,7 @@ function act(what: "explain" | "edit" | "comment") {
     void runAgent({
       chip: chipId, scope: reg.scope, label: `3D cell ${cellId} · ${reg.label}`, origin: "stage",
       line: reg.lines[0] || undefined, lines: reg.lines[0] ? reg.lines : undefined,
-      suggestEdit: what === "edit", verilog: data.decompiled.verilog,
+      suggestEdit, verilog: data.decompiled.verilog,
     });
   });
 }

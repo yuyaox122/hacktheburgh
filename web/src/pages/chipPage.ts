@@ -2,22 +2,13 @@
 // block coverage, and the stripped netlist as a 2D graph. Find (plant a trigger) and Fix (remove and prove) live here.
 
 import type { BenchChip, ChipResult, FixResult, Lib } from "../api/types";
-import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plant as apiPlant, type Source } from "../api/core";
+import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plantSources, startPlant, type Source } from "../api/core";
+import { cap, kindColour, kindWord } from "../lib/kinds";
 import { NetGraph } from "../ui/graph";
 import { $, $$, codeText, esc, toast, wrapOn } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { app } from "../ui/state";
 import { pendingBuild } from "../api/redstone";
-
-export const KIND_COLOUR: Record<string, string> = {
-  adder: "var(--adder)", subtractor: "var(--adder)", counter: "var(--reg)", register: "var(--reg)", shift: "var(--reg)",
-  comparator: "var(--detect)", mux: "var(--mux)", reduce: "var(--gate)", const: "var(--const)", copy: "var(--const)", logic: "var(--faint)",
-};
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-export const KIND_WORD: Record<string, string> = {
-  adder: "adder", subtractor: "subtractor", counter: "counter", register: "register", shift: "shift register", comparator: "comparator",
-  mux: "multiplexer", reduce: "reduction", const: "constant", copy: "wire copy", logic: "leftover logic",
-};
 
 type Tab = "proof" | "find" | "fix" | "blocks";
 
@@ -185,8 +176,8 @@ export class ChipPage {
       const active = this.selLine === ln || (this.selBlock && b?.id === this.selBlock) || (hlCells && cellsHere.some((c) => hlCells.has(c)));
       const isRemoved = this.showPlanted && cellsHere.length > 0 && cellsHere.every((c) => removed.has(c));
       const cls = [active ? "active" : "", f ? "flag" : "", isRemoved ? "removed" : ""].join(" ");
-      const bar = b ? `background:${KIND_COLOUR[b.kind] ?? "var(--faint)"};opacity:${b.recognised ? 0.9 : 0.35}` : "";
-      const badge = f ? `<span class="badge" title="Fires for ${esc(f.rate)} of inputs">Rare trigger</span>` : b && ln === b.lines[0] ? `<span class="badge" title="${b.cells.length} cells">${esc(KIND_WORD[b.kind] ?? b.kind)}${b.width ? `, ${b.width} bit` : ""}</span>` : "<span></span>";
+      const bar = b ? `background:${kindColour(b.kind)};opacity:${b.recognised ? 0.9 : 0.35}` : "";
+      const badge = f ? `<span class="badge" title="Fires for ${esc(f.rate)} of inputs">Rare trigger</span>` : b && ln === b.lines[0] ? `<span class="badge" title="${b.cells.length} cells">${esc(kindWord(b.kind))}${b.width ? `, ${b.width} bit` : ""}</span>` : "<span></span>";
       return `<li data-ln="${ln}" class="${cls}"><span class="n">${ln}</span><span class="bk" style="${bar}"></span>${codeText(t)}${badge}</li>`;
     }).join("");
     app.onCodeRendered?.(this);   // Witness agent: hover toolbar, comments, suggested and accepted edits
@@ -220,8 +211,8 @@ export class ChipPage {
           <p>The shipped netlist checked against the author's source${this.author.repo ? ` at ${this.repoLink(this.author)}` : ""}.</p>${this.author.check_detail ? `<p class="fine">${esc(this.author.check_detail)}</p>` : ""}</div>` : ""}`;
     } else if (this.tab === "blocks") {
       side.innerHTML = `<div class="sect"><p class="fine">Recognised blocks in source order. Select one to light its lines and cells.</p><div class="blocklist">${r.blocks.map((b) => `
-        <button type="button" class="blockrow${this.selBlock === b.id ? " on" : ""}" data-block="${esc(b.id)}"><i class="sw" style="background:${KIND_COLOUR[b.kind] ?? "var(--faint)"};opacity:${b.recognised ? 1 : 0.4}"></i>
-          <span class="kind">${esc(cap(KIND_WORD[b.kind] ?? b.kind))}${b.width ? ` <span class="muted">${b.width} bit</span>` : ""}</span><code>${esc(b.text)}</code><span class="muted">${b.cells.length}</span></button>`).join("")}</div></div>`;
+        <button type="button" class="blockrow${this.selBlock === b.id ? " on" : ""}" data-block="${esc(b.id)}"><i class="sw" style="background:${kindColour(b.kind)};opacity:${b.recognised ? 1 : 0.4}"></i>
+          <span class="kind">${esc(cap(kindWord(b.kind)))}${b.width ? ` <span class="muted">${b.width} bit</span>` : ""}</span><code>${esc(b.text)}</code><span class="muted">${b.cells.length}</span></button>`).join("")}</div></div>`;
     } else if (this.tab === "find") {
       side.innerHTML = this.findHtml();
     } else {
@@ -443,9 +434,3 @@ export class ChipPage {
   }
   destroy() { this.graph?.destroy(); this.stopTimer(); }
 }
-
-/** Start a plant in the background (the demo prep calls this before the timer starts). */
-export function startPlant(chip: string, n: number): Promise<ChipResult> {
-  return apiPlant(chip, n).then(({ data, source }) => { plantSources.set(`${chip}:${n}`, source); return data; });
-}
-export const plantSources = new Map<string, Source>();

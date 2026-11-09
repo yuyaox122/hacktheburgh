@@ -1,6 +1,38 @@
-import { esc } from "../ui/dom";
+// How the agent's results read on screen: what each checker verdict means in words, its pill, the counterexample
+// chips and diffs. Shared by the code pane, the Ideas threads, the editor, the drawer and the terminal.
+
+import { esc, hiVerilog } from "../ui/dom";
 import { md } from "../lib/md";
 import type { Plain } from "../api/witness";
+
+/** A claim's verdict as a pill: [label, tone]. */
+const VERDICT: Record<string, [string, string]> = {
+  proven: ["Proven", "ok"], inductive: ["Proven from reset", "ok"], tested: ["Tested only", "warn"], refuted: ["Refuted", "bad"],
+  partial: ["True, incomplete", "warn"], restated: ["True, no shorter", ""], bounded: ["Holds 30 cycles", "warn"],
+  tautology: ["Tautology", ""], unparseable: ["Didn't parse", ""], timeout: ["Timed out", ""], unchecked: ["Not checked", ""],
+};
+export const pill = (v?: string | null) => {
+  const [t, c] = VERDICT[v ?? ""] ?? [v ?? "…", ""];
+  return `<span class="pill ${c}">${esc(t)}</span>`;
+};
+
+/** The core's review of an edited module (review-edit): [label, tone]. */
+export const REVIEW_PILL: Record<string, [string, string]> = {
+  same: ["Same circuit, proven", "ok"], tested_same: ["No difference found, not proven", "warn"],
+  changed: ["Behaviour changed", "bad"], broken: ["Broken", "bad"],
+};
+
+/** The input values where a claim or an edit breaks (flip-flop state bits folded into a count). */
+export function cexHtml(c?: Record<string, number> | null, label = "Breaks at"): string {
+  if (!c) return "";
+  const shown = Object.entries(c).filter(([k]) => !k.startsWith("q_"));
+  const hidden = Object.keys(c).length - shown.length;
+  return `<div class="ag-cex"><span class="ag-lbl">${esc(label)}</span>${shown.map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join("")}${hidden ? `<span class="muted">+${hidden} flip-flop bits</span>` : ""}</div>`;
+}
+
+/** Removed and added Verilog lines, highlighted. */
+export const diffHtml = (del: string[], add: string[]) =>
+  `<div class="ag-diff">${del.map((t) => `<div class="del"><span>−</span>${hiVerilog(t) || " "}</div>`).join("")}${add.map((t) => `<div class="add"><span>+</span>${hiVerilog(t) || " "}</div>`).join("")}${!add.length ? `<div class="add muted"><span>+</span>(lines removed)</div>` : ""}</div>`;
 
 // What each checker verdict means, said the way a person would say it. Used wherever the agent replies in words.
 

@@ -24,7 +24,7 @@ export interface RequestOpts {
 const isAbort = (e: unknown) => (e as Error)?.name === "AbortError";
 
 /** fetch() with a JSON body; a network failure becomes ApiError(0, down). Aborts pass through untouched. */
-export async function send(url: string, o: RequestOpts = {}): Promise<Response> {
+async function send(url: string, o: RequestOpts = {}): Promise<Response> {
   const init: RequestInit = { method: o.method ?? (o.body === undefined ? "GET" : "POST"), signal: o.signal };
   if (o.body !== undefined) { init.headers = { "Content-Type": "application/json" }; init.body = JSON.stringify(o.body); }
   try { return await fetch(url, init); }

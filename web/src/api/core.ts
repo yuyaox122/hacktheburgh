@@ -7,7 +7,7 @@ import fixtureBench from "../fixtures/bench.json";
 import fixtureCounter from "../fixtures/chips/tt_um_fixture_counter4.json";
 import fixturePlanted from "../fixtures/chips/tt_um_fixture_counter4.planted.json";
 
-export const FIXTURE_CHIPS: Record<string, ChipResult> = {
+const FIXTURE_CHIPS: Record<string, ChipResult> = {
   [fixtureCounter.chip]: fixtureCounter as unknown as ChipResult,
 };
 export const fixtureUsed = new Set<string>();
@@ -77,6 +77,12 @@ export async function plant(chip: string, n: number, signal?: AbortSignal): Prom
     return { data: JSON.parse(s) as ChipResult, source: "fixture" };
   }
 }
+
+/** Start a plant in the background (the demo prep calls this before the timer starts); remembers where it came from. */
+export function startPlant(chip: string, n: number): Promise<ChipResult> {
+  return plant(chip, n).then(({ data, source }) => { plantSources.set(`${chip}:${n}`, source); return data; });
+}
+export const plantSources = new Map<string, Source>();
 
 export async function fix(chip: string, n: number): Promise<{ data: FixResult; source: Source }> {
   try { return { data: await postJson<FixResult>("/api/fix", { chip, n }, undefined, DOWN.core), source: "api" }; }

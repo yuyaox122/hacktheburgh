@@ -17,9 +17,9 @@ import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { loadChip } from "../api/core";
 import { esc } from "../ui/dom";
 import { explainText, ideas, reviewEdit, type IdeaOut, type Review } from "../api/witness";
-import { cexHtml } from "./codeAgent";
+import { cexHtml, REVIEW_PILL } from "./words";
 import { md } from "../lib/md";
-import { withAcceptedEdits } from "./verilogIO";
+import { withAcceptedEdits } from "./store";
 
 const drafts = new Map<string, string>();   // chip -> the editor text, kept while you browse the app
 let view: EditorView | null = null;
@@ -38,9 +38,6 @@ const theme = EditorView.theme({
 }, { dark: true });
 
 export const isOpen = () => !!view;
-/** The live editor (tests and other agent tools drive it through this). */
-export const current = () => view;
-
 /** Open the editor over the Decompile pane's body (the read-only view stays underneath, hidden). */
 export async function open(chipId: string, paneBody: HTMLElement) {
   close();
@@ -106,11 +103,6 @@ function replaceLines(a: number, b: number, lines: string[]) {
 
 function setText(t: string) { view!.dispatch({ changes: { from: 0, to: view!.state.doc.length, insert: t } }); }
 
-const PILL: Record<string, [string, string]> = {
-  same: ["ok", "same circuit (proven)"], tested_same: ["warn", "no difference in 20 cycles (not proven)"],
-  changed: ["bad", "behaviour changed"], broken: ["bad", "broken"],
-};
-
 async function check(): Promise<Review | null> {
   if (!view) return null;
   const t = text();
@@ -118,7 +110,7 @@ async function check(): Promise<Review | null> {
   out(`<span class="spin"></span> Yosys is checking your Verilog against the chip's gates…`);
   try {
     const r = await reviewEdit(chip, t);
-    const [cls, word] = PILL[r.verdict] ?? ["", r.verdict];
+    const [word, cls] = REVIEW_PILL[r.verdict] ?? [r.verdict, ""];
     out(`<span class="pill ${cls}">${esc(word)}</span> <b>${esc(r.headline ?? "")}</b>
       ${r.detail ? `<details${r.verdict === "broken" ? " open" : ""}><summary class="muted">details</summary><p class="muted">${esc(r.detail)}</p></details>` : ""}
       ${r.verdict === "changed" ? cexHtml(r.counterexample as Record<string, number> | null) : ""}

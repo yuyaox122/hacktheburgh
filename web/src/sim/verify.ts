@@ -16,7 +16,7 @@
 // likelihood (1-e)^k * e^(F-k) (e = 0.05), normalised over all candidate cells with a uniform prior.
 
 import type { Design, Lib } from "../api/types";
-import { parse, type Expr } from "./expr";
+import { parse, toJs, type Expr } from "./expr";
 
 const EPS = 0.05;
 /** Random test vectors per run. The prediction's interval narrows with more, the cost grows linearly. */
@@ -57,16 +57,7 @@ export interface Result {
   gateEvals: number;
 }
 
-function wordJs(e: Expr, map: (name: string) => string): string {
-  switch (e.op) {
-    case "var": return map(e.name);
-    case "const": return e.v ? "-1" : "0";
-    case "not": return `(~${wordJs(e.a, map)})`;
-    case "and": return `(${e.args.map((a) => wordJs(a, map)).join("&")})`;
-    case "or": return `(${e.args.map((a) => wordJs(a, map)).join("|")})`;
-    case "xor": return `(${e.args.map((a) => wordJs(a, map)).join("^")})`;
-  }
-}
+const wordJs = (e: Expr, ref: (name: string) => string) => toJs(e, ref, true);
 const fnOf = (src: string) => new Function("v", "w", `return (${src})|0;`) as WordFn;
 
 class Netlist {
@@ -146,10 +137,10 @@ class Netlist {
 }
 
 /** Number of possible inputs: 2^(named input bits). */
-export const inputSpace = (d: Design) => 2 ** (d.io?.in ?? []).reduce((a, f) => a + f.bits.length, 0);
+const inputSpace = (d: Design) => 2 ** (d.io?.in ?? []).reduce((a, f) => a + f.bits.length, 0);
 
 /** `n` random input vectors, uniform over every named input bit, reproducible from `seed` (mulberry32). */
-export function sampleInputs(d: Design, n = SAMPLES, seed = SEED): Record<string, number>[] {
+function sampleInputs(d: Design, n = SAMPLES, seed = SEED): Record<string, number>[] {
   let t = seed >>> 0;
   const rnd = () => { t = (t + 0x6d2b79f5) >>> 0; let x = Math.imul(t ^ (t >>> 15), 1 | t); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
   const fs = d.io?.in ?? [];
@@ -164,7 +155,7 @@ function interval(k: number, n: number): [number, number] {
 }
 
 /** The spec: a + b + ci, as {s, co}. */
-export function claSpec(ins: Record<string, number>): Record<string, number> {
+function claSpec(ins: Record<string, number>): Record<string, number> {
   const t = (ins.a ?? 0) + (ins.b ?? 0) + (ins.ci ?? 0);
   return { s: t & 15, co: t >> 4 };
 }

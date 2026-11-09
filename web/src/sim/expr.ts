@@ -10,7 +10,7 @@ export type Expr =
 
 const TOKEN = /\s*([A-Za-z_][A-Za-z0-9_]*|1'b[01]|[01]|[!'&*|+^()])/y;
 
-export function tokenize(s: string): string[] {
+function tokenize(s: string): string[] {
   const out: string[] = [];
   TOKEN.lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -70,15 +70,19 @@ export function vars(e: Expr, out = new Set<string>()): Set<string> {
   return out;
 }
 
-/** JS source over an array `v`, with `slot(name)` giving each variable's index. Result is 0 or 1. */
-export function toJs(e: Expr, slot: (name: string) => number): string {
+/**
+ * JS source for an expression, with `ref(name)` giving each variable's JS. Bit mode (the simulator) works on 0/1;
+ * word mode (the verify engine) on 32 lanes at once, so a constant 1 is all ones and NOT is a bitwise complement.
+ */
+export function toJs(e: Expr, ref: (name: string) => string, word = false): string {
+  const go = (x: Expr) => toJs(x, ref, word);
   switch (e.op) {
-    case "var": return `v[${slot(e.name)}]`;
-    case "const": return String(e.v);
-    case "not": return `(1^${toJs(e.a, slot)})`;
-    case "and": return `(${e.args.map((a) => toJs(a, slot)).join("&")})`;
-    case "or": return `(${e.args.map((a) => toJs(a, slot)).join("|")})`;
-    case "xor": return `(${e.args.map((a) => toJs(a, slot)).join("^")})`;
+    case "var": return ref(e.name);
+    case "const": return word ? (e.v ? "-1" : "0") : String(e.v);
+    case "not": return word ? `(~${go(e.a)})` : `(1^${go(e.a)})`;
+    case "and": return `(${e.args.map(go).join("&")})`;
+    case "or": return `(${e.args.map(go).join("|")})`;
+    case "xor": return `(${e.args.map(go).join("^")})`;
   }
 }
 

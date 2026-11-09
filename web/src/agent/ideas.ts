@@ -4,10 +4,11 @@
 // comes from the core (POST /api/chips/{chip}/review-edit), never from the LLM.
 
 import type { ChipResult } from "../api/types";
-import { esc, hiVerilog, toast } from "../ui/dom";
+import { esc, saveText, toast } from "../ui/dom";
 import { regionForLine } from "./agent";
 import { ideas as askAgent, reviewEdit, type Review, type Verdict } from "../api/witness";
-import { cexHtml, type CodeHost } from "./codeAgent";
+import { cexHtml, diffHtml, REVIEW_PILL } from "./words";
+import type { CodeHost } from "../ui/state";
 import { applyPatches, clash, curRange, editedText, placeIdea, type Patch } from "./ideaEdits";
 import { store, uid, type Edit, type Idea, type IdeaThread } from "./store";
 
@@ -44,7 +45,7 @@ export const keptIdeaClash = (host: CodeHost, lines: [number, number]) => clash(
 const waiting = (host: CodeHost) => shownEdits(host).find((e) => e.state === "reviewing" || e.state === "reviewed");
 
 /** The Verilog as shown: Decap's decompile with every kept edit in place. */
-export function currentText(host: CodeHost): string | null {
+function currentText(host: CodeHost): string | null {
   const r = host.result;
   return r ? editedText(r.decompiled.verilog, keptPatches(host)) : null;
 }
@@ -154,11 +155,7 @@ export function keep(host: CodeHost, editId: string) {
 export function download(host: CodeHost) {
   const text = currentText(host);
   if (text == null) return;
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-  a.download = `${variantKey(host).replace(/[^\w.-]+/g, "_")}_edited.v`;
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  saveText(`${variantKey(host).replace(/[^\w.-]+/g, "_")}_edited.v`, text);
 }
 
 // ---------- rendering (rows inserted into #cpCode by decorateCode) ----------
@@ -168,22 +165,17 @@ const own = (rv: Review): Verdict => rv.this_edit ?? rv;
 const unchecked = (v?: Verdict) => !!v && v.verdict === "broken" && v.headline.startsWith("Yosys couldn't");
 const keepable = (rv: Review) => rv.verdict !== "broken" && own(rv).verdict !== "broken";
 
-const VERDICT: Record<string, [string, string]> = {
-  same: ["Same circuit, proven", "ok"], tested_same: ["No difference found, not proven", "warn"], changed: ["Behaviour changed", "bad"],
-};
-export function reviewPill(e: Edit): string {
+function reviewPill(e: Edit): string {
   const rv = e.review;
   if (!rv) return `<span class="pill">Not reviewed</span>`;
   const v = own(rv), alone = !!rv.this_edit;
   const [t, c] = v.verdict === "broken" ? (v.headline === "Doesn't compile" ? ["Doesn't compile", "bad"] : unchecked(v) ? ["Not checked", "warn"] : ["Can't be kept", "bad"])
     : v.verdict === "changed" && e.intent === "change" ? ["Behaviour changed, as intended?", "warn"]
     : v.verdict === "same" && alone ? ["Same as before, proven", "ok"]
-    : VERDICT[v.verdict];
+    : REVIEW_PILL[v.verdict];
   return `<span class="pill ${c}"${alone ? ` title="This edit on its own, compared with the Verilog before it (your other kept edits included)"` : ""}>${esc(t)}</span>`;
 }
 
-const diffHtml = (del: string[], add: string[]) =>
-  `<div class="ag-diff">${del.map((t) => `<div class="del"><span>−</span>${hiVerilog(t) || " "}</div>`).join("")}${add.map((t) => `<div class="add"><span>+</span>${hiVerilog(t) || " "}</div>`).join("")}${!add.length ? `<div class="add muted"><span>+</span>(lines removed)</div>` : ""}</div>`;
 const intentTag = (i: Idea["intent"]) =>
   i === "change" ? `<span class="ag-intent change" title="A deliberate change to what the chip does">Changes behaviour</span>`
     : `<span class="ag-intent same" title="A rewrite that should do exactly the same thing">Keeps behaviour</span>`;

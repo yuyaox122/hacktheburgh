@@ -1,16 +1,15 @@
 // The Agent drawer (key A): every Witness run on the current chip, live. Each run shows what the agent looked at,
 // each claim it made, the checker's verdict (with the input that breaks a wrong claim), and what you can do next.
 
-import { $, esc } from "../ui/dom";
+import { $, esc, saveText } from "../ui/dom";
 import { app } from "../ui/state";
 import { icon } from "../ui/icons";
 import { DOWN } from "../api/http";
 import { agentUp, command, sessions, type TerminalEvent } from "../api/witness";
-import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
 import { Terminal } from "./terminal";
-import { plainHtml, verdictWords } from "./words";
+import { cexHtml, pill, plainHtml, verdictWords } from "./words";
 import * as verilogIO from "./verilogIO";
 
 const STEP: Record<string, (s: Run["steps"][number]) => string> = {
@@ -244,7 +243,7 @@ export class AgentPanel {
       return;
     }
     if (t.closest("[data-fixed-dl]") && this.term.lastRepair) {
-      verilogIO.saveText(`${this.term.lastRepair.chip}_repaired.v`, this.term.lastRepair.verilog);
+      saveText(`${this.term.lastRepair.chip}_repaired.v`, this.term.lastRepair.verilog);
       return;
     }
     const cmd = (e.target as HTMLElement).closest<HTMLElement>("[data-cmd]");

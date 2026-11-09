@@ -11,10 +11,10 @@ import { parse, evalExpr, vars } from "../../sim/expr";
 import { $, $$, codeText, css, esc, wrapOn } from "../../ui/dom";
 import { icon } from "../../ui/icons";
 import { app } from "../../ui/state";
+import { cap } from "../../lib/kinds";
 import * as stageAgent from "../../agent/stageAgent";
 
 const SPEEDS: [number, string][] = [[900, "0.5×"], [450, "1×"], [120, "4×"]];
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** One lane of the logic analyser: a single wire, or a named number drawn as a bus. */
 interface Lane { label: string; bits: string[]; out: boolean }

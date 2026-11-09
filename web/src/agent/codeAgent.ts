@@ -3,19 +3,13 @@
 // Dismiss, Ideas threads (ideas.ts: the agent proposes edits, Yosys reviews the ones you apply), and accepted edits
 // shown in place of the lines they replace. Re-applied after every render of the pane.
 
-import type { ChipResult } from "../api/types";
 import { md } from "../lib/md";
 import { $, $$, esc, hiVerilog, toast } from "../ui/dom";
-import { comment, regionForLine, runAgent, suggestEditFrom } from "./agent";
+import { comment, regionForLine, runAgent } from "./agent";
 import { store, type Comment, type Edit } from "./store";
+import { cexHtml, diffHtml, pill } from "./words";
+import type { CodeHost } from "../ui/state";
 import * as ideas from "./ideas";
-
-export interface CodeHost {
-  readonly chip: string;
-  readonly el: HTMLElement;
-  readonly result: ChipResult | null;
-  highlightFromGuide(h: { cells?: string[]; lines?: number[] }): void;
-}
 
 let composer: { chip: string; line: number } | null = null;
 const showOriginal = new Set<string>();   // accepted edit ids whose original lines are expanded
@@ -25,21 +19,6 @@ let hoverLine = 0;
 let hoverHost: CodeHost | null = null;
 let hideT = 0;
 
-const VERDICT: Record<string, [string, string]> = {
-  proven: ["Proven", "ok"], inductive: ["Proven from reset", "ok"], tested: ["Tested only", "warn"], refuted: ["Refuted", "bad"],
-  partial: ["True, incomplete", "warn"], restated: ["True, no shorter", ""], bounded: ["Holds 30 cycles", "warn"],
-  tautology: ["Tautology", ""], unparseable: ["Didn't parse", ""], timeout: ["Timed out", ""], unchecked: ["Not checked", ""],
-};
-export const pill = (v?: string | null) => {
-  const [t, c] = VERDICT[v ?? ""] ?? [v ?? "…", ""];
-  return `<span class="pill ${c}">${esc(t)}</span>`;
-};
-export function cexHtml(c?: Record<string, number> | null, label = "Breaks at"): string {
-  if (!c) return "";
-  const shown = Object.entries(c).filter(([k]) => !k.startsWith("q_"));
-  const hidden = Object.keys(c).length - shown.length;
-  return `<div class="ag-cex"><span class="ag-lbl">${esc(label)}</span>${shown.map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join("")}${hidden ? `<span class="muted">+${hidden} flip-flop bits</span>` : ""}</div>`;
-}
 const when = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** Decorate the code pane after the Chip page rendered it (idempotent). */
@@ -102,7 +81,7 @@ export function decorateCode(host: CodeHost) {
 function suggestedRow(e: Edit): string {
   return `<li class="ag-row ag-edit suggested" data-edit="${e.id}">
     <div class="ag-edit-h"><span class="ag-tag">Suggested edit</span>${pill("proven")}<span class="muted">lines ${e.lines[0]}–${e.lines[1]} · from the agent's proven claim</span></div>
-    <div class="ag-diff">${e.original.map((t) => `<div class="del"><span>−</span>${hiVerilog(t) || " "}</div>`).join("")}${e.replacement.map((t) => `<div class="add"><span>+</span>${hiVerilog(t) || " "}</div>`).join("")}</div>
+    ${diffHtml(e.original, e.replacement)}
     <div class="ag-actions"><button type="button" class="btn sm primary" data-ag="accept" data-id="${e.id}">Accept edit</button><button type="button" class="btn sm" data-ag="dismiss" data-id="${e.id}">Dismiss</button><button type="button" class="btn sm" data-ag="cells" data-id="${e.id}">Show its cells</button></div>
   </li>`;
 }
@@ -251,4 +230,3 @@ export function act(host: CodeHost, ln: number, what: "explain" | "edit" | "comm
   });
 }
 
-export { suggestEditFrom };

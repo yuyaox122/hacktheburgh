@@ -14,10 +14,9 @@ import { Demo } from "./ui/demo";
 import { $, $$, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
 import { icon } from "./ui/icons";
 import { app, type PaletteCommand } from "./ui/state";
-import { loadChip } from "./api/core";
 import { AgentPanel } from "./agent/panel";
 import { act, decorateCode } from "./agent/codeAgent";
-import { regionForCell, runAgent } from "./agent/agent";
+import { explainCell } from "./agent/stageAgent";
 import { store } from "./agent/store";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -211,13 +210,7 @@ function agentCommands(c: ChipPage): PaletteCommand[] {
 document.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-agent-cell]");
   if (!b || !stage) return;
-  const chipId = stage.chipName, cell = b.dataset.agentCell!;
-  guide.close(); agentPanel.open();
-  void loadChip(chipId).then(({ data }) => {
-    const reg = regionForCell(data, cell);
-    if (!reg) return;
-    void runAgent({ chip: chipId, scope: reg.scope, label: `3D cell ${cell} · ${reg.label}`, origin: "stage", line: reg.lines[0] || undefined, lines: reg.lines[0] ? reg.lines : undefined });
-  });
+  explainCell(stage.chipName, b.dataset.agentCell!);
 });
 $("#btnPal").addEventListener("click", () => palette.open());
 $("#btnBig").addEventListener("click", () => { setMenu(false); document.body.classList.toggle("projector"); });
@@ -257,12 +250,10 @@ function renderFixtureBanner() {
 onFixtureChange(renderFixtureBanner);
 
 health().then((h) => {
-  app.api = true; app.llm = !!h.llm;
   const s = $("#apiStatus");
   s.innerHTML = `<i class="ok"></i><span>Live</span>`;
   s.title = `Connected to the bASIC API.${h.yosys === false ? " Yosys is missing, so proofs are off." : ""} The guide is ${h.llm ? "on" : "off"}.`;
 }).catch(() => {
-  app.api = false;
   const s = $("#apiStatus");
   s.innerHTML = `<i class="bad"></i><span>Offline</span>`;
   s.title = "Showing saved results. Live planting, Fix, Compare and the guide need the bASIC API.";

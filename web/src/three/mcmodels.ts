@@ -24,7 +24,7 @@ export async function loadMcAssets(): Promise<McAssets | null> {
 const DEFAULTS: Record<string, string> = { powered: "false", locked: "false", lit: "false", mode: "compare", delay: "1",
   facing: "north", face: "floor", power: "0", north: "none", south: "none", east: "none", west: "none" };
 
-export function parseState(s: string): { name: string; props: Record<string, string> } {
+function parseState(s: string): { name: string; props: Record<string, string> } {
   const [head, rest] = s.replace(/^minecraft:/, "").split("[");
   const props = { ...DEFAULTS };
   for (const kv of (rest ?? "").replace("]", "").split(",")) { const [k, v] = kv.split("="); if (k && v) props[k] = v; }

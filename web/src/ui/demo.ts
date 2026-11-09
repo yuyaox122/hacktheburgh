@@ -1,11 +1,10 @@
 // Presenter mode (SPEC §9, 90 s): a floating bar that drives the pages in order.
 // Before the timer: pick the judge's chip and number, and start planting in the background.
 
-import { loadBench } from "../api/core";
+import { loadBench, startPlant } from "../api/core";
 import { $, esc } from "./dom";
 import { icon } from "./icons";
 import { app } from "./state";
-import { startPlant } from "../pages/chipPage";
 
 export interface DemoHooks {
   go(route: string): void;
