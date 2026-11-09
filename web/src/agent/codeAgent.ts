@@ -3,8 +3,8 @@
 // Dismiss, Ideas threads (ideas.ts: the agent proposes edits, Yosys reviews the ones you apply), and accepted edits
 // shown in place of the lines they replace. Re-applied after every render of the pane.
 
-import type { ChipResult } from "../data/types";
-import { md } from "./md";
+import type { ChipResult } from "../api/types";
+import { md } from "../lib/md";
 import { $, $$, esc, hiVerilog, toast } from "../ui/dom";
 import { comment, regionForLine, runAgent, suggestEditFrom } from "./agent";
 import { store, type Comment, type Edit } from "./store";

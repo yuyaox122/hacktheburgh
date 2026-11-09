@@ -2,7 +2,7 @@
 // Verilog, and comment threads on lines. Kept in localStorage per browser (a hackathon demo, not shared state), and
 // broadcast to whichever view is open so the Verilog pane and the 3D Stage repaint together.
 
-import type { Attempt, IdeaOut, Plain, Review, Scope, ToolStep } from "./api";
+import type { Attempt, IdeaOut, Plain, Review, Scope, ToolStep } from "../api/witness";
 
 export type Origin = "line" | "edit" | "block" | "stage" | "comment" | "palette";
 

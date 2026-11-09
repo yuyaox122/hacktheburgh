@@ -1,6 +1,6 @@
 // AI guide: a chat drawer. POST /api/chat with a compact context of what is on screen; apply returned highlights.
 
-import { ApiError, chat } from "../data/load";
+import { ApiError, chat } from "../api/core";
 import { $, esc } from "./dom";
 import { icon } from "./icons";
 import { app } from "./state";

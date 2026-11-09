@@ -3,10 +3,10 @@
 // the chip's real gates; Keep makes it part of the code shown. The agent only proposes: every verdict and its wording
 // comes from the core (POST /api/chips/{chip}/review-edit), never from the LLM.
 
-import type { ChipResult } from "../data/types";
+import type { ChipResult } from "../api/types";
 import { esc, hiVerilog, toast } from "../ui/dom";
 import { regionForLine } from "./agent";
-import { ideas as askAgent, reviewEdit, type Review, type Verdict } from "./api";
+import { ideas as askAgent, reviewEdit, type Review, type Verdict } from "../api/witness";
 import { cexHtml, type CodeHost } from "./codeAgent";
 import { applyPatches, clash, curRange, editedText, placeIdea, type Patch } from "./ideaEdits";
 import { store, uid, type Edit, type Idea, type IdeaThread } from "./store";

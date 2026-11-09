@@ -1,21 +1,20 @@
 // Decap web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare, #/minecraft), shared chrome, keyboard shortcuts.
 
-import "./styles.css";
-import "./agent/agent.css";
-import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./data/load";
-import { StagePage } from "./ui/stagePage";
-import { WallPage } from "./ui/wallPage";
-import { ChipPage } from "./ui/chipPage";
-import { ComparePage } from "./ui/comparePage";
-import { MinecraftPage } from "./ui/minecraftPage";
-import { verifyIcon, verifyPage } from "./verify/verifyPage";
+import "./styles/index.css";
+import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./api/core";
+import { StagePage } from "./pages/stage/stagePage";
+import { WallPage } from "./pages/wallPage";
+import { ChipPage } from "./pages/chipPage";
+import { ComparePage } from "./pages/comparePage";
+import { MinecraftPage } from "./pages/minecraftPage";
+import { verifyIcon, verifyPage } from "./pages/verifyPage";
 import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
 import { $, $$, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
 import { icon } from "./ui/icons";
 import { app, type PaletteCommand } from "./ui/state";
-import { loadChip } from "./data/load";
+import { loadChip } from "./api/core";
 import { AgentPanel } from "./agent/panel";
 import { act, decorateCode } from "./agent/codeAgent";
 import { regionForCell, runAgent } from "./agent/agent";

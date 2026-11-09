@@ -4,7 +4,7 @@
 //
 // Self-contained: it decorates the panes when they appear (MutationObserver), so the page files stay untouched.
 
-import { loadChip, loadDesign } from "../data/load";
+import { loadChip, loadDesign } from "../api/core";
 import { toast } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { store } from "./store";

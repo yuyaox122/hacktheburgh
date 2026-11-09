@@ -1,0 +1,45 @@
+/* Design tokens: every colour, font, radius and shadow the app uses. Dark only (color-scheme: dark).
+   The 3D views and canvases read these at runtime with css("--name") (ui/dom.ts), so change them here. */
+:root {
+  /* surfaces */
+  --bg: #0b0b0d;
+  --panel: #141416;
+  --panel-2: #1c1c1f;
+  --panel-3: #2a2a2e;
+  --glass: rgba(30, 30, 33, .72);
+  --line: rgba(255, 255, 255, .07);
+  --line-2: rgba(255, 255, 255, .13);
+  /* text */
+  --fg: #f5f5f7;
+  --muted: rgba(235, 235, 245, .6);
+  --faint: rgba(235, 235, 245, .32);
+  /* accent and status (Apple system colours, dark) */
+  --accent: #0a84ff;
+  --accent-ink: #ffffff;
+  --add: #30d158;
+  --amber: #ff9f0a;
+  --del: #ff453a;
+  --high: #ffd60a;
+  --fall: #64d2ff;
+  /* cell categories */
+  --reg: #ff9f0a;
+  --adder: #40c8e0;
+  --gate: #4a8cff;
+  --mux: #bf5af2;
+  --detect: #7d7aff;
+  --clock: #ff6482;
+  --const: #8e8e93;
+  /* metal layers */
+  --met1: #5b8cff;
+  --met2: #b47cf0;
+  --met3: #46c2b0;
+  --met4: #d6b45a;
+  --poly: #d4566a;
+
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  --r-sm: 6px; --r: 10px; --r-lg: 14px;
+  --shadow: 0 10px 40px rgba(0, 0, 0, .45), 0 0 0 .5px rgba(255, 255, 255, .08);
+  color-scheme: dark;
+}

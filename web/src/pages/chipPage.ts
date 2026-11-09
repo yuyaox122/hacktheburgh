@@ -1,13 +1,13 @@
 // Chip page: one chip result (CONTRACTS §1). Decompiled Verilog beside the author's source, the verdict and proof,
 // block coverage, and the stripped netlist as a 2D graph. Find (plant a trigger) and Fix (remove and prove) live here.
 
-import type { BenchChip, ChipResult, FixResult, Lib } from "../data/types";
-import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plant as apiPlant, type Source } from "../data/load";
-import { NetGraph } from "./graph";
-import { $, $$, codeText, esc, toast, wrapOn } from "./dom";
-import { icon } from "./icons";
-import { app } from "./state";
-import { pendingBuild } from "../data/redstone";
+import type { BenchChip, ChipResult, FixResult, Lib } from "../api/types";
+import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plant as apiPlant, type Source } from "../api/core";
+import { NetGraph } from "../ui/graph";
+import { $, $$, codeText, esc, toast, wrapOn } from "../ui/dom";
+import { icon } from "../ui/icons";
+import { app } from "../ui/state";
+import { pendingBuild } from "../api/redstone";
 
 export const KIND_COLOUR: Record<string, string> = {
   adder: "var(--adder)", subtractor: "var(--adder)", counter: "var(--reg)", register: "var(--reg)", shift: "var(--reg)",

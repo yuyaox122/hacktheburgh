@@ -5,11 +5,10 @@
 //         the netlist in one pass from the sampled failures; the top suspects are confirmed by re-simulation. The heatmap is each cell's
 //         fault probability (engine.ts has the model).
 
-import "./verify.css";
-import { loadDesign } from "../data/load";
-import type { Design, Lib } from "../data/types";
-import { Stage3D } from "../view/stage3d";
-import { SAMPLES, verify, type Result } from "./engine";
+import { loadDesign } from "../api/core";
+import type { Design, Lib } from "../api/types";
+import { Stage3D } from "../three/stage3d";
+import { SAMPLES, verify, type Result } from "../sim/verify";
 
 const CHIP = "tt_um_Electom_cla_4bits";
 const BUG = { cell: "c53", to: "and2_1" };   // rev B: one OR gate in the carry logic became an AND

@@ -1,6 +1,6 @@
 // Plain-English descriptions and colour categories for SKY130 HD cells.
 
-import type { Lib, LibCell } from "../data/types";
+import type { Lib, LibCell } from "../api/types";
 import { parse, toWords } from "../sim/expr";
 
 export type Category = "flop" | "mux" | "arith" | "gate" | "complex" | "buffer" | "clock" | "const" | "phys";

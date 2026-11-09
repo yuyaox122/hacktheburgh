@@ -3,9 +3,9 @@
 // beneath as they land, a `thinking…` spinner, and a bottom status line with a live elapsed timer.
 
 import { esc } from "../ui/dom";
-import { md } from "./md";
+import { md } from "../lib/md";
 import { cexHtml, pill } from "./codeAgent";
-import type { Plain, TerminalEvent } from "./api";
+import type { Plain, TerminalEvent } from "../api/witness";
 import { plainHtml } from "./words";
 
 /** Format a seconds float as a short duration: "12ms", "1.24s", "3.5s". */

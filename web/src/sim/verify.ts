@@ -15,8 +15,8 @@
 // inverting its output there makes every output right. A cell that explains k of F wrong patterns gets
 // likelihood (1-e)^k * e^(F-k) (e = 0.05), normalised over all candidate cells with a uniform prior.
 
-import type { Design, Lib } from "../data/types";
-import { parse, type Expr } from "../sim/expr";
+import type { Design, Lib } from "../api/types";
+import { parse, type Expr } from "./expr";
 
 const EPS = 0.05;
 /** Random test vectors per run. The prediction's interval narrows with more, the cost grows linearly. */

@@ -11,8 +11,8 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import type { Design, DesignCell, Lib } from "../data/types";
-import { category, CATEGORY_VAR, type Category } from "./describe";
+import type { Design, DesignCell, Lib } from "../api/types";
+import { category, CATEGORY_VAR, type Category } from "../lib/cells";
 import { css, reduceMotion } from "../ui/dom";
 import { cellBox, Y, usedArea, type Rect } from "./geometry";
 

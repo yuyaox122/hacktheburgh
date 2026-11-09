@@ -1,6 +1,6 @@
 // Cross-page app state and hooks (kept tiny on purpose).
 
-import type { ChipResult } from "../data/types";
+import type { ChipResult } from "../api/types";
 import type { CodeHost } from "../agent/codeAgent";
 
 export interface PaletteCommand { label: string; key?: string; run: () => void }

@@ -1,8 +1,8 @@
 // The Witness agent's front-end controller: start runs from anywhere (a Verilog line, a block, a 3D cell, a comment),
 // stream them into the store, turn a proven claim into a suggested edit, and answer @agent comments.
 
-import type { Block, ChipResult } from "../data/types";
-import { explain, formalise, type Scope } from "./api";
+import type { Block, ChipResult } from "../api/types";
+import { explain, formalise, type Scope } from "../api/witness";
 import { claimToVerilog, store, uid, type Origin, type Run } from "./store";
 import { verdictWords } from "./words";
 

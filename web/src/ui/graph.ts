@@ -2,8 +2,8 @@
 // Inputs on the left, outputs on the right; each cell sits one column right of whatever drives it.
 // Flip-flops are placed after the logic feeding them; their outputs loop back (drawn as dashed back edges).
 
-import type { ChipNetlist, Lib } from "../data/types";
-import { category, CATEGORY_VAR, family, isOutputPin } from "../view/describe";
+import type { ChipNetlist, Lib } from "../api/types";
+import { category, CATEGORY_VAR, family, isOutputPin } from "../lib/cells";
 import { portBits } from "../sim/verilog";
 import { css } from "./dom";
 

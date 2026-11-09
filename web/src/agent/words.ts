@@ -1,6 +1,6 @@
 import { esc } from "../ui/dom";
-import { md } from "./md";
-import type { Plain } from "./api";
+import { md } from "../lib/md";
+import type { Plain } from "../api/witness";
 
 // What each checker verdict means, said the way a person would say it. Used wherever the agent replies in words.
 

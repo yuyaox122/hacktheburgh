@@ -14,11 +14,11 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { StreamLanguage, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
 import { verilog } from "@codemirror/legacy-modes/mode/verilog";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { loadChip } from "../data/load";
+import { loadChip } from "../api/core";
 import { esc } from "../ui/dom";
-import { ideas, reviewEdit, type IdeaOut, type Review } from "./api";
+import { ideas, reviewEdit, type IdeaOut, type Review } from "../api/witness";
 import { cexHtml } from "./codeAgent";
-import { md } from "./md";
+import { md } from "../lib/md";
 import { withAcceptedEdits } from "./verilogIO";
 
 const drafts = new Map<string, string>();   // chip -> the editor text, kept while you browse the app

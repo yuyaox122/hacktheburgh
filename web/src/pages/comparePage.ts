@@ -1,9 +1,9 @@
 // Compare: paste or upload Verilog or a netlist, get the nearest real chips and why they match.
 
-import type { CompareResult } from "../data/types";
-import { compare, loadBench } from "../data/load";
-import { $, esc, hiVerilog } from "./dom";
-import { icon } from "./icons";
+import type { CompareResult } from "../api/types";
+import { compare, loadBench } from "../api/core";
+import { $, esc, hiVerilog } from "../ui/dom";
+import { icon } from "../ui/icons";
 import { KIND_COLOUR, KIND_WORD } from "./chipPage";
 
 const FAMILY_WORD: Record<string, string> = {

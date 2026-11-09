@@ -7,7 +7,7 @@
 //   This also handles flops clocked by other flops (ripple dividers).
 // - Combinational loops (rare) are iterated to a fixpoint, max 32 passes.
 
-import type { Lib, LibCell } from "../data/types";
+import type { Lib, LibCell } from "../api/types";
 import { parse, toJs, vars, type Expr } from "./expr";
 
 export interface SimCell {

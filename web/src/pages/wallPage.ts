@@ -1,8 +1,8 @@
 // Proof wall: every benchmark chip as a tile (green proven, amber tested only, red failed), test vs dev shown apart.
 
-import type { Bench, BenchChip, BenchSummary } from "../data/types";
-import { loadBench, type Source } from "../data/load";
-import { esc } from "./dom";
+import type { Bench, BenchChip, BenchSummary } from "../api/types";
+import { loadBench, type Source } from "../api/core";
+import { esc } from "../ui/dom";
 
 export class WallPage {
   readonly el = document.createElement("div");

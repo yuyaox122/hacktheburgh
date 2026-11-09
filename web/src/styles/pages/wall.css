@@ -1,0 +1,44 @@
+/* Results (#/wall): headline, metric cards, chip tiles. */
+.wall { max-width: 1160px; margin: 0 auto; padding: 56px 32px 80px; display: grid; gap: 44px; }
+.headline { display: grid; gap: 12px; }
+.headline .eyebrow { color: var(--accent); font-size: 13px; }
+.headline h1 { font-size: clamp(36px, 5vw, 64px); line-height: 1.04; letter-spacing: -.035em; font-weight: 700; }
+.headline h1 em { font-style: normal; background: linear-gradient(90deg, #30d158, #40c8e0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.headline h1 .soft { color: var(--muted); }
+.headline p { margin: 0; color: var(--muted); font-size: 17px; line-height: 1.5; max-width: 680px; letter-spacing: -.01em; }
+.headline p b { color: var(--fg); font-weight: 600; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.metric { background: var(--panel); border-radius: var(--r-lg); padding: 18px 20px; display: grid; gap: 4px; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .06); }
+.metric small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.metric b { font-family: var(--font-display); font-size: 34px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.metric span { color: var(--faint); font-size: 12px; }
+.split-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.split-h h2 { font-size: 22px; letter-spacing: -.02em; }
+.split-h .muted { font-size: 13px; }
+.split-h .keys { margin-left: auto; display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.split-h .keys span { display: inline-flex; gap: 6px; align-items: center; }
+.split-h .keys i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.tile { color: inherit; text-align: left; background: var(--panel); border-radius: var(--r-lg); padding: 14px 16px; display: grid; gap: 10px; align-content: start;
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .06); transition: background .15s; }
+.tile:hover, .tile:focus-visible { background: var(--panel-2); text-decoration: none; }
+.tile .top-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.tile .top-row .grow { flex: 1; }
+.tile .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+.tile.proven .dot { background: var(--add); }
+.tile.tested .dot { background: var(--amber); }
+.tile.failed .dot { background: var(--del); }
+.tile .name { display: grid; gap: 2px; }
+.tile .ttl { font-size: 15px; font-weight: 600; letter-spacing: -.01em; line-height: 1.25; }
+.tile b { font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--faint); overflow-wrap: anywhere; }
+.tile .row { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.tile .row strong { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .bar { height: 4px; border-radius: 2px; background: rgba(118, 118, 128, .24); overflow: hidden; }
+.tile .bar i { display: block; height: 100%; background: var(--fg); border-radius: 2px; }
+.tile .err { font-size: 12px; color: var(--muted); }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(118, 118, 128, .2); color: var(--muted); }
+.tag.good { color: var(--add); background: color-mix(in srgb, var(--add) 14%, transparent); }
+.tag.bad { color: var(--del); background: color-mix(in srgb, var(--del) 14%, transparent); }
+.scorebar { display: flex; gap: 2px; height: 6px; margin: 6px 0 2px; border-radius: 3px; overflow: hidden; background: rgba(118, 118, 128, .24); }
+.scorebar i { display: block; height: 100%; }
+@media (max-width: 900px) { .wall { padding: 32px 16px 64px; } }

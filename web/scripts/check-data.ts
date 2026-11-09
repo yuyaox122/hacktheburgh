@@ -8,9 +8,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as THREE from "three";
-import type { Bench, ChipResult, Design, Lib } from "../src/data/types";
+import type { Bench, ChipResult, Design, Lib } from "../src/api/types";
 import { Sim } from "../src/sim/sim";
-import { cellBox, OVERVIEW_DIR } from "../src/view/geometry";
+import { cellBox, OVERVIEW_DIR } from "../src/three/geometry";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const pub = resolve(HERE, "../public/data");

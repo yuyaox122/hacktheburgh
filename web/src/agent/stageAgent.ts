@@ -2,7 +2,7 @@
 // Same actions as the Decompile code pane, but pointed at a physical component. The agent can only look;
 // Yosys decides. `regionForCell` maps the hovered cell to the block it belongs to.
 
-import { loadChip } from "../data/load";
+import { loadChip } from "../api/core";
 import { regionForCell, runAgent } from "./agent";
 
 let bar: HTMLDivElement | null = null;

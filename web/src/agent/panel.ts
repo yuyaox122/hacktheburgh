@@ -4,7 +4,7 @@
 import { $, esc } from "../ui/dom";
 import { app } from "../ui/state";
 import { icon } from "../ui/icons";
-import { agentUp, command, type TerminalEvent } from "./api";
+import { agentUp, command, type TerminalEvent } from "../api/witness";
 import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";

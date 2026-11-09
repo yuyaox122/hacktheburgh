@@ -14,7 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Lib } from "../src/data/types";
+import type { Lib } from "../src/api/types";
 import { parse, toVerilog } from "../src/sim/expr";
 import { Sim } from "../src/sim/sim";
 import { parseNetlist, portBits, type ParsedNetlist } from "../src/sim/verilog";

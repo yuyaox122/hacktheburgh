@@ -4,7 +4,7 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { RsLayout } from "../data/redstone";
+import type { RsLayout } from "../api/redstone";
 import { bakeState, loadMcAssets, McMaterials, type McAssets } from "./mcmodels";
 
 // Minecraft's own concrete colours (each routed net gets one colour of support blocks in the build).

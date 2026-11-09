@@ -1,11 +1,10 @@
 // Minecraft page: compile Verilog (or a chip Decap decompiled) to real redstone, build it in a live server,
 // and drive it from here. Levers flip in the world; lamps are read back from the world, next to what the netlist predicts.
 
-import "./minecraft.css";
-import { buses, pendingBuild, rs, type RsBuild, type RsCompileIn, type RsHealth, type RsState } from "../data/redstone";
-import { Redstone3D } from "../view/redstone3d";
-import { $, $$, esc, toast } from "./dom";
-import { icon } from "./icons";
+import { buses, pendingBuild, rs, type RsBuild, type RsCompileIn, type RsHealth, type RsState } from "../api/redstone";
+import { Redstone3D } from "../three/redstone3d";
+import { $, $$, esc, toast } from "../ui/dom";
+import { icon } from "../ui/icons";
 
 const EXAMPLE = `// Any small synthesisable Verilog: one clock (clk), optional async reset.
 // Multiply-accumulate: every clock, acc += a * b.

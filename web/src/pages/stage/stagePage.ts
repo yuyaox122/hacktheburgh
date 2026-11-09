@@ -1,17 +1,17 @@
 // Explore page (route #/stage): a real chip in 3D (a Tiny Tapeout chip from its GDS, or the warm-up), its source,
 // an inspector, and the live simulator.
 
-import type { Design, DesignCell, IoField, Lib } from "../data/types";
-import type { StageChip } from "../data/load";
-import { Sim } from "../sim/sim";
-import { Stage3D, LAYERS, type LayerKey } from "../view/stage3d";
-import { usedArea } from "../view/geometry";
-import { category, CATEGORY_LABEL, CATEGORY_VAR, describe, fullName, toWordsSafe } from "../view/describe";
-import { parse, evalExpr, vars } from "../sim/expr";
-import { $, $$, codeText, css, esc, wrapOn } from "./dom";
-import { icon } from "./icons";
-import { app } from "./state";
-import * as stageAgent from "../agent/stageAgent";
+import type { Design, DesignCell, IoField, Lib } from "../../api/types";
+import type { StageChip } from "../../api/core";
+import { Sim } from "../../sim/sim";
+import { Stage3D, LAYERS, type LayerKey } from "../../three/stage3d";
+import { usedArea } from "../../three/geometry";
+import { category, CATEGORY_LABEL, CATEGORY_VAR, describe, fullName, toWordsSafe } from "../../lib/cells";
+import { parse, evalExpr, vars } from "../../sim/expr";
+import { $, $$, codeText, css, esc, wrapOn } from "../../ui/dom";
+import { icon } from "../../ui/icons";
+import { app } from "../../ui/state";
+import * as stageAgent from "../../agent/stageAgent";
 
 const SPEEDS: [number, string][] = [[900, "0.5×"], [450, "1×"], [120, "4×"]];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
