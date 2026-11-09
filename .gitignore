@@ -20,14 +20,16 @@ web/public/data/
 web/public/mc/
 agent/runs/
 
-# Minecraft: server jar, JDK, worlds and caches
+# Minecraft: server jar and JDK, server worlds, build outputs (chip data lives in decap/data)
 minecraft/tools/
+minecraft/server/
+minecraft/*/out/
+# old per-half locations, in case they are still on disk
 minecraft/data/
 minecraft/*/tools/
 minecraft/*/server/
 minecraft/*/server-demo/
 minecraft/*/data/
-minecraft/*/out/
 
 # Team board read cursor
 .board/
