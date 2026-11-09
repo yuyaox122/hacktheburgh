@@ -25,9 +25,10 @@ from pydantic_ai import Agent
 
 from decap.core.claim_expr import ClaimSyntaxError, Evaluator, names, parse
 
+from .cli_model import SONNET
 from .transcript import Transcript, result_payload
 
-DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
+DEFAULT_MODEL = SONNET
 PROMPT_VERSION = "formalise-v1"
 
 # Tiny Tapeout pinout, used when no chip region is given (and by the evaluation)

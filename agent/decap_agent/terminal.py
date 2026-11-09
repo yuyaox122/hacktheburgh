@@ -24,6 +24,8 @@ from typing import Any
 
 from fastmcp import Client, FastMCP
 
+from decap.core.service import parse_id
+
 from . import lifecycle
 from .transcript import Transcript, result_payload
 
@@ -84,14 +86,13 @@ async def _drill(client: Client, chip: str, transcript: Transcript | None) -> di
     is the last step of a 20-cycle trace, not the trigger value (review of #95: tt_um_mac+t163 gave ui_in=23)."""
     import secrets
     n = secrets.randbelow(254) + 1
-    if "+t" in chip:
-        chip = chip.split("+t")[0]
+    chip = parse_id(chip)[0]   # plant into the clean chip
     err, planted = await _call(client, "plant_trigger", chip=chip, n=n)
     if err:
         return {"intent": "drill", "chip": chip, "verdict": "error", "error": str(planted)[:300]}
     target = planted["chip"]
     if transcript is not None:
-        transcript.record("thought", step="drill", why=f"planted a hidden trigger in a copy ({target.split('+')[0]}+t?, "
+        transcript.record("thought", step="drill", why=f"planted a hidden trigger in a copy ({parse_id(target)[0]}+t?, "
                                                         f"{planted.get('inserted_cells')} cells); the hunting tools don't get the value")
     res = await _hunt(client, target, transcript)
     want = re.compile(rf"(?<![\w'])(8'd{n}|8'h{n:02x}|8'b{n:08b}|{n})(?![\w'])", re.I)

@@ -35,31 +35,21 @@ import os
 
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 
+from fastmcp import Client  # noqa: E402
+
+from decap.env import load_env_file  # noqa: E402
+from decap.paths import RUNS, SPLIT  # noqa: E402
+
+from .server import build_server, load_core_app  # noqa: E402
+from .transcript import Transcript, load, result_payload  # noqa: E402
+
+CACHE = RUNS / "cache"
+
 
 def load_secrets(path: str | None = None) -> list[str]:
     """Load KEY=VALUE lines (e.g. DEEPSEEK_API_KEY) from a file OUTSIDE the repo, default ~/.config/decap/secrets.env.
     Never printed, never written anywhere; values already in the environment win. Returns the key names loaded."""
-    p = Path(os.path.expanduser(path or os.environ.get("DECAP_SECRETS", "~/.config/decap/secrets.env")))
-    loaded = []
-    try:
-        for line in p.read_text().splitlines():
-            k, sep, v = line.strip().partition("=")
-            if sep and k and not k.startswith("#") and k not in os.environ:
-                v = v.split("#", 1)[0].strip()   # drop inline '# comment' (e.g. DECAP_GUIDE_CLI=1  # default)
-                os.environ[k] = v.strip('"').strip("'")
-                loaded.append(k)
-    except OSError:
-        pass
-    return loaded
-
-from fastmcp import Client
-
-from decap.paths import RUNS, SPLIT
-
-from .server import build_server, load_core_app
-from .transcript import Transcript, load, result_payload
-
-CACHE = RUNS / "cache"
+    return load_env_file(os.path.expanduser(path or os.environ.get("DECAP_SECRETS", "~/.config/decap/secrets.env")))
 
 
 def _scope(args) -> dict[str, Any]:

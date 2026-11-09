@@ -3,11 +3,13 @@
 Use it when the API key is unavailable (e.g. its spend cap is reached): `--model cli:sonnet`, or DECAP_LLM=cli.
 It never switches on by itself, because it spends the logged-in Claude account instead of the API key.
 
-Same isolation as Yuyao's guide fallback (decap/core/guide.py): no tools, no MCP, no user/project settings (so no
-hooks fire), no saved session, run from a temp dir, CLAUDE_CODE_* variables removed. ANTHROPIC_API_KEY is also removed
-so the CLI uses its own login. Structured output comes from `--json-schema` (the agent's output schema). The model
-only ever answers with the final output: it can't call look tools, which is fine because the region and a first probe
-are already in the region agent's prompt.
+The command, its isolation and the reply parsing are the core guide's fallback's own (decap/core/llm.py): no tools, no
+MCP, no user/project settings (so no hooks fire), no saved session, run from a temp dir, CLAUDE_CODE_* variables and
+ANTHROPIC_API_KEY removed so the CLI uses its own login. Structured output comes from `--json-schema` (the agent's
+output schema). The model only ever answers with the final output: it can't call look tools, which is fine because
+the region and a first probe are already in the region agent's prompt.
+
+The agent layer's default models are defined here too.
 """
 
 from __future__ import annotations
@@ -16,12 +18,16 @@ import asyncio
 import json
 import os
 import shutil
-import tempfile
 
-from pydantic_ai.messages import (ModelMessage, ModelRequest, ModelResponse, RetryPromptPart, SystemPromptPart, TextPart,
-                                  ToolCallPart, ToolReturnPart, UserPromptPart)
+from pydantic_ai.messages import (ModelMessage, ModelResponse, RetryPromptPart, SystemPromptPart, TextPart, ToolCallPart,
+                                  ToolReturnPart, UserPromptPart)
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.usage import RequestUsage
+
+from decap.core import llm
+
+SONNET = "anthropic:" + llm.DEFAULT_MODEL   # region agent, guide, formaliser, ideas
+DEEPSEEK = "deepseek:deepseek-chat"         # investigator, repair, plain-English reader
 
 
 def _transcript(messages: list[ModelMessage]) -> str:
@@ -51,23 +57,17 @@ def cli_model(alias: str = "sonnet", timeout: float = 360) -> FunctionModel:
         if not info.output_tools:
             raise RuntimeError("cli model needs a structured output type")
         out_tool = info.output_tools[0]
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("CLAUDE_CODE") and k not in ("CLAUDECODE", "ANTHROPIC_API_KEY")}
-        args = ["claude", "-p", "--output-format", "json", "--model", alias, "--tools", "", "--no-session-persistence",
-                "--strict-mcp-config", "--setting-sources", "", "--system-prompt", info.instructions or "",
-                "--json-schema", json.dumps(out_tool.parameters_json_schema)]
+        args = llm.cli_command(alias, info.instructions or "", out_tool.parameters_json_schema)
         prompt = _transcript(messages) + "\n\nAnswer the last USER message with the JSON object only."
         proc = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.PIPE, env=env, cwd=tempfile.gettempdir())
+                                                    stderr=asyncio.subprocess.PIPE, env=llm.cli_env(), cwd=llm.CLI_CWD)
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(prompt.encode()), timeout)
         except asyncio.TimeoutError:
             proc.kill()
             raise RuntimeError(f"claude CLI timed out after {timeout}s")
-        if proc.returncode != 0:
-            raise RuntimeError(f"claude CLI failed: {(stderr or stdout).decode()[-400:]}")
-        data = json.loads(stdout)
-        if data.get("is_error") or data.get("structured_output") is None:
+        data = llm.cli_result(proc.returncode, stdout, stderr)
+        if data.get("structured_output") is None:
             raise RuntimeError(f"claude CLI error: {str(data.get('result'))[:400]}")
         u = data.get("usage") or {}
         usage = RequestUsage(input_tokens=(u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
@@ -79,11 +79,12 @@ def cli_model(alias: str = "sonnet", timeout: float = 360) -> FunctionModel:
 
 
 def resolve(model, default: str):
-    """'cli:sonnet' as the model or the default (or DECAP_LLM=cli with no model given) -> the CLI backend; anything
-    else passes through."""
+    """'cli:sonnet' as the model or the default (or DECAP_LLM=cli with no model given) -> the CLI backend; a bare
+    Claude name (DECAP_GUIDE_MODEL=claude-sonnet-5-5, the core guide's spelling) gets its 'anthropic:' prefix;
+    anything else passes through."""
     if model is None and os.environ.get("DECAP_LLM") == "cli":
         return cli_model(os.environ.get("DECAP_CLI_MODEL", "sonnet"))
     m = model or default   # DECAP_WITNESS_MODEL=cli:sonnet arrives here as `default`
     if isinstance(m, str) and m.startswith("cli:"):
         return cli_model(m.split(":", 1)[1] or "sonnet")
-    return m
+    return llm.provider_model(m) if isinstance(m, str) else m

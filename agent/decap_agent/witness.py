@@ -34,9 +34,10 @@ from pydantic_ai.usage import UsageLimits
 from decap.core.claim_expr import expand_temps, fix_mux_precedence, temp_defs, temps_used
 
 from . import lifecycle
+from .cli_model import SONNET
 from .transcript import Transcript, result_payload
 
-DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
+DEFAULT_MODEL = SONNET
 LOOK_TOOLS = {"probe_truth"}          # the region and a first probe are already in the prompt
 LIMITS = UsageLimits(request_limit=6, input_tokens_limit=120_000)   # per attempt: a 23-bit region cost 1.37M tokens uncapped
 # `verdict` is the credit outcome (core/claims.py, CONTRACTS §4): proven/inductive only when credited; `truth` says

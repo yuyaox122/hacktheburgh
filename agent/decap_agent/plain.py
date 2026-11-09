@@ -123,8 +123,8 @@ async def explain_plainly(chip: str, attempt: dict, *, region: dict | None = Non
     verdict = attempt.get("verdict")
     if verdict not in EXPLAINABLE or not attempt.get("claim"):
         return None
-    from .cli_model import resolve
-    model = resolve(model, os.environ.get("DECAP_PLAIN_MODEL") or os.environ.get("DECAP_WITNESS_MODEL") or "deepseek:deepseek-chat")
+    from .cli_model import DEEPSEEK, resolve
+    model = resolve(model, os.environ.get("DECAP_PLAIN_MODEL") or os.environ.get("DECAP_WITNESS_MODEL") or DEEPSEEK)
     hit = CACHE / f"{_key(chip, attempt, _model_name(model))}.json"
     if cache and hit.exists():
         try:
@@ -228,8 +228,8 @@ async def explain_code(chip: str, region: dict, *, defs: dict[str, str] | None =
                        proof: str | None = None, model: Any = None, cache: bool = True) -> dict | None:
     """{headline, explanation, example, verdict: 'code', source: 'code', proof} or None. Never raises."""
     try:
-        from .cli_model import resolve
-        model = resolve(model, os.environ.get("DECAP_PLAIN_MODEL") or os.environ.get("DECAP_WITNESS_MODEL") or "deepseek:deepseek-chat")
+        from .cli_model import DEEPSEEK, resolve
+        model = resolve(model, os.environ.get("DECAP_PLAIN_MODEL") or os.environ.get("DECAP_WITNESS_MODEL") or DEEPSEEK)
         material = _code_material(chip, region, defs or {}, blocks)
         key = hashlib.sha1(json.dumps([CODE_VERSION, chip, material, _model_name(model)]).encode()).hexdigest()[:20]
         hit = CACHE / f"code-{key}.json"
