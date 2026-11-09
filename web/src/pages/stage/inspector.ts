@@ -25,7 +25,7 @@ export function cellLinks(ids: string[]): string {
 export function chipHtml(d: Design, n: { logic: number; flops: number; usedSize: string }): string {
   return `
     <div class="insp-title"><div><b>${esc(d.title ?? d.name)}</b><small>${d.author ? `By ${esc(d.author)}. ` : ""}Tiny Tapeout 8, SkyWater 130 nm</small></div></div>
-    ${d.how ? `<div class="group"><span class="eyebrow">How it works</span><p class="insp-role" style="color:var(--fg)">${esc(d.how)}</p></div>`
+    ${d.how ? `<div class="group"><span class="eyebrow">How it works</span><p class="insp-role strong">${esc(d.how)}</p></div>`
       : `<p class="insp-role">${esc(d.intro ?? "A real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell, a tiny pre-made circuit.")}</p>`}
     ${d.try ? `<div class="callout"><b>Try it</b><span>${esc(d.try)}</span></div>` : ""}
     <div class="statgrid">
@@ -94,7 +94,7 @@ export function truthTableHtml(c: DesignCell, lib: Lib, value: (net: string) => 
     const cur = b.every((x, i) => x === now[i]);
     rows.push(`<tr class="${cur ? "now" : ""}">${b.map((x) => `<td>${x}</td>`).join("")}<td class="out">${evalExpr(e, env)}</td></tr>`);
   }
-  return `<div class="group"><span class="eyebrow">Truth table <span style="font-weight:400;color:var(--faint)">Highlighted row is live</span></span><table class="tt"><tr>${ins.map((p) => `<th>${esc(p)}</th>`).join("")}<th>${esc(o)}</th></tr>${rows.join("")}</table></div>`;
+  return `<div class="group"><span class="eyebrow">Truth table <span class="faint">Highlighted row is live</span></span><table class="tt"><tr>${ins.map((p) => `<th>${esc(p)}</th>`).join("")}<th>${esc(o)}</th></tr>${rows.join("")}</table></div>`;
 }
 
 /** A source line: the cells synthesis made from it (or its module's). */

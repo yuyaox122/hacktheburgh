@@ -114,6 +114,14 @@
 .readout .big .bin { font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--faint); letter-spacing: 0; }
 .readout .mid { font-family: var(--font-mono); font-size: 13px; }
 canvas.wave { width: 100%; height: 56px; display: block; flex: none; }
+.ins-add { flex-basis: 100%; }
+.ins-add > summary { color: var(--muted); font-size: var(--t-sm); }
+.ins-add > summary:hover { color: var(--fg); }
+.ins-add .acts { margin-top: 6px; }
+.ins-add .name { width: 9em; }
+.ins-add .bits { width: 14em; }
+.ins-more { flex-basis: 100%; margin-top: 6px; }
+.insp-role.strong { color: var(--fg); }
 .shiftin { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
 .shiftin input { width: 58px; }
 @media (max-width: 1100px) {

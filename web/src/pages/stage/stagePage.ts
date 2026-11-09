@@ -147,7 +147,7 @@ export class StagePage {
           <div class="readout" id="stRead"></div>
         </section>
         <section>
-          <span class="eyebrow">Waveform <span class="cycle muted" style="color:var(--faint)">last 40 clocks</span></span>
+          <span class="eyebrow">Waveform <span class="cycle faint">last 40 clocks</span></span>
           <canvas class="wave" id="stWave" aria-label="Logic analyser: the last 40 clock cycles"></canvas>
         </section>
       </footer>`;
@@ -452,17 +452,17 @@ export class StagePage {
           <input class="num" type="number" min="0" max="${(1 << f.bits.length) - 1}" data-io="${esc(f.name)}" value="0" aria-label="Input ${esc(f.name)}">${custom
             ? `<button type="button" class="linkbtn" data-ci-del="${esc(f.name)}" title="Remove this custom input" aria-label="Remove ${esc(f.name)}">×</button>` : ""}</label>`;
     const bitBtn = (n: string) => { const v = this.sim.get(n); return `<button type="button" class="inbtn${v ? " on" : ""}" data-in="${esc(n)}" title="Toggle ${esc(n)} (not named in the author's pinout)">${esc(n)} <span class="bit${v ? " on" : ""}">${v}</span></button>`; };
-    const addForm = `<details class="ins-add" style="flex-basis:100%"><summary class="muted" style="cursor:pointer">+ Custom input</summary>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">
-            <input class="text" id="stCiName" placeholder="Name, e.g. Serial data" style="width:9em" aria-label="Custom input name">
-            <input class="text" id="stCiBits" placeholder="Bits, e.g. ui_in[2] or ui_in[7:4]" style="width:14em" aria-label="Custom input bits">
+    const addForm = `<details class="ins-add"><summary>+ Custom input</summary>
+          <div class="acts">
+            <input class="text name" id="stCiName" placeholder="Name, e.g. Serial data" aria-label="Custom input name">
+            <input class="text bits" id="stCiBits" placeholder="Bits, e.g. ui_in[2] or ui_in[7:4]" aria-label="Custom input bits">
             <button type="button" class="btn sm" id="stCiAdd">Add</button><span class="muted" id="stCiMsg"></span></div></details>`;
     if (this.io) {
       const fields = [...this.io.in, ...this.custom];
       if (this.insDirty || !host.querySelector("[data-io],[data-in]")) {
         this.insDirty = false;
         host.innerHTML = fields.map((f) => fieldHtml(f, this.custom.includes(f))).join("") +
-          (this.extraIns.length ? `<span class="eyebrow" style="flex-basis:100%;margin-top:6px">Other input pins</span>${this.extraIns.map(bitBtn).join("")}` : "") +
+          (this.extraIns.length ? `<span class="eyebrow ins-more">Other input pins</span>${this.extraIns.map(bitBtn).join("")}` : "") +
           (fields.length || this.extraIns.length ? "" : `<span class="muted">None</span>`) + addForm;
       }
       host.querySelectorAll<HTMLInputElement>("[data-io]").forEach((inp) => {

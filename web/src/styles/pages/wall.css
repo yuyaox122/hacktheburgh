@@ -12,6 +12,7 @@
 .metric small { color: var(--muted); font-size: 12px; font-weight: 500; }
 .metric b { font-family: var(--font-display); font-size: 34px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .metric span { color: var(--faint); font-size: 12px; }
+.metric b .of { font-size: .55em; color: var(--muted); font-weight: 500; letter-spacing: 0; }
 .split-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .split-h h2 { font-size: 22px; letter-spacing: -.02em; }
 .split-h .muted { font-size: 13px; }
