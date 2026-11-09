@@ -1,6 +1,6 @@
 // Pure geometry shared by the 3D Stage and the headless checks (no DOM, no WebGL).
 
-import type { Design, DesignCell } from "../data/types";
+import type { Design, DesignCell } from "../api/types";
 
 export const Y = { cellBot: 0.06, cellTop: 0.5, m1: 0.72, via: 0.84, m2: 0.96, via2: 1.1, m3: 1.24, via3: 1.4, m4: 1.56, m5: 1.9 };
 

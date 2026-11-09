@@ -1,8 +1,8 @@
 // Proof wall: every benchmark chip as a tile (green proven, amber tested only, red failed), test vs dev shown apart.
 
-import type { Bench, BenchChip, BenchSummary } from "../data/types";
-import { loadBench, type Source } from "../data/load";
-import { esc } from "./dom";
+import type { Bench, BenchChip, BenchSummary } from "../api/types";
+import { loadBench, type Source } from "../api/core";
+import { esc } from "../ui/dom";
 
 export class WallPage {
   readonly el = document.createElement("div");
@@ -16,7 +16,7 @@ export class WallPage {
       this.bench = data; this.source = source;
       this.render();
     } catch (e) {
-      this.el.innerHTML = `<div class="empty">${esc((e as Error).message)}</div>`;
+      this.el.innerHTML = `<div class="empty"><h3>Results couldn't load</h3><p>${esc((e as Error).message)}</p></div>`;
     }
   }
 
@@ -45,7 +45,7 @@ export class WallPage {
   private render() {
     const b = this.bench!;
     const T = b.summary.test ?? { n: 0 }, D = b.summary.dev ?? { n: 0 }, tj = b.summary.trojan;
-    const frac = (s: Partial<BenchSummary>) => (s.n ? `${s.proven ?? 0}<small style="font-size:.55em;color:var(--muted);font-weight:500"> of ${s.n}</small>` : "None");
+    const frac = (s: Partial<BenchSummary>) => (s.n ? `${s.proven ?? 0}<small class="of"> of ${s.n}</small>` : "None");
     const test = b.chips.filter((c) => c.split === "test"), dev = b.chips.filter((c) => c.split === "dev"), other = b.chips.filter((c) => c.split !== "test" && c.split !== "dev");
     const order = (a: BenchChip, z: BenchChip) => ["proven", "tested", "failed"].indexOf(a.verdict) - ["proven", "tested", "failed"].indexOf(z.verdict) || a.logic_cells - z.logic_cells;
     const keys = `<span class="keys"><span><i style="background:var(--add)"></i>Proven</span><span><i style="background:var(--amber)"></i>Tested only</span><span><i style="background:var(--del)"></i>Failed</span></span>`;
@@ -58,8 +58,8 @@ export class WallPage {
       <div class="metrics">
         <div class="metric"><small>Held-out chips proven</small><b>${frac(T)}</b>${T.n ? this.score(T as BenchSummary) : ""}<span>${T.n ? `${T.tested ?? 0} tested only, ${T.failed ?? 0} failed` : "Not scored yet"}</span></div>
         <div class="metric"><small>Readable</small><b>${((T.n ? T : D).coverage_pct ?? 0).toFixed(0)}%</b><span>Logic cells in recognised blocks${T.n ? "" : ", dev set"}</span></div>
-        ${tj && tj.planted ? `<div class="metric"><small>Hidden triggers caught</small><b>${tj.caught}<small style="font-size:.55em;color:var(--muted);font-weight:500"> of ${tj.planted}</small></b><span>Blind, one random number per chip</span></div>
-        <div class="metric"><small>False alarms</small><b>${tj.clean_flagged}<small style="font-size:.55em;color:var(--muted);font-weight:500"> of ${tj.clean}</small></b><span>Clean chips with any flag</span></div>` : ""}
+        ${tj && tj.planted ? `<div class="metric"><small>Hidden triggers caught</small><b>${tj.caught}<small class="of"> of ${tj.planted}</small></b><span>Blind, one random number per chip</span></div>
+        <div class="metric"><small>False alarms</small><b>${tj.clean_flagged}<small class="of"> of ${tj.clean}</small></b><span>Clean chips with any flag</span></div>` : ""}
       </div>
       <section><div class="split-h"><h2>Held-out test set</h2><span class="muted">Frozen ${esc(b.split.frozen)}. Sources opened only for scoring.</span>${keys}</div>
         <div class="tiles">${test.sort(order).map((c) => this.tile(c)).join("") || `<p class="muted">No test chips yet.</p>`}</div></section>

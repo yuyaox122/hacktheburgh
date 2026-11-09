@@ -7,15 +7,11 @@ export const esc = (s: unknown) =>
 export const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export function html(strings: TemplateStringsArray, ...vals: unknown[]) {
-  return strings.reduce((s, str, i) => s + str + (i < vals.length ? String(vals[i] ?? "") : ""), "");
-}
-
 /** Light Verilog syntax colouring (input is raw text; output is safe HTML). */
 export function hiVerilog(line: string): string {
   const i = line.indexOf("//");
   const code = i >= 0 ? line.slice(0, i) : line, com = i >= 0 ? line.slice(i) : "";
-  const h = code.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!)
+  const h = esc(code).replaceAll("&#39;", "'")   // text, not an attribute: keep ' so 8'd0 still reads as one number
     .replace(/\b(\d+'[sS]?[dbhoDBHO][0-9a-fA-F_xXzZ]+|\d+)\b/g, '<span class="num">$1</span>')
     .replace(/\b(module|endmodule|input|output|inout|wire|reg|logic|always|always_ff|always_comb|posedge|negedge|if|else|assign|genvar|generate|endgenerate|for|begin|end|case|endcase|default|parameter|localparam|integer)\b/g, '<span class="k">$1</span>')
     .replace(/(&lt;=|&amp;&amp;|\|\||==|!=|[\^~!?])/g, '<span class="op">$1</span>');
@@ -53,4 +49,13 @@ export function setWrap(on: boolean) {
   document.body.classList.toggle("nowrap", !on);
   try { localStorage.setItem(WRAP_KEY, on ? "1" : "0"); } catch { /* private mode */ }
   document.querySelectorAll<HTMLElement>("[data-wrap]").forEach((b) => b.setAttribute("aria-pressed", String(on)));
+}
+
+/** Save text as a file (Verilog downloads). A trailing newline is added if missing. */
+export function saveText(name: string, text: string) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text.endsWith("\n") ? text : text + "\n"], { type: "text/x-verilog" }));
+  a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }

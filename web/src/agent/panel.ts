@@ -1,15 +1,15 @@
 // The Agent drawer (key A): every Witness run on the current chip, live. Each run shows what the agent looked at,
 // each claim it made, the checker's verdict (with the input that breaks a wrong claim), and what you can do next.
 
-import { $, esc } from "../ui/dom";
+import { $, esc, saveText } from "../ui/dom";
 import { app } from "../ui/state";
 import { icon } from "../ui/icons";
-import { agentUp, command, type TerminalEvent } from "./api";
-import { cexHtml, pill } from "./codeAgent";
+import { DOWN } from "../api/http";
+import { agentUp, command, sessions, type TerminalEvent } from "../api/witness";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
 import { Terminal } from "./terminal";
-import { plainHtml, verdictWords } from "./words";
+import { cexHtml, pill, plainHtml, verdictWords } from "./words";
 import * as verilogIO from "./verilogIO";
 
 const STEP: Record<string, (s: Run["steps"][number]) => string> = {
@@ -96,7 +96,7 @@ export class AgentPanel {
       void this.runCommand(`Check my file ${d.filename} (${d.text.split("\n").length} lines) against this chip`,
         { verilog: d.text, filename: d.filename }, d.chip);
     });
-    void agentUp().then((ok) => { if (!ok) $("#agIntro", this.el).innerHTML = `<div class="callout bad">The agent service isn't reachable. Start it with <code>decap serve --port 8791</code> (decap/agent).</div>`; });
+    void agentUp().then((ok) => { if (!ok) $("#agIntro", this.el).innerHTML = `<div class="callout bad">${esc(DOWN.witness)}</div>`; });
   }
 
   setChip(chip: string | null, verilog?: string) {
@@ -148,7 +148,7 @@ export class AgentPanel {
 
   private async status() {
     try {
-      const rows = await (await fetch("/witness/status")).json() as Array<{ id: string; chip?: string; kind?: string; status?: string; started_at?: string; command?: string }>;
+      const rows = await sessions();
       this.term.note("/status", rows.length ? rows.slice().reverse().map((r) =>
         `${(r.started_at ?? "").slice(11, 19)}  ${(r.status ?? "?").padEnd(8)} ${(r.kind ?? "").padEnd(11)} ${r.chip ?? ""}  ${(r.command ?? "").slice(0, 40)}`).join("\n") : "no agent sessions yet");
     } catch (e) { this.term.error(`/status: ${(e as Error).message}`); }
@@ -243,7 +243,7 @@ export class AgentPanel {
       return;
     }
     if (t.closest("[data-fixed-dl]") && this.term.lastRepair) {
-      verilogIO.saveText(`${this.term.lastRepair.chip}_repaired.v`, this.term.lastRepair.verilog);
+      saveText(`${this.term.lastRepair.chip}_repaired.v`, this.term.lastRepair.verilog);
       return;
     }
     const cmd = (e.target as HTMLElement).closest<HTMLElement>("[data-cmd]");

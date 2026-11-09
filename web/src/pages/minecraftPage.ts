@@ -1,11 +1,10 @@
-// Minecraft page: compile Verilog (or a chip Decap decompiled) to real redstone, build it in a live server,
+// Minecraft page: compile Verilog (or a chip bASIC decompiled) to real redstone, build it in a live server,
 // and drive it from here. Levers flip in the world; lamps are read back from the world, next to what the netlist predicts.
 
-import "./minecraft.css";
-import { buses, pendingBuild, rs, type RsBuild, type RsCompileIn, type RsHealth, type RsState } from "../data/redstone";
-import { Redstone3D } from "../view/redstone3d";
-import { $, $$, esc, toast } from "./dom";
-import { icon } from "./icons";
+import { buses, pendingBuild, rs, type RsBuild, type RsCompileIn, type RsHealth, type RsState } from "../api/redstone";
+import { Redstone3D } from "../three/redstone3d";
+import { $, $$, esc, toast } from "../ui/dom";
+import { icon } from "../ui/icons";
 
 const EXAMPLE = `// Any small synthesisable Verilog: one clock (clk), optional async reset.
 // Multiply-accumulate: every clock, acc += a * b.
@@ -55,8 +54,9 @@ export class MinecraftPage {
         </section>
       </aside>
       <section class="mc-main">
-        <header class="mc-head" id="mcHead"></header>
-        <div class="mc-view" id="mcView"></div>
+        <header class="pagehead mc-head" id="mcHead"></header>
+        <div class="mc-view" id="mcView"><div class="empty mc-empty" id="mcEmpty"><h3>Verilog, built in redstone</h3>
+          <p>Pick a ready-made build or one of yours on the left, or compile your own Verilog. This view shows every block it places, with or without Minecraft running.</p></div></div>
         <div class="mc-io" id="mcIO"></div>
       </section>`;
     $("#mcView", this.el).append(this.view.el);
@@ -226,14 +226,18 @@ export class MinecraftPage {
   private renderHead() {
     const head = $("#mcHead", this.el);
     const b = this.cur;
-    if (!b) { head.innerHTML = this.busy ? `<span class="spin"></span> ${esc(this.busy)} <span id="mcT">0</span> s` : `<span class="muted">Pick a build, or compile your own Verilog.</span>`; return; }
+    $("#mcEmpty", this.el).hidden = !!b || !!this.busy;
+    if (!b) {
+      head.innerHTML = `<div class="ttl"><h2>Minecraft</h2><div class="badges">${this.busy ? `<span class="muted"><span class="spin"></span> ${esc(this.busy)} <span id="mcT">0</span> s</span>` : `<span class="muted">Pick a build, or compile your own Verilog.</span>`}</div></div>`;
+      return;
+    }
     const gates = b.prims?.prims ?? (b.stats.units as number | undefined);
     const secs = (2 * b.settle_rt) / 20;
     const ck = b.check;
     head.innerHTML = `
       <div class="ttl"><h2>${esc(b.title)}</h2>
         <div class="badges">
-          ${ck ? `<span class="verdict ${ck.mismatches ? "failed" : "proven"}" title="Redstone netlist vs ${esc(ck.against)}, ${ck.vectors} random ${ck.sequential ? "clock cycles" : "input vectors"}">${ck.mismatches ? `${ck.mismatches} of ${ck.vectors} differ` : `Matches the Verilog on ${ck.vectors}/${ck.vectors}`}</span>` : b.prebuilt ? `<span class="verdict proven" title="Checked in vanilla Minecraft 1.21.11 (redstone/check.py)">Checked in vanilla Minecraft</span>` : ""}
+          ${ck ? `<span class="verdict ${ck.mismatches ? "failed" : "proven"}" title="Redstone netlist vs ${esc(ck.against)}, ${ck.vectors} random ${ck.sequential ? "clock cycles" : "input vectors"}">${ck.mismatches ? `${ck.mismatches} of ${ck.vectors} differ` : `Matches the Verilog on ${ck.vectors}/${ck.vectors}`}</span>` : b.prebuilt ? `<span class="verdict proven" title="Checked in vanilla Minecraft 1.21.11 (minecraft/redstone/check.py)">Checked in vanilla Minecraft</span>` : ""}
           ${b.origin?.variant === "planted" ? `<span class="pill warn">Trigger ${esc(b.origin.n ?? "")} planted</span>` : ""}
           ${b.origin?.variant === "fixed" ? `<span class="pill">Trigger ${esc(b.origin.n ?? "")} removed by Fix</span>` : ""}
         </div>

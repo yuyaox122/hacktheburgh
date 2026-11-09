@@ -4,8 +4,9 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { RsLayout } from "../data/redstone";
+import type { RsLayout } from "../api/redstone";
 import { bakeState, loadMcAssets, McMaterials, type McAssets } from "./mcmodels";
+import { css } from "../ui/dom";
 
 // Minecraft's own concrete colours (each routed net gets one colour of support blocks in the build).
 const CONCRETE: Record<string, number> = {
@@ -13,7 +14,8 @@ const CONCRETE: Record<string, number> = {
   pink: 0xd5658f, gray: 0x373a3e, light_gray: 0x7d7d73, cyan: 0x157788, purple: 0x64209c, blue: 0x2d2f8f,
   brown: 0x603c20, green: 0x495b24, red: 0x8e2121, black: 0x14161b,
 };
-const LAMP_OFF = 0x6b4a2a, LAMP_ON = 0xffd27a, LEVER_OFF = 0x8b6a3c, LEVER_ON = 0xff4a2a;
+/** Lamp and lever colours come from the tokens (styles/tokens.css), shared with the page's 2D switches. */
+const tok = (v: string) => new THREE.Color(css(v)).getHex();
 
 function look(state: string): { color: number; h: number; w: number } | null {
   const name = state.split("[")[0].replace(/^minecraft:/, "");
@@ -72,6 +74,7 @@ export class Redstone3D {
   private painted: [Record<string, number>, Record<string, number>] | null = null;
   private mcLamps: Toggle | null = null;
   private mcLevers: Toggle | null = null;
+  private lampOff = 0; private lampOn = 0; private leverOff = 0; private leverOn = 0;
 
   constructor() {
     this.el = document.createElement("div");
@@ -82,7 +85,8 @@ export class Redstone3D {
       this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     } catch { this.ok = false; this.el.innerHTML = `<div class="empty">WebGL is not available in this browser.</div>`; }
-    this.scene.background = new THREE.Color(0x0b0b0d);
+    this.scene.background = new THREE.Color(css("--bg"));
+    this.lampOff = tok("--lamp-off"); this.lampOn = tok("--lamp-on"); this.leverOff = tok("--lever-off"); this.leverOn = tok("--lever-on");
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x30303a, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
     sun.position.set(-0.4, 1, 0.6);
@@ -184,7 +188,7 @@ export class Redstone3D {
 
     const glow = new THREE.MeshBasicMaterial({ visible: !this.mcLamps });
     const lampMesh = new THREE.InstancedMesh(box, glow, Math.max(1, lampList.length));
-    lampList.forEach((b, i) => { place(lampMesh, i, b.x, b.y, b.z, 1, 1); lampMesh.setColorAt(i, col.setHex(LAMP_OFF)); });
+    lampList.forEach((b, i) => { place(lampMesh, i, b.x, b.y, b.z, 1, 1); lampMesh.setColorAt(i, col.setHex(this.lampOff)); });
     lampMesh.count = lampList.length;
     this.add(lampMesh);
     // each output bit lights the lamp nearest its probe block
@@ -196,7 +200,7 @@ export class Redstone3D {
     }
 
     const leverMesh = new THREE.InstancedMesh(box, new THREE.MeshBasicMaterial({ visible: !this.mcLevers }), Math.max(1, leverList.length));   // still the click target
-    leverList.forEach((b, i) => { place(leverMesh, i, b.x, b.y, b.z, 0.7, 0.7); leverMesh.setColorAt(i, col.setHex(LEVER_OFF)); });
+    leverList.forEach((b, i) => { place(leverMesh, i, b.x, b.y, b.z, 0.7, 0.7); leverMesh.setColorAt(i, col.setHex(this.leverOff)); });
     leverMesh.count = leverList.length;
     this.add(leverMesh);
     this.levers = { mesh: leverMesh, bits: leverList.map((l) => l.bit) };
@@ -236,11 +240,11 @@ export class Redstone3D {
     }
     const col = new THREE.Color();
     for (const [bit, l] of this.lamps) {
-      for (const i of l.idx) l.mesh.setColorAt(i, col.setHex(outputs[bit] ? LAMP_ON : LAMP_OFF));
+      for (const i of l.idx) l.mesh.setColorAt(i, col.setHex(outputs[bit] ? this.lampOn : this.lampOff));
       if (l.mesh.instanceColor) l.mesh.instanceColor.needsUpdate = true;
     }
     if (this.levers) {
-      this.levers.bits.forEach((b, i) => this.levers!.mesh.setColorAt(i, col.setHex(inputs[b] ? LEVER_ON : LEVER_OFF)));
+      this.levers.bits.forEach((b, i) => this.levers!.mesh.setColorAt(i, col.setHex(inputs[b] ? this.leverOn : this.leverOff)));
       if (this.levers.mesh.instanceColor) this.levers.mesh.instanceColor.needsUpdate = true;
     }
   }

@@ -1,6 +1,6 @@
 // Plain-English descriptions and colour categories for SKY130 HD cells.
 
-import type { Lib, LibCell } from "../data/types";
+import type { Lib, LibCell } from "../api/types";
 import { parse, toWords } from "../sim/expr";
 
 export type Category = "flop" | "mux" | "arith" | "gate" | "complex" | "buffer" | "clock" | "const" | "phys";
@@ -75,12 +75,6 @@ export function toWordsSafe(fn: string): string {
 }
 
 export function fullName(type: string) { return `sky130_fd_sc_hd__${type}`; }
-
-export function outputsOf(type: string, lib: Lib): string[] {
-  const L = lib[type];
-  if (L) return Object.entries(L.pins).filter(([, d]) => d === "out").map(([p]) => p);
-  return [];
-}
 
 /** Output pin guess when lib.json lacks a type. */
 export function isOutputPin(type: string, pin: string, lib: Lib): boolean {

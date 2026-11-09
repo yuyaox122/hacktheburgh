@@ -5,11 +5,11 @@
 //         the netlist in one pass from the sampled failures; the top suspects are confirmed by re-simulation. The heatmap is each cell's
 //         fault probability (engine.ts has the model).
 
-import "./verify.css";
-import { loadDesign } from "../data/load";
-import type { Design, Lib } from "../data/types";
-import { Stage3D } from "../view/stage3d";
-import { SAMPLES, verify, type Result } from "./engine";
+import { loadChip, loadDesign } from "../api/core";
+import { css, esc } from "../ui/dom";
+import type { Design, Lib } from "../api/types";
+import { Stage3D } from "../three/stage3d";
+import { SAMPLES, verify, type Result } from "../sim/verify";
 
 const CHIP = "tt_um_Electom_cla_4bits";
 const BUG = { cell: "c53", to: "and2_1" };   // rev B: one OR gate in the carry logic became an AND
@@ -19,21 +19,24 @@ const T = { sim: 900 / SPEED, cmp: 350 / SPEED, trace: 1400 / SPEED, confirm: 60
 
 const root = document.createElement("div");
 root.className = "vf";
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const pct = (p: number) => (p >= 0.995 ? "99" : p < 0.01 && p > 0 ? "<1" : String(Math.round(p * 100)));
 /** A rate as a percentage: one decimal, "<0.1" for tiny non-zero rates. */
 const rate = (x: number) => (x > 0 && x < 0.001 ? "<0.1" : (x * 100).toFixed(1).replace(/\.0$/, ""));
 const ms = (x: number) => (x < 0.1 ? "<0.1 ms" : `${x.toFixed(1)} ms`);
 
-/** Heat ramp for fault probability, on a log scale so 1% still glows. */
-const STOPS: [number, [number, number, number]][] = [[0, [36, 64, 140]], [0.35, [120, 70, 200]], [0.6, [255, 159, 10]], [0.82, [255, 69, 58]], [1, [255, 236, 220]]];
+/** Heat ramp for fault probability, on a log scale so 1% still glows. Colours: --heat-0..4 in styles/tokens.css. */
+const AT = [0, 0.35, 0.6, 0.82, 1];
+let stops: [number, number[]][] = [];
+const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 function heat(p: number): string {
+  if (!stops.length) stops = AT.map((t, i) => [t, rgb(css(`--heat-${i}`))]);
   const t = Math.max(0, Math.min(1, 1 + Math.log10(Math.max(p, 1e-9)) / 3));
-  let i = 0; while (i < STOPS.length - 2 && t > STOPS[i + 1][0]) i++;
-  const [t0, a] = STOPS[i], [t1, b] = STOPS[i + 1], k = (t - t0) / (t1 - t0 || 1);
+  let i = 0; while (i < stops.length - 2 && t > stops[i + 1][0]) i++;
+  const [t0, a] = stops[i], [t1, b] = stops[i + 1], k = (t - t0) / (t1 - t0 || 1);
   return `#${a.map((x, j) => Math.round(x + (b[j] - x) * k).toString(16).padStart(2, "0")).join("")}`;
 }
-const GREEN = "#30d158", CLEAR = "#2c6e49", FLASH = "#ffffff";
+/** Right, cleared and flashing cells; read once the page is on screen (the tokens are CSS). */
+let GREEN = "", CLEAR = "", FLASH = "";
 
 root.innerHTML = `
   <main class="vf-view" id="vfView"></main>
@@ -64,12 +67,12 @@ root.innerHTML = `
   </aside>
   <div class="vf-verdict" id="vfVerdict" hidden></div>
   <footer class="vf-ctrl">
-    <button class="vf-btn primary" id="vfGo" type="button">Verify the 4-bit CLA</button>
-    <button class="vf-btn" id="vfRevB" type="button" disabled>Introduce rev B</button>
-    <button class="vf-btn plain" id="vfReplay" type="button" disabled>Replay</button>
+    <button class="btn lg primary" id="vfGo" type="button">Verify the 4-bit CLA</button>
+    <button class="btn lg" id="vfRevB" type="button" disabled>Introduce rev B</button>
+    <button class="btn lg plain" id="vfReplay" type="button" disabled>Replay</button>
   </footer>`;
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector(`#${id}`) as T;
-const btn = (id: string) => $<HTMLButtonElement>(id);
+const byId = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector(`#${id}`) as T;
+const btn = (id: string) => byId<HTMLButtonElement>(id);
 
 let design: Design, lib: Lib, view: Stage3D;
 let bugCell: Design["cells"][number], bugFrom = "";
@@ -90,7 +93,7 @@ const STAGES: Stage[] = [
 
 function renderPipe(active: string | null, doneKeys: Set<string>) {
   const stages = step === 1 ? STAGES.slice(0, 2) : STAGES;
-  $("vfPipe").innerHTML = stages.map((s, i) => {
+  byId("vfPipe").innerHTML = stages.map((s, i) => {
     const st = doneKeys.has(s.key) ? "done" : s.key === active ? "on" : "";
     return `<li class="${st}"><b>${doneKeys.has(s.key) ? "✓" : i + 1}</b><div><span>${s.name}</span>${st ? `<small>${esc(s.detail())}</small>` : ""}</div><em>${doneKeys.has(s.key) ? s.time() : ""}</em></li>`;
   }).join("");
@@ -104,13 +107,13 @@ function setStep(n: 1 | 2) {
   R = verify(design, lib);
   for (const l of R.levels) level.set(l.id, l.level);
   shown = 0; selected = null; view.select(null);
-  $("vfTotal").textContent = String(R.patterns);
-  $("vfSpace").textContent = `drawn at random from ${R.space} possible inputs (a big chip has 2^n, too many to try)`;
-  $("vfPred").hidden = true;
-  $("vfChip").textContent = n === 1 ? "tt_um_Electom_cla_4bits · Tiny Tapeout 8" : "Same layout, same pins. Something inside changed.";
-  $("vfSusSec").hidden = true; $("vfLogSec").hidden = true; $("vfInsp").hidden = true;
-  $("vfVerdict").hidden = true; $("vfVerdict").className = "vf-verdict";
-  $("vfNote").textContent = n === 1
+  byId("vfTotal").textContent = String(R.patterns);
+  byId("vfSpace").textContent = `drawn at random from ${R.space} possible inputs (a big chip has 2^n, too many to try)`;
+  byId("vfPred").hidden = true;
+  byId("vfChip").textContent = n === 1 ? "tt_um_Electom_cla_4bits · Tiny Tapeout 8" : "Same layout, same pins. Something inside changed.";
+  byId("vfSusSec").hidden = true; byId("vfLogSec").hidden = true; byId("vfInsp").hidden = true;
+  byId("vfVerdict").hidden = true; byId("vfVerdict").className = "vf-verdict";
+  byId("vfNote").textContent = n === 1
     ? `The real gate netlist from the GDS, one clock from reset. We don't try every input: ${R.patterns} random vectors predict the failure rate over all of them, the same way it works on a chip with 2^64 inputs. Each 32-bit word carries 32 vectors, so the cost is one pass over the gates per word.`
     : `Fault model: one cell computes the wrong value. A cell explains a wrong vector if inverting its output there fixes every output. Probabilities over ${R.suspects.length} logic cells from the ${R.wrong} sampled failures, uniform prior. Every stage is a pass over the netlist, so the work grows with gate count and sample size, not with the input space.`;
   renderCounts(0); drawStrip(0); renderPipe(null, new Set());
@@ -121,22 +124,23 @@ function renderCounts(frac: number) {
   const k = Math.round(frac * R!.patterns);
   shown = k;
   const okUpTo = R!.ok.slice(0, k);
-  $("vfDone").textContent = String(k);
-  $("vfPass").textContent = String(okUpTo.filter(Boolean).length);
-  $("vfFail").textContent = String(okUpTo.length - okUpTo.filter(Boolean).length);
+  byId("vfDone").textContent = String(k);
+  byId("vfPass").textContent = String(okUpTo.filter(Boolean).length);
+  byId("vfFail").textContent = String(okUpTo.length - okUpTo.filter(Boolean).length);
 }
 
 function drawStrip(frac: number) {
-  const cv = $<HTMLCanvasElement>("vfStrip"), dpr = devicePixelRatio || 1;
+  const cv = byId<HTMLCanvasElement>("vfStrip"), dpr = devicePixelRatio || 1;
   const w = cv.clientWidth, h = cv.clientHeight;
   if (!w || !R) return;
   if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   const g = cv.getContext("2d")!; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
   // One row per 32-bit word: the whole word lands at once, which is what bit-parallel simulation does.
+  const empty = css("--hover"), wrong = css("--del");
   const rows = R.words, cols = 32, cw = w / cols, ch = h / rows, wordsDone = Math.floor(frac * rows + 1e-9);
   for (let i = 0; i < R.patterns; i++) {
     const r = Math.floor(i / 32);
-    g.fillStyle = r >= wordsDone ? "rgba(255,255,255,.06)" : R.ok[i] ? GREEN : "#ff453a";
+    g.fillStyle = r >= wordsDone ? empty : R.ok[i] ? GREEN : wrong;
     g.fillRect((i % cols) * cw + 0.5, r * ch + 0.5, cw - 1, ch - 1);
   }
 }
@@ -183,7 +187,7 @@ function start() {
         marks.set(id, p > 1e-3 ? heat(p) : CLEAR);
       }
       view.setHighlight(null, traced);
-      $("vfSusSec").hidden = false; renderSuspects(f);
+      byId("vfSusSec").hidden = false; renderSuspects(f);
     } else if (step === 2 && t < ends.confirm) {
       stage = "confirm"; done.add("trace");
       const pulse = Math.floor((t - ends.trace) / 150) % 2 === 0;
@@ -216,23 +220,23 @@ function predText() {
   return R!.wrong ? `${rate(R!.rate)}% (95%: ${rate(R!.rateLo)}–${rate(R!.rateHi)}%)` : `< ${rate(R!.rateHi)}% (95%)`;
 }
 function showPred() {
-  const el = $("vfPred"); el.hidden = false;
+  const el = byId("vfPred"); el.hidden = false;
   el.innerHTML = R!.wrong
     ? `Predicted: <b>${rate(R!.rate)}%</b> of all inputs fail <span class="muted">(95%: ${rate(R!.rateLo)}–${rate(R!.rateHi)}%, about ${R!.predictedWrong} of ${R!.space})</span>`
     : `Predicted: <b>&lt; ${rate(R!.rateHi)}%</b> of inputs fail <span class="muted">(95%, from 0 of ${R!.patterns})</span>`;
 }
 
 function showExamples() {
-  if (!$("vfLogSec").hidden) return;
-  $("vfLogSec").hidden = false;
+  if (!byId("vfLogSec").hidden) return;
+  byId("vfLogSec").hidden = false;
   const s = (x: Record<string, number>) => `a=${x.a} b=${x.b} ci=${x.ci}`;
-  $("vfLog").innerHTML = R!.examples.map((e) => `<li>${s(e.ins)} <span class="muted">→</span> <span class="bad">${e.got}</span> <span class="muted">want ${e.want}</span></li>`).join("");
+  byId("vfLog").innerHTML = R!.examples.map((e) => `<li>${s(e.ins)} <span class="muted">→</span> <span class="bad">${e.got}</span> <span class="muted">want ${e.want}</span></li>`).join("");
 }
 
 /** The suspect list; during the backward wave, more of it fills in. */
 function renderSuspects(frac: number) {
   const top = R!.suspects.filter((s) => s.p > 0.001).slice(0, 6);
-  $("vfSus").innerHTML = top.map((s) => `<li data-id="${s.id}" class="${s.id === selected ? "sel" : ""}">
+  byId("vfSus").innerHTML = top.map((s) => `<li data-id="${s.id}" class="${s.id === selected ? "sel" : ""}">
       <span class="id mono">${esc(s.id)}</span><span class="ty mono">${esc(s.type)}</span>
       <span class="bar"><i style="width:${(s.p * 100 * Math.min(1, frac * 1.4)).toFixed(1)}%;background:${heat(s.p)}"></i></span>
       <b>${frac >= 1 ? pct(s.p) + "%" : "…"}</b><small>${s.confirmed && frac >= 1 ? "✓ " : ""}${s.explains}/${R!.wrong}</small></li>`).join("");
@@ -243,7 +247,7 @@ function finish(traced: Set<string>) {
   btn("vfReplay").disabled = false; btn("vfGo").disabled = false;
   btn("vfRevB").disabled = step === 2;
   btn("vfGo").textContent = step === 1 ? "Verify the 4-bit CLA" : "Back to the CLA";
-  const V = $("vfVerdict"); V.hidden = false;
+  const V = byId("vfVerdict"); V.hidden = false;
   const total = R!.timing.simMs + R!.timing.traceMs + R!.timing.confirmMs;
   if (step === 1) {
     const ok = R!.wrong === 0;
@@ -255,7 +259,7 @@ function finish(traced: Set<string>) {
     view.setHighlight(null);
     if (auto) setTimeout(() => { setStep(2); start(); }, 2500);
   } else {
-    $("vfSusSec").hidden = false; renderSuspects(1);
+    byId("vfSusSec").hidden = false; renderSuspects(1);
     const s = R!.suspects[0], tied = R!.suspects.filter((x) => Math.abs(x.p - s.p) < 1e-6);
     V.className = "vf-verdict bad";
     V.innerHTML = `<span class="ey">Fault found</span><h2>${rate(R!.rate)}% of inputs predicted wrong</h2>
@@ -274,7 +278,7 @@ function finish(traced: Set<string>) {
 
 function select(id: string | null) {
   selected = id; view.select(id);
-  const box = $("vfInsp");
+  const box = byId("vfInsp");
   const c = id ? design.cells.find((x) => x.id === id) : null;
   if (!c || !R) { box.hidden = true; return; }
   const s = R.suspects.find((x) => x.id === id);
@@ -283,41 +287,41 @@ function select(id: string | null) {
   box.innerHTML = `<span class="ey">Cell <span class="mono">${esc(c.id)}</span> <span class="muted">· level ${level.get(c.id) ?? "?"}</span></span>
     <div class="mono">${type}</div>
     ${s ? `<div>${step === 2 && R.wrong ? `Fault probability <b>${pct(s.p)}%</b>, explains ${s.explains} of ${R.wrong} sampled failures${s.confirmed ? " (confirmed by re-simulation)" : ""}.` : "Logic cell: a candidate if anything goes wrong."}</div>` : `<div class="muted">Wiring or clock cell, not scored.</div>`}`;
-  if (!$("vfSusSec").hidden) renderSuspects(1);
+  if (!byId("vfSusSec").hidden) renderSuspects(1);
 }
 
 async function boot() {
+  GREEN = css("--add"); CLEAR = css("--heat-clear"); FLASH = css("--white");
   ({ design, lib } = await loadDesign(CHIP));
-  proof = await fetch(`/data/chips/${CHIP}.json`).then((r) => (r.ok ? r.json() : null)).then((j) => (j?.verdict === "proven" ? { ...j.proof, proven: true } : null)).catch(() => null);
+  proof = await loadChip(CHIP).then(({ data }) => (data.verdict === "proven" ? { ...data.proof, proven: true } : null), () => null);
   bugCell = design.cells.find((c) => c.id === BUG.cell)!; bugFrom = bugCell.type;
-  view = new Stage3D($("vfView"), design, lib, { onCell: (id) => { if (!running) select(id); }, onNet: () => {}, onPort: () => {}, onPhys: () => {} });
+  view = new Stage3D(byId("vfView"), design, lib, { onCell: (id) => { if (!running) select(id); }, onNet: () => {}, onPort: () => {}, onPhys: () => {} });
   view.start();
   setTimeout(() => view.flyTo(design.cells.map((c) => c.id)), 400);
   setStep(1);
-  $("vfGo").onclick = () => { setStep(1); start(); };
-  $("vfRevB").onclick = () => { setStep(2); start(); };
-  $("vfReplay").onclick = () => start();
-  $("vfSus").onclick = (e) => { const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-id]"); if (li && !running) { select(li.dataset.id!); view.flyTo([li.dataset.id!]); } };
-  addEventListener("keydown", (e) => {
-    if (!root.isConnected || running || e.key !== " " || /^(INPUT|TEXTAREA|BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) return;
-    e.preventDefault(); (step === 1 && shown ? $("vfRevB") : $("vfGo")).click();
-  });
+  byId("vfGo").onclick = () => { setStep(1); start(); };
+  byId("vfRevB").onclick = () => { setStep(2); start(); };
+  byId("vfReplay").onclick = () => start();
+  byId("vfSus").onclick = (e) => { const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-id]"); if (li && !running) { select(li.dataset.id!); view.flyTo([li.dataset.id!]); } };
   addEventListener("resize", () => drawStrip(shown / (R?.patterns || 1)));
 }
 
-/** Header button icon: a shield with a tick, in the style of ui/icons.ts. */
-export const verifyIcon = `<svg class="ic" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6L8 1.8Z"/><path d="m5.6 8 1.7 1.7 3.2-3.4"/></svg>`;
-
 let booted: Promise<void> | null = null;
-/** The page for the app router: build the 3D view on first mount (it needs the element on screen). */
-export const verifyPage = {
-  el: root,
+/** The page for the app router (one instance: the page keeps its state at module level). The 3D view is built on the
+ *  first mount, because it needs the element on screen. */
+export class VerifyPage {
+  readonly el = root;
   mount(arg: string | null = null) {
     auto = arg === "auto";
-    if (!booted) booted = boot().catch((e) => { root.insertAdjacentHTML("beforeend", `<div class="vf-err">Couldn't load the CLA layout (${esc(String(e?.message ?? e))}). Run <code>npm run stage-data</code> in decap/web.</div>`); });
+    if (!booted) booted = boot().catch((e) => { root.insertAdjacentHTML("beforeend", `<div class="vf-err">Couldn't load the CLA layout (${esc(String(e?.message ?? e))}). Run <code>npm run stage-data</code> in web/.</div>`); });
     else view?.start();
     if (auto) void booted.then(() => setTimeout(() => { if (!running) { setStep(1); start(); } }, 1200));
     if (arg === "revb") void booted.then(() => setTimeout(() => { if (!running) { setStep(2); start(); } }, 1200));
-  },
-  unmount() { view?.stop(); },
-};
+  }
+  unmount() { view?.stop(); }
+  /** Space (from the app's key handler): run the next step. */
+  space() {
+    if (running || !booted) return;
+    (step === 1 && shown ? byId("vfRevB") : byId("vfGo")).click();
+  }
+}

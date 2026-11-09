@@ -7,7 +7,7 @@
 //   This also handles flops clocked by other flops (ripple dividers).
 // - Combinational loops (rare) are iterated to a fixpoint, max 32 passes.
 
-import type { Lib, LibCell } from "../data/types";
+import type { Lib, LibCell } from "../api/types";
 import { parse, toJs, vars, type Expr } from "./expr";
 
 export interface SimCell {
@@ -42,7 +42,7 @@ function expr(s: string): Expr {
   return e;
 }
 
-export const isConstNet = (n: string) => /^(1'b[01]|1'h[01]|[01])$/.test(n);
+const isConstNet = (n: string) => /^(1'b[01]|1'h[01]|[01])$/.test(n);
 const constVal = (n: string) => (/1$/.test(n) ? 1 : 0);
 
 export class Sim {
@@ -101,7 +101,7 @@ export class Sim {
   }
 
   private compile(fnStr: string, map: (name: string) => number): Fn {
-    const src = toJs(expr(fnStr), map);
+    const src = toJs(expr(fnStr), (n) => `v[${map(n)}]`);
     return new Function("v", `return ${src};`) as Fn;
   }
 

@@ -1,0 +1,12 @@
+/* bASIC's styles, in cascade order: tokens, base, app chrome, shared components, one file per page (the agent layer sits where it always cascaded). */
+@import "./tokens.css";
+@import "./base.css";
+@import "./shell.css";
+@import "./components.css";
+@import "./pages/stage.css";
+@import "./pages/wall.css";
+@import "./pages/chip.css";
+@import "./pages/compare.css";
+@import "./agent.css";
+@import "./pages/minecraft.css";
+@import "./pages/verify.css";

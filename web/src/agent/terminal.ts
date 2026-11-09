@@ -3,10 +3,9 @@
 // beneath as they land, a `thinking…` spinner, and a bottom status line with a live elapsed timer.
 
 import { esc } from "../ui/dom";
-import { md } from "./md";
-import { cexHtml, pill } from "./codeAgent";
-import type { Plain, TerminalEvent } from "./api";
-import { plainHtml } from "./words";
+import { md } from "../lib/md";
+import type { Plain, TerminalEvent } from "../api/witness";
+import { cexHtml, pill, plainHtml } from "./words";
 
 /** Format a seconds float as a short duration: "12ms", "1.24s", "3.5s". */
 function fmtDur(s: number): string {

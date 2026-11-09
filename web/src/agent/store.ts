@@ -2,7 +2,8 @@
 // Verilog, and comment threads on lines. Kept in localStorage per browser (a hackathon demo, not shared state), and
 // broadcast to whichever view is open so the Verilog pane and the 3D Stage repaint together.
 
-import type { Attempt, IdeaOut, Plain, Review, Scope, ToolStep } from "./api";
+import type { Attempt, IdeaOut, Plain, Review, Scope, ToolStep } from "../api/witness";
+import { css } from "../ui/dom";
 
 export type Origin = "line" | "edit" | "block" | "stage" | "comment" | "palette";
 
@@ -178,14 +179,15 @@ class Store {
   /** Cell colours for the 3D Stage and the netlist graph: the latest finished run per region decides. */
   marks(chip: string): Map<string, string> {
     const m = new Map<string, string>();
+    const ok = css("--add"), open = css("--amber"), bad = css("--del");
     for (const r of [...this.runs(chip)].reverse()) {
       if (r.status !== "done" || !r.cells.length) continue;
       // green: a short claim proven; amber: explained from the (proven) decompiled code, no short proof yet;
       // red only when there is no explanation at all and the agent's claim was refuted
-      const col = r.explained ? "#4cc38a" : r.plain ? "#e9a23b" : r.final === "refuted" ? "#ef6b73" : "#e9a23b";
+      const col = r.explained ? ok : r.plain ? open : r.final === "refuted" ? bad : open;
       for (const c of r.cells) m.set(c, col);
     }
-    for (const e of this.edits(chip)) if (e.state === "accepted") for (const c of e.cells) m.set(c, "#5ec8ff");
+    for (const e of this.edits(chip)) if (e.state === "accepted") for (const c of e.cells) m.set(c, css("--fall"));
     return m;
   }
 
@@ -200,11 +202,18 @@ class Store {
 }
 
 const overlaps = (a: [number, number], b: [number, number]) => a[0] <= b[1] && b[0] <= a[1];
+/** The decompiled Verilog with the agent edits you accepted applied, bottom-up so line numbers stay valid. */
+export function withAcceptedEdits(chipId: string, verilog: string): string {
+  const lines = verilog.split("\n");
+  const accepted = store.edits(chipId).filter((e) => e.state === "accepted").sort((a, b) => b.lines[0] - a.lines[0]);
+  for (const e of accepted) lines.splice(e.lines[0] - 1, e.lines[1] - e.lines[0] + 1, ...e.replacement);
+  return lines.join("\n");
+}
 export const uid = () => Math.random().toString(36).slice(2, 10);
 export const store = new Store();
 
 /** Top-level `&&` conjuncts of a claim (respects parentheses and braces). */
-export function conjuncts(claim: string): string[] {
+function conjuncts(claim: string): string[] {
   const out: string[] = [];
   let depth = 0, start = 0;
   for (let i = 0; i < claim.length; i++) {

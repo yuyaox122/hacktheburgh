@@ -4,10 +4,10 @@
 //
 // Self-contained: it decorates the panes when they appear (MutationObserver), so the page files stay untouched.
 
-import { loadChip, loadDesign } from "../data/load";
-import { toast } from "../ui/dom";
+import { loadChip, loadDesign } from "../api/core";
+import { saveText, toast } from "../ui/dom";
 import { icon } from "../ui/icons";
-import { store } from "./store";
+import { store, withAcceptedEdits } from "./store";
 import * as editor from "./editor";
 
 const DOWNLOAD = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.8v7.7M4.8 7.3 8 10.5l3.2-3.2"/><path d="M2.5 10.5v1.7a1.3 1.3 0 0 0 1.3 1.3h8.4a1.3 1.3 0 0 0 1.3-1.3v-1.7"/></svg>`;
@@ -19,33 +19,13 @@ let picker: HTMLInputElement | null = null;
 /** Called by the Agent panel whenever the current chip changes (both pages set it). */
 export function setChip(c: string | null) { if ((c ?? "") !== chip) editor.close(); chip = c ?? ""; }
 
-/** The decompiled Verilog with the agent edits you accepted applied, bottom-up so line numbers stay valid. */
-export function withAcceptedEdits(chipId: string, verilog: string): string {
-  const lines = verilog.split("\n");
-  const accepted = store.edits(chipId).filter((e) => e.state === "accepted").sort((a, b) => b.lines[0] - a.lines[0]);
-  for (const e of accepted) lines.splice(e.lines[0] - 1, e.lines[1] - e.lines[0] + 1, ...e.replacement);
-  return lines.join("\n");
-}
-
-export function saveText(name: string, text: string) { save(name, text); }
-
-function save(name: string, text: string) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text.endsWith("\n") ? text : text + "\n"], { type: "text/x-verilog" }));
-  a.download = name;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}
-
 async function download(kind: "dec" | "src") {
   if (!chip) return;
   try {
     if (kind === "dec") {
       const { data } = await loadChip(chip);
       const n = store.edits(chip).filter((e) => e.state === "accepted").length;
-      save(`${chip}_decompiled.v`, withAcceptedEdits(chip, data.decompiled.verilog));
+      saveText(`${chip}_decompiled.v`, withAcceptedEdits(chip, data.decompiled.verilog));
       toast(n ? `Downloaded the decompiled Verilog with your ${n} accepted edit${n > 1 ? "s" : ""}` : "Downloaded the decompiled Verilog");
     } else {
       const { design } = await loadDesign(chip);
@@ -53,7 +33,7 @@ async function download(kind: "dec" | "src") {
       const shown = document.querySelector(".code-pane .meta .file")?.textContent?.trim();
       const [name, text] = files.find(([f]) => f === shown) ?? files[0] ?? [];
       if (!name) { toast("This chip has no source file to download"); return; }
-      save(name.split("/").pop() || `${chip}.v`, text ?? "");
+      saveText(name.split("/").pop() || `${chip}.v`, text ?? "");
       toast(`Downloaded ${name}`);
     }
   } catch (e) {

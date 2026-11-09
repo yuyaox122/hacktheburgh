@@ -13,7 +13,7 @@ export class Palette {
     this.el.setAttribute("role", "dialog"); this.el.setAttribute("aria-modal", "true"); this.el.setAttribute("aria-label", "Command palette");
     this.el.innerHTML = `<div class="box"><div class="inrow">${icon.search}<input id="palIn" autocomplete="off" placeholder="Search commands, chips, cells and lines" aria-label="Search"></div>
       <ul id="palList" role="listbox"></ul>
-      <div class="foot"><span><kbd>1</kbd> to <kbd>4</kbd> pages</span><span><kbd>G</kbd> ask</span><span><kbd>Space</kbd> run</span><span><kbd>.</kbd> step</span><span><kbd>R</kbd> reset</span><span><kbd>F</kbd> fit</span></div></div>`;
+      <div class="foot"><span><kbd>1</kbd> to <kbd>5</kbd> pages</span><span><kbd>G</kbd> ask</span><span><kbd>Space</kbd> run</span><span><kbd>.</kbd> step</span><span><kbd>R</kbd> reset</span><span><kbd>F</kbd> fit</span></div></div>`;
     document.body.append(this.el);
     const inp = $<HTMLInputElement>("#palIn", this.el);
     inp.addEventListener("input", () => { this.at = 0; this.render(); });

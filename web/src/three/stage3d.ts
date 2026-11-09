@@ -1,4 +1,4 @@
-// The Stage: a real placed-and-routed die in 3D (ported from docs/decap/prototype.html, driven by design.json).
+// The Stage: a real placed-and-routed die in 3D (ported from docs/archive/prototype.html, driven by design.json).
 // Scene units are microns. Scene x = DEF x, scene z = die height - DEF y (so the layout reads as drawn).
 
 import * as THREE from "three";
@@ -11,60 +11,12 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import type { Design, DesignCell, Lib } from "../data/types";
-import { category, CATEGORY_VAR, type Category } from "./describe";
+import type { Design, DesignCell, Lib } from "../api/types";
+import { category, CATEGORY_VAR, type Category } from "../lib/cells";
 import { css, reduceMotion } from "../ui/dom";
 import { cellBox, Y, usedArea, type Rect } from "./geometry";
-
-export type LayerKey = "pkg" | "cell" | "m1" | "via" | "m2" | "m3" | "m4" | "power";
-export const LAYERS: { key: LayerKey; label: string; colour: string; on: boolean }[] = [
-  { key: "power", label: "Power straps", colour: "var(--met4)", on: false },
-  { key: "m4", label: "Metal 4", colour: "var(--met4)", on: true },
-  { key: "m3", label: "Metal 3", colour: "var(--met3)", on: true },
-  { key: "m2", label: "Metal 2", colour: "var(--met2)", on: true },
-  { key: "via", label: "Vias", colour: "#c9d3e3", on: true },
-  { key: "m1", label: "Metal 1 and rails", colour: "var(--met1)", on: true },
-  { key: "cell", label: "Cells", colour: "var(--adder)", on: true },
-  { key: "pkg", label: "Package", colour: "#c9a24a", on: true },
-];
-type Group = "pkg" | "sub" | "cell" | "m1" | "via" | "m2" | "via2" | "m3" | "via3" | "m4" | "power";
-const EXPLODE_IDX: Record<Group, number> = { pkg: 0, sub: 0, cell: 1, m1: 2, via: 3, m2: 4, via2: 5, m3: 6, via3: 7, m4: 8, power: 9 };
-const WIRE: Record<string, { g: Group; y: number; w: number; v: string }> = {
-  met1: { g: "m1", y: Y.m1, w: 0.2, v: "--met1" },
-  met2: { g: "m2", y: Y.m2, w: 0.2, v: "--met2" },
-  met3: { g: "m3", y: Y.m3, w: 0.34, v: "--met3" },
-  met4: { g: "m4", y: Y.m4, w: 0.34, v: "--met4" },
-};
-const VIA: Record<string, { g: Group; y: number; s: number }> = {
-  mcon: { g: "m1", y: Y.m1 - 0.06, s: 0.19 },
-  via: { g: "via", y: Y.via, s: 0.24 },
-  via2: { g: "via2", y: Y.via2, s: 0.3 },
-  via3: { g: "via3", y: Y.via3, s: 0.36 },
-  via4: { g: "via3", y: Y.via3, s: 0.36 },
-};
-const isClockNet = (n: string) => /^(clk|clknet_)/.test(n);
-/** Microns each layer group lifts per EXPLODE_IDX step when the layers are fully separated. */
-const LIFT = 7;
-/** Layer groups that get a glass plate and a label when the stack is separated. */
-const PLATES: [Group, string][] = [["cell", "Cells and transistors"], ["m1", "Metal 1 \u00b7 power rails, local wires"], ["m2", "Metal 2 \u00b7 vertical wires"], ["m3", "Metal 3 \u00b7 long wires"], ["m4", "Metal 4"]];
-/** Default hero angle: the overview direction turned a little, so the die reads in three-quarter view. */
-const HERO_DIR = new THREE.Vector3(-0.3, 0.8, 0.62).normalize();
-
-/** Fullscreen finish after bloom: a soft vignette and a whisper of grain (hides gradient banding). */
-const FinishShader = {
-  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, uTime: { value: 0 }, uVignette: { value: 0.42 } },
-  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVignette; varying vec2 vUv;
-    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime) * 43758.5453); }
-    void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
-      vec2 d = vUv - 0.5; d.x *= 1.25;
-      c.rgb *= mix(1.0, 1.0 - smoothstep(0.18, 0.85, length(d)), uVignette);
-      c.rgb += (hash(vUv * 1000.0) - 0.5) * 0.012;
-      gl_FragColor = c;
-    }`,
-};
+import { backdrop, ease, EXPLODE_IDX, FinishShader, floor, type Group, HERO_DIR, isClockNet, LAYERS, type LayerKey, LIFT, PLATES, type Seg, setBox, VIA, WIRE } from "./stageScene";
+export { LAYERS, type LayerKey };
 
 export interface StageCallbacks {
   onCell(id: string | null): void;
@@ -75,14 +27,6 @@ export interface StageCallbacks {
   /** The logic cell under the pointer (or null), with viewport coords — the Witness agent hover toolbar. */
   onHoverCell?(id: string | null, x: number, y: number): void;
 }
-
-interface Seg { net: string; x1: number; z1: number; x2: number; z2: number; layer: string }
-
-const M4 = new THREE.Matrix4(), V3 = new THREE.Vector3(), S3 = new THREE.Vector3(), Q4 = new THREE.Quaternion();
-function setBox(mesh: THREE.InstancedMesh, i: number, x: number, y: number, z: number, sx: number, sy: number, sz: number) {
-  V3.set(x, y, z); S3.set(sx, sy, sz); M4.compose(V3, Q4, S3); mesh.setMatrixAt(i, M4);
-}
-const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 export class Stage3D {
   readonly W: number; readonly H: number; readonly RH: number;
@@ -174,9 +118,9 @@ export class Stage3D {
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.25;
-    const bg = new THREE.Color(css("--bg") || "#0b0b0d");
+    const bg = new THREE.Color(css("--bg"));
     // Studio backdrop: a soft cool pool of light behind the chip, falling off to the page colour at the edges.
-    this.scene.background = this.backdrop(bg);
+    this.scene.background = backdrop(bg);
     this.scene.fog = new THREE.FogExp2(bg.clone().lerp(new THREE.Color(0x1a2233), 0.35), 0.0022);
     const pmrem = new THREE.PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -202,7 +146,7 @@ export class Stage3D {
     // A cool rim from behind picks out the package edges and the bond wires; a warm fill keeps the front from going flat.
     const rim = new THREE.DirectionalLight(0x6a8cff, 1.1); rim.position.set(90, 40, -110); this.scene.add(rim);
     const fill = new THREE.DirectionalLight(0xffc89a, 0.35); fill.position.set(110, 30, 80); this.scene.add(fill);
-    this.scene.add(this.floor(Math.max(W, H)));
+    this.scene.add(floor(Math.max(W, H)));
 
     this.chip.position.set(-xc, 0, -zc); this.scene.add(this.chip);
     for (const k of Object.keys(EXPLODE_IDX) as Group[]) { this.G[k] = new THREE.Group(); this.chip.add(this.G[k]); }
@@ -353,7 +297,7 @@ export class Stage3D {
     }
     for (const [layer, vs] of viasBy) {
       const spec = VIA[layer];
-      const m = inst(box, std({ color: 0xc9d3e3, metalness: 0.9, roughness: 0.2 }), vs.length, this.G[spec.g]);
+      const m = inst(box, std({ color: new THREE.Color(css("--via")), metalness: 0.9, roughness: 0.2 }), vs.length, this.G[spec.g]);
       vs.forEach((v, i) => setBox(m, i, v.x, spec.y, v.z, spec.s, layer === "mcon" ? 0.08 : 0.16, spec.s));
       m.count = vs.length;
     }
@@ -365,7 +309,7 @@ export class Stage3D {
       if (horiz ? !inV(y1) : x1 < V.x0 || x1 > V.x1) continue;
       if (horiz) { x1 = clip(x1, V.x0, V.x1); x2 = clip(x2, V.x0, V.x1); } else { y1 = clip(y1, V.y0, V.y1); y2 = clip(y2, V.y0, V.y1); }
       const len = Math.abs(horiz ? x2 - x1 : y2 - y1);
-      const mat = std({ color: p.layer === "met5" ? 0xb69344 : 0xc9a24a, metalness: 0.9, roughness: 0.3, transparent: true, opacity: 0.55 });
+      const mat = std({ color: p.layer === "met5" ? new THREE.Color(css("--pkg")).multiplyScalar(0.9) : new THREE.Color(css("--pkg")), metalness: 0.9, roughness: 0.3, transparent: true, opacity: 0.55 });
       add(this.G.power, mat, horiz ? len : p.width, 0.12, horiz ? p.width : len, (x1 + x2) / 2, p.layer === "met5" ? Y.m5 : Y.m4 + 0.08, this.sz((y1 + y2) / 2));
     }
 
@@ -414,45 +358,6 @@ export class Stage3D {
     this.bindPointer();
     this.flyTo(null, { dir: HERO_DIR.clone(), instant: true });
     this.startIntro();
-  }
-
-  /** A radial gradient for the scene background (drawn screen-space, so it never moves with the camera). */
-  private backdrop(bg: THREE.Color): THREE.Texture {
-    const cv = document.createElement("canvas"); cv.width = 512; cv.height = 512;
-    const g = cv.getContext("2d")!;
-    const hex = (c: THREE.Color) => `#${c.getHexString()}`;
-    const grad = g.createRadialGradient(256, 210, 10, 256, 256, 380);
-    grad.addColorStop(0, hex(bg.clone().lerp(new THREE.Color(0x2a3550), 0.55)));
-    grad.addColorStop(0.45, hex(bg.clone().lerp(new THREE.Color(0x182033), 0.5)));
-    grad.addColorStop(1, hex(bg));
-    g.fillStyle = grad; g.fillRect(0, 0, 512, 512);
-    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  }
-
-  /** The bench the package sits on: a dark plane that takes the shadow, with a fine dot grid that fades out with distance. */
-  private floor(size: number): THREE.Object3D {
-    const g = new THREE.Group();
-    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.ShadowMaterial({ opacity: 0.55 }));
-    shadow.rotation.x = -Math.PI / 2; shadow.position.y = -3.69; shadow.receiveShadow = true; g.add(shadow);
-    const R = Math.max(140, size * 1.6);
-    const grid = new THREE.Mesh(new THREE.PlaneGeometry(R * 2, R * 2), new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false,
-      uniforms: { uR: { value: R }, uCol: { value: new THREE.Color(0x7d95c8) } },
-      vertexShader: `varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `
-        uniform float uR; uniform vec3 uCol; varying vec2 vP;
-        void main() {
-          vec2 cell = abs(fract(vP / 6.0) - 0.5) * 6.0;
-          float dotm = 1.0 - smoothstep(0.14, 0.3, length(cell));
-          vec2 line = abs(fract(vP / 30.0) - 0.5) * 30.0;
-          float major = 1.0 - smoothstep(0.04, 0.16, min(line.x, line.y));
-          float fade = 1.0 - smoothstep(uR * 0.25, uR, length(vP));
-          gl_FragColor = vec4(uCol, (dotm * 0.22 + major * 0.07) * fade);
-        }`,
-    }));
-    grid.rotation.x = -Math.PI / 2; grid.position.y = -3.7; g.add(grid);
-    return g;
   }
 
   private colourFor(c: DesignCell): THREE.Color {

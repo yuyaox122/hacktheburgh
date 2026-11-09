@@ -1,24 +1,22 @@
-// Decap web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare, #/minecraft), shared chrome, keyboard shortcuts.
+// bASIC web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare, #/minecraft, #/verify), shared chrome, keyboard shortcuts.
 
-import "./styles.css";
-import "./agent/agent.css";
-import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./data/load";
-import { StagePage } from "./ui/stagePage";
-import { WallPage } from "./ui/wallPage";
-import { ChipPage } from "./ui/chipPage";
-import { ComparePage } from "./ui/comparePage";
-import { MinecraftPage } from "./ui/minecraftPage";
-import { verifyIcon, verifyPage } from "./verify/verifyPage";
+import "./styles/index.css";
+import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./api/core";
+import { StagePage } from "./pages/stage/stagePage";
+import { WallPage } from "./pages/wallPage";
+import { ChipPage } from "./pages/chipPage";
+import { ComparePage } from "./pages/comparePage";
+import { MinecraftPage } from "./pages/minecraftPage";
+import { VerifyPage } from "./pages/verifyPage";
 import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
-import { $, $$, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
+import { $, $$, css, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
 import { icon } from "./ui/icons";
 import { app, type PaletteCommand } from "./ui/state";
-import { loadChip } from "./data/load";
 import { AgentPanel } from "./agent/panel";
 import { act, decorateCode } from "./agent/codeAgent";
-import { regionForCell, runAgent } from "./agent/agent";
+import { explainCell } from "./agent/stageAgent";
 import { store } from "./agent/store";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -36,7 +34,7 @@ root.innerHTML = `
     <div class="actions">
       <span class="status" id="apiStatus"><i></i><span>Connecting</span></span>
       <button class="search" type="button" id="btnPal" aria-label="Search and commands">${icon.search}<span class="lbl">Search</span><span class="k">${isMac ? "⌘K" : "Ctrl K"}</span></button>
-      <a class="btn plain" href="#/verify" id="btnVerify" title="Verify a chip: every input pattern at once, then trace a fault to its cell (V)">${verifyIcon}<span>Verify</span></a>
+      <a class="btn plain" href="#/verify" id="btnVerify" title="Verify a chip: every input pattern at once, then trace a fault to its cell (V)">${icon.shield}<span>Verify</span></a>
       <button class="btn plain" type="button" id="btnAgent" title="Witness agent: explains a region in one line; Yosys decides (A)">${icon.cube}<span>Agent</span></button>
       <button class="btn plain" type="button" id="btnGuide" title="Ask about what's on screen (G)">${icon.sparkle}<span>Ask</span></button>
       <div class="menuwrap">
@@ -60,7 +58,7 @@ function paintAgent(chipId: string) {
   if (app.route === "chip" && chip?.chip === chipId) { decorateCode(chip); chip.setAgentMarks(store.marks(chipId)); }
   if (app.route === "stage" && stage?.chipName === chipId) {
     const legend = store.runs(chipId).filter((r) => r.status === "done" && r.cells.length).slice(0, 5).map((r) => ({
-      label: `${r.label}: ${r.explained ? "proven" : r.final ?? ""}`, colour: r.explained ? "#4cc38a" : r.final === "refuted" ? "#ef6b73" : "#e9a23b",
+      label: `${r.label}: ${r.explained ? "proven" : r.final ?? ""}`, colour: css(r.explained ? "--add" : r.final === "refuted" ? "--del" : "--amber"),
       cells: r.cells, claim: r.attempts[r.attempts.length - 1]?.claim }));
     stage.setAgentMarks(store.marks(chipId), legend);
   }
@@ -72,6 +70,7 @@ let wall: WallPage | null = null;
 let chip: ChipPage | null = null;
 let comparePg: ComparePage | null = null;
 let mcPg: MinecraftPage | null = null;
+let verifyPg: VerifyPage | null = null;
 let current: { el: HTMLElement; unmount?: () => void } | null = null;
 
 /** Load the Stage for a chip (null = the current one, else the default); switching chips frees the old 3D view. */
@@ -106,7 +105,7 @@ async function route() {
     if (!stage) {
       const d = document.createElement("div");
       d.className = "empty";
-      d.innerHTML = `<h3>No chip layouts yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>decap/web</code> to build the 3D layouts from the Tiny Tapeout GDS files.</p>`;
+      d.innerHTML = `<h3>No chip layouts yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>web/</code> to build the 3D layouts from the Tiny Tapeout GDS files.</p>`;
       show(d, true); return;
     }
     const s = stage;
@@ -145,8 +144,10 @@ async function route() {
     await m.mount(arg ? decodeURIComponent(arg) : null);
     app.guideContext = () => m.context(); app.guideHighlight = undefined; app.pageCommands = () => [];
   } else if (r === "verify") {
-    show(verifyPage.el, false, () => verifyPage.unmount());
-    verifyPage.mount(arg ? decodeURIComponent(arg) : null);
+    verifyPg ??= new VerifyPage();
+    const v = verifyPg;
+    show(v.el, false, () => v.unmount());
+    v.mount(arg ? decodeURIComponent(arg) : null);
     app.guideContext = undefined; app.guideHighlight = undefined; app.pageCommands = () => [];
   } else { location.hash = "#/stage"; }
 }
@@ -212,13 +213,7 @@ function agentCommands(c: ChipPage): PaletteCommand[] {
 document.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-agent-cell]");
   if (!b || !stage) return;
-  const chipId = stage.chipName, cell = b.dataset.agentCell!;
-  guide.close(); agentPanel.open();
-  void loadChip(chipId).then(({ data }) => {
-    const reg = regionForCell(data, cell);
-    if (!reg) return;
-    void runAgent({ chip: chipId, scope: reg.scope, label: `3D cell ${cell} · ${reg.label}`, origin: "stage", line: reg.lines[0] || undefined, lines: reg.lines[0] ? reg.lines : undefined });
-  });
+  explainCell(stage.chipName, b.dataset.agentCell!);
 });
 $("#btnPal").addEventListener("click", () => palette.open());
 $("#btnBig").addEventListener("click", () => { setMenu(false); document.body.classList.toggle("projector"); });
@@ -247,6 +242,8 @@ addEventListener("keydown", (e) => {
     else if (k === "r" || k === "R") stage.reset();
     else if (k === "x" || k === "X") stage.toggleExplode();
     else if (k === "f" || k === "F") stage.fit();
+  } else if (app.route === "verify" && verifyPg && k === " " && !/^(BUTTON|A)$/.test((document.activeElement as HTMLElement)?.tagName)) {
+    e.preventDefault(); verifyPg.space();
   }
 });
 
@@ -258,12 +255,10 @@ function renderFixtureBanner() {
 onFixtureChange(renderFixtureBanner);
 
 health().then((h) => {
-  app.api = true; app.llm = !!h.llm;
   const s = $("#apiStatus");
   s.innerHTML = `<i class="ok"></i><span>Live</span>`;
   s.title = `Connected to the bASIC API.${h.yosys === false ? " Yosys is missing, so proofs are off." : ""} The guide is ${h.llm ? "on" : "off"}.`;
 }).catch(() => {
-  app.api = false;
   const s = $("#apiStatus");
   s.innerHTML = `<i class="bad"></i><span>Offline</span>`;
   s.title = "Showing saved results. Live planting, Fix, Compare and the guide need the bASIC API.";

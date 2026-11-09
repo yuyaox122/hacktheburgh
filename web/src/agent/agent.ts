@@ -1,15 +1,11 @@
 // The Witness agent's front-end controller: start runs from anywhere (a Verilog line, a block, a 3D cell, a comment),
 // stream them into the store, turn a proven claim into a suggested edit, and answer @agent comments.
 
-import type { Block, ChipResult } from "../data/types";
-import { explain, formalise, type Scope } from "./api";
+import type { Block, ChipResult } from "../api/types";
+import { explain, formalise, type Scope } from "../api/witness";
 import { claimToVerilog, store, uid, type Origin, type Run } from "./store";
 import { verdictWords } from "./words";
-
-const KIND_WORD: Record<string, string> = {
-  adder: "adder", subtractor: "subtractor", counter: "counter", register: "register", shift: "shift register",
-  comparator: "comparator", mux: "multiplexer", reduce: "reduction", const: "constant", copy: "wire copy", logic: "leftover logic",
-};
+import { kindWord } from "../lib/kinds";
 
 const running = new Map<string, AbortController>();
 
@@ -18,7 +14,7 @@ export function regionForLine(r: ChipResult, ln: number): { scope: Scope; label:
   const b = r.blocks.find((x) => ln >= x.lines[0] && ln <= x.lines[1]);
   if (b) {
     return { scope: { cone_of: b.id }, block: b, lines: b.lines,
-      label: `line ${ln} · block ${b.id} (${KIND_WORD[b.kind] ?? b.kind}, ${b.cells.length} cells)` };
+      label: `line ${ln} · block ${b.id} (${kindWord(b.kind)}, ${b.cells.length} cells)` };
   }
   const cells = Object.entries(r.cell_lines).filter(([, l]) => l === ln).map(([c]) => c);
   if (!cells.length) return null;
@@ -81,8 +77,6 @@ export async function runAgent(o: StartOpts): Promise<Run> {
   if (o.suggestEdit) suggestEditFrom(run, o.verilog ?? "");
   return run;
 }
-
-export function cancelAll() { for (const c of running.values()) c.abort(); }
 
 /** A credited, proven claim becomes a suggested replacement for the lines it explains. */
 export function suggestEditFrom(run: Run, verilog: string): boolean {

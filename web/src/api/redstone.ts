@@ -1,4 +1,6 @@
-// Client for redstone/bridge.py (proxied at /redstone by Vite): Verilog -> redstone build in a live Minecraft server.
+// Client for minecraft/redstone/bridge.py (proxied at /redstone by Vite): Verilog -> redstone build in a live Minecraft server.
+
+import { DOWN, request } from "./http";
 
 export interface RsCheck { vectors: number; mismatches: number; first_mismatch: number | null; against: string; sequential: boolean }
 
@@ -49,20 +51,7 @@ export interface RsHealth { ok: boolean; players: string; lan_ip: string; game_p
 
 export interface RsCompileIn { preset?: string; verilog?: string; name?: string; id?: string; title?: string; origin?: RsBuild["origin"] }
 
-async function call<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(`/redstone/${path}`, body === undefined ? undefined : {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  let d: unknown = null;
-  try { d = await r.json(); } catch { /* the Vite proxy answers HTML or nothing when the bridge is down */ }
-  if (!r.ok || d === null) {
-    const msg = (d as { error?: string } | null)?.error;
-    throw new Error(msg ?? (r.status === 502 || r.status === 504 || d === null
-      ? "The redstone bridge is not running. Start it with: cd redstone && python3 bridge.py"
-      : `HTTP ${r.status}`));
-  }
-  return d as T;
-}
+const call = <T>(path: string, body?: unknown) => request<T>(`/redstone/${path}`, { body, down: DOWN.redstone });
 
 export const rs = {
   health: () => call<RsHealth>("health"),

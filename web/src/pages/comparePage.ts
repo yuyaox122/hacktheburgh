@@ -1,15 +1,14 @@
 // Compare: paste or upload Verilog or a netlist, get the nearest real chips and why they match.
 
-import type { CompareResult } from "../data/types";
-import { compare, loadBench } from "../data/load";
-import { $, esc, hiVerilog } from "./dom";
-import { icon } from "./icons";
-import { KIND_COLOUR, KIND_WORD } from "./chipPage";
+import type { CompareResult } from "../api/types";
+import { compare, loadBench } from "../api/core";
+import { $, esc, hiVerilog } from "../ui/dom";
+import { icon } from "../ui/icons";
+import { kindColour, kindWord as word } from "../lib/kinds";
 
 const FAMILY_WORD: Record<string, string> = {
   flop: "flip-flops", xor: "XOR", and: "AND", or: "OR", aoi: "AND-OR", oai: "OR-AND", mux: "mux", inv: "inverters", buf: "buffers", other: "other",
 };
-const word = (k: string) => KIND_WORD[k] ?? (k === "table" ? "lookup table" : k === "bitwise" ? "bitwise block" : k === "multiplier" ? "multiplier" : k);
 const plural = (k: string, n: number) => {
   const w = word(k);
   if (n === 1 || k === "logic") return `${n} ${w}`;
@@ -89,8 +88,8 @@ export class ComparePage {
           <div><b>${nBlocks}</b><span>blocks recognised</span></div>
         </div>
         ${total ? `<div class="group"><span class="fine">What the cells are built into</span>
-          <div class="fp-bar" role="img" aria-label="${esc(parts.map(([k, v]) => `${word(k)} ${Math.round(100 * v / total)}%`).join(", "))}">${parts.map(([k, v]) => `<i style="flex:${v};background:${KIND_COLOUR[k] ?? "var(--gate)"}" title="${esc(word(k))}: ${v} cells"></i>`).join("")}</div>
-          <div class="fp-legend">${parts.map(([k, v]) => `<span><i style="background:${KIND_COLOUR[k] ?? "var(--gate)"}"></i>${esc(plural(k, fp.block_count?.[k] ?? 1))}<span class="muted">${v} cell${v === 1 ? "" : "s"}</span></span>`).join("")}</div></div>` : ""}
+          <div class="fp-bar" role="img" aria-label="${esc(parts.map(([k, v]) => `${word(k)} ${Math.round(100 * v / total)}%`).join(", "))}">${parts.map(([k, v]) => `<i style="flex:${v};background:${kindColour(k, "--gate")}" title="${esc(word(k))}: ${v} cells"></i>`).join("")}</div>
+          <div class="fp-legend">${parts.map(([k, v]) => `<span><i style="background:${kindColour(k, "--gate")}"></i>${esc(plural(k, fp.block_count?.[k] ?? 1))}<span class="muted">${v} cell${v === 1 ? "" : "s"}</span></span>`).join("")}</div></div>` : ""}
         ${sorted(fp.cell_families).length ? `<div class="group"><span class="fine">Cells by kind of gate</span><div class="acts">${sorted(fp.cell_families).map(([k, v]) => `<span class="pill">${esc(FAMILY_WORD[k] ?? k)} <b>${v}</b></span>`).join(" ")}</div></div>` : ""}
       </section>
       <span class="eyebrow">Most similar real chips</span>
