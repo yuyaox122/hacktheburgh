@@ -287,6 +287,11 @@ def decompile_chip(chip: str, split: str, nl: netlist.Netlist | None = None, aut
     return result, dec
 
 
+def check_verdict(check: str) -> str:
+    """An author_check result as a verdict: proven / tested (bounded check only) / failed, else unavailable."""
+    return {"proven": "proven", "bounded": "tested", "failed": "failed"}.get(check, "unavailable")
+
+
 def verdict_of(proof: dict) -> str:
     if proof.get("ok"):
         return "proven"

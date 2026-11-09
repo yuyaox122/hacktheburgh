@@ -339,7 +339,7 @@ def plant_trigger(chip: str, body: PlantIn) -> dict:
     """Hide a trigger for the secret value N in a copy of the chip: `output_bit |= (ui_in == N)`, built from real
     SKY130 cells and spliced into the netlist, then re-read with fresh names so nothing marks the new cells.
     Returns the new chip id (e.g. 'tt_um_mac+t137') to use with the other tools."""
-    if "+t" in chip:
+    if service.parse_id(chip)[1] is not None:
         raise HTTPException(400, "plant into a clean chip")
     _get(chip)
     v = service.plant(chip, body.n)

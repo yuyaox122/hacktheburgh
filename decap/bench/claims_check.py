@@ -37,7 +37,7 @@ PARTIAL = ("tt_um_Richard28277+t137", "uo_out[0] == 1 when ui_in == 8'd137")
 def main() -> int:
     bad = 0
     for chip, claim, want, cex in CASES:
-        v = service.plant(*chip.split("+t")[0:1], int(chip.split("+t")[1])) if "+t" in chip else service.get(chip)
+        v = service.get(chip)   # a planted id (chip+tN) plants on first use
         r = claims.check(v, claim)
         got = r.get("truth") or r["verdict"]
         ok = got == want and all(r.get("counterexample", {}).get(k) == x for k, x in (cex or {}).items())

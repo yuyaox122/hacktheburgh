@@ -19,16 +19,12 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 
 from ..core import chip as C
-from ..core import find, netlist, pipeline
+from ..core import find, netlist, service
 from ..paths import BENCH_FIRST_RUN, BENCH_JSON, DECAP, SPLIT
 
 
 def trojan_n(chip: str) -> int:
     return int(hashlib.sha256(f"decap-trojan:{chip}".encode()).hexdigest(), 16) % 256
-
-
-def public_flags(fl):
-    return [{k: v for k, v in f.items() if not k.startswith("_")} for f in fl]
 
 
 def caught(fl, info) -> tuple[bool, int | None]:
@@ -46,7 +42,7 @@ def run_chip(chip: str, split: str) -> dict:
         nl = netlist.load(C.netlist_path(chip))
         result, dec = C.decompile_chip(chip, split, nl)
         fl = find.flags(dec, result)
-        result["flags"] = public_flags(fl)
+        result["flags"] = service.public(fl)
         C.save(result)
         row = {"chip": chip, "title": result["title"], "split": split, "verdict": result["verdict"],
                "logic_cells": result["stats"]["logic_cells"], "flops": result["stats"]["flops"],
@@ -55,18 +51,12 @@ def run_chip(chip: str, split: str) -> dict:
                "author_check": result["author_source"]["check"], "language": result["language"],
                "points": result["proof"]["points"], "attempts": result["proof"]["attempts"]}
         # trojan test
-        n = trojan_n(chip)
-        planted, info = find.plant(nl, n, res={"registers": result.get("_registers", {})})
-        pres, pproof, pdec = pipeline.run(planted, return_decompiler=True)
-        pfl = find.flags(pdec, pres)
-        ok, line = caught(pfl, info)
-        prow = C.assemble(chip, split, planted, pres, pproof, C.info(chip), {"files": {}, "lines": 0, "check": "unavailable",
-                                                                             "check_detail": "planted copy"}, variant="planted")
-        prow["flags"] = public_flags(pfl)
-        prow["plant"] = info
-        C.save(prow, f"{chip}__planted")
-        row["trojan"] = {"n": info["n"], "target": info["target"], "caught": ok, "flag_line": line,
-                         "planted_verdict": C.verdict_of(pproof), "planted_flags": len(pfl), "clean_flags": len(fl)}
+        p = service.plant_variant(chip, split, nl, {"registers": result.get("_registers", {})}, trojan_n(chip),
+                                  {"files": {}, "lines": 0, "check": "unavailable", "check_detail": "planted copy"})
+        ok, line = caught(p.flags, p.plant)
+        C.save(p.result, f"{chip}__planted")
+        row["trojan"] = {"n": p.plant["n"], "target": p.plant["target"], "caught": ok, "flag_line": line,
+                         "planted_verdict": C.verdict_of(p.proof), "planted_flags": len(p.flags), "clean_flags": len(fl)}
         row["seconds_total"] = round(time.time() - t0, 2)
         return row
     except Exception as e:
