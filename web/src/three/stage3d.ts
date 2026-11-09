@@ -1,4 +1,4 @@
-// The Stage: a real placed-and-routed die in 3D (ported from docs/decap/prototype.html, driven by design.json).
+// The Stage: a real placed-and-routed die in 3D (ported from docs/archive/prototype.html, driven by design.json).
 // Scene units are microns. Scene x = DEF x, scene z = die height - DEF y (so the layout reads as drawn).
 
 import * as THREE from "three";

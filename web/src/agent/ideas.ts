@@ -44,7 +44,7 @@ export const basisOf = (host: CodeHost) => keptEdits(host).map((e) => e.id).sort
 export const keptIdeaClash = (host: CodeHost, lines: [number, number]) => clash(lines, keptEdits(host).filter((e) => e.kind === "idea"));
 const waiting = (host: CodeHost) => shownEdits(host).find((e) => e.state === "reviewing" || e.state === "reviewed");
 
-/** The Verilog as shown: Decap's decompile with every kept edit in place. */
+/** The Verilog as shown: bASIC's decompile with every kept edit in place. */
 function currentText(host: CodeHost): string | null {
   const r = host.result;
   return r ? editedText(r.decompiled.verilog, keptPatches(host)) : null;

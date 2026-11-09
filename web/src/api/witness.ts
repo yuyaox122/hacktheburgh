@@ -45,7 +45,7 @@ export type AgentEvent =
   | ({ kind: "reading" } & Plain)
   | { kind: "error"; error: string };
 
-/** Interactive runs may refine up to 4 times; the frozen bench keeps the plan's 2 (decap/agent bench). */
+/** Interactive runs may refine up to 4 times; the frozen bench keeps the plan's 2 (agent/ bench). */
 const INTERACTIVE_REFINES = 2;   // the code reading always answers; the proof search is the bonus
 
 /** POST /witness/explain and read its Server-Sent Events as they arrive. `fresh` skips the server's run cache. */

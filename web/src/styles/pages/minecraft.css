@@ -1,4 +1,4 @@
-/* Minecraft page (#/minecraft). Its own file so it never collides with styles.css; uses the shared tokens. */
+/* Minecraft (#/minecraft): builds sidebar, page header, the 3D redstone view, levers and lamps. */
 .mc { height: 100%; display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: 0; }
 .mc-side { border-right: 1px solid var(--line); background: var(--panel); overflow: auto; min-height: 0; }
 .mc-side textarea { width: 100%; resize: vertical; min-height: 160px; background: var(--bg); border: 1px solid var(--line-2); border-radius: var(--r-sm);
@@ -16,20 +16,13 @@
 .mc-build i { color: var(--amber); font-style: normal; }
 
 .mc-main { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
-.mc-head { display: flex; gap: 10px 24px; flex-wrap: wrap; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--panel); min-height: 64px; }
-.mc-head .ttl { display: grid; gap: 5px; min-width: 0; }
-.mc-head h2 { font-size: 18px; }
-.mc-head .badges { display: flex; gap: 6px; flex-wrap: wrap; }
-.mc-head .chipstats { display: flex; gap: 20px; }
-.mc-head .chipstats span { display: grid; font-size: 11px; color: var(--muted); }
-.mc-head .chipstats b { font-family: var(--font-display); font-size: 17px; color: var(--fg); font-weight: 600; }
-.mc-head .grow { flex: 1; }
-.mc-head .acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .mc-view { position: relative; min-height: 0; }
+.mc-empty { position: absolute; inset: 0; z-index: 1; align-content: center; pointer-events: none; }
 .rs3d { position: absolute; inset: 0; }
 .rs3d canvas { width: 100%; height: 100%; display: block; }
 
 .mc-io { border-top: 1px solid var(--line); background: var(--panel); display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; padding: 12px 18px; max-height: 42vh; overflow: auto; }
+.mc-io:empty { display: none; }
 .mc-io .mc-note { grid-column: 1 / -1; }
 .mc-col { display: grid; gap: 6px; align-content: start; }
 .mc-col .acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }

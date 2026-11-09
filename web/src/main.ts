@@ -1,4 +1,4 @@
-// Decap web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare, #/minecraft), shared chrome, keyboard shortcuts.
+// bASIC web app: hash router (#/stage, #/wall, #/chip/<id>, #/compare, #/minecraft, #/verify), shared chrome, keyboard shortcuts.
 
 import "./styles/index.css";
 import { fixtureUsed, health, loadBench, loadDesign, loadStageIndex, onFixtureChange } from "./api/core";
@@ -104,7 +104,7 @@ async function route() {
     if (!stage) {
       const d = document.createElement("div");
       d.className = "empty";
-      d.innerHTML = `<h3>No chip layouts yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>decap/web</code> to build the 3D layouts from the Tiny Tapeout GDS files.</p>`;
+      d.innerHTML = `<h3>No chip layouts yet</h3><p>${esc(stageErr ?? "")}</p><p>Run <code>npm run stage-data</code> in <code>web/</code> to build the 3D layouts from the Tiny Tapeout GDS files.</p>`;
       show(d, true); return;
     }
     const s = stage;

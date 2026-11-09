@@ -1,5 +1,5 @@
 // Pure line bookkeeping for "Ideas" edits (no DOM, tested by a node script): kept edits are stored against the
-// decompiled lines as Decap wrote them ("original" numbers, which never change), while the agent sees and answers in
+// decompiled lines as bASIC wrote them ("original" numbers, which never change), while the agent sees and answers in
 // the current text (kept edits applied). These helpers apply the edits and map line numbers between the two.
 
 export type Range = [number, number];   // 1-based, inclusive

@@ -105,8 +105,8 @@ export class ChipPage {
     const variantNote = this.plantSource === "fixture" ? " (sample)" : this.plantSource === "preplanted" ? " (saved)" : "";
     this.el.classList.remove("show-author");
     this.el.innerHTML = `
-      <header class="chiphead">
-        <div class="ttlblock">
+      <header class="pagehead chiphead">
+        <div class="ttl">
           <h2>${esc(r.title || r.chip)} <small>${esc(r.chip)}</small></h2>
           <div class="badges">
             <span class="verdict ${r.verdict}" title="${esc(r.proof.detail ?? "")}">${verdictWord}</span>
@@ -296,7 +296,7 @@ export class ChipPage {
     if (!verilog) return;
     pendingBuild.req = {
       verilog, id: `${short}_${variant}${n != null ? `_${n}` : ""}`,
-      title: `${r.title || this.chip}: ${fixed ? `trigger ${n} removed by Fix` : variant === "planted" ? `with trigger ${n}` : "clean"}, decompiled by Decap`,
+      title: `${r.title || this.chip}: ${fixed ? `trigger ${n} removed by Fix` : variant === "planted" ? `with trigger ${n}` : "clean"}, decompiled by bASIC`,
       origin: { chip: this.chip, variant, n, operand: (plant as { operand?: string } | null | undefined)?.operand },
     };
     location.hash = "#/minecraft";

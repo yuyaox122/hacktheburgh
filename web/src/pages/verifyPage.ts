@@ -319,7 +319,7 @@ export const verifyPage = {
   el: root,
   mount(arg: string | null = null) {
     auto = arg === "auto";
-    if (!booted) booted = boot().catch((e) => { root.insertAdjacentHTML("beforeend", `<div class="vf-err">Couldn't load the CLA layout (${esc(String(e?.message ?? e))}). Run <code>npm run stage-data</code> in decap/web.</div>`); });
+    if (!booted) booted = boot().catch((e) => { root.insertAdjacentHTML("beforeend", `<div class="vf-err">Couldn't load the CLA layout (${esc(String(e?.message ?? e))}). Run <code>npm run stage-data</code> in web/.</div>`); });
     else view?.start();
     if (auto) void booted.then(() => setTimeout(() => { if (!running) { setStep(1); start(); } }, 1200));
     if (arg === "revb") void booted.then(() => setTimeout(() => { if (!running) { setStep(2); start(); } }, 1200));

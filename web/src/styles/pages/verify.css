@@ -1,4 +1,4 @@
-/* Verify page (#/verify): full-bleed 3D chip with glass panels over it. Uses the app's tokens from styles.css.
+/* Verify page (#/verify): full-bleed 3D chip with glass panels over it. Tokens only.
    Everything is scoped under .vf so nothing leaks into the other pages. */
 .vf { position: relative; height: 100%; overflow: hidden; }
 .vf-view { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, var(--bg-glow) 0%, var(--bg) 70%); }
