@@ -183,7 +183,6 @@ def build_investigator(model: Any = None) -> Agent[Deps, Report]:
         if ctx.deps.blocks and block not in ctx.deps.blocks:
             return {"error": f"no block {block}; known: {', '.join(list(ctx.deps.blocks)[:30])}"}
         ctx.deps.explains += 1
-        from .witness import explain_region
         try:
             return await _explain_block(ctx, block)
         except Exception as e:   # one bad block must not abort the whole investigation

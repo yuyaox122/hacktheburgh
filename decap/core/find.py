@@ -15,9 +15,8 @@ import random
 import re
 import time
 
-from . import lib, netlist, pipeline, prove
+from . import lib, netlist, prove
 from .netlist import Inst, Netlist
-from .sim import Sim
 
 FLAG_K = 8
 

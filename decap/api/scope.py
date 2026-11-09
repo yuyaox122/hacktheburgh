@@ -5,8 +5,7 @@ A tool that accepts `scope` only works inside that region; results carry `touche
 
 Blindness: `touched.cells` are the core's hashed cell ids (`c<k>`), never original instance names. Original
 names would leak the planted trigger (find.plant names inserted cells `_9101_`, `_9138_`…, outliers next to a
-chip's `_16_`…`_41_`). The web app maps ids to instance names (= GDS property 61) through the hidden
-`/api/chips/{chip}/cell-names` route, which is not an agent tool.
+chip's `_16_`…`_41_`). The web app's layout data (ingest_gds.py) is keyed by the same ids.
 """
 from __future__ import annotations
 

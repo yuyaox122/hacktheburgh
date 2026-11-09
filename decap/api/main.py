@@ -174,10 +174,6 @@ class TriggersIn(BaseModel):
     scope: Scope = Field(default_factory=Scope, description="Only hunt inside this region (empty = whole chip).")
 
 
-class CellNamesIn(BaseModel):
-    cells: list[str] = Field(default_factory=list)
-
-
 class PlantIn(BaseModel):
     n: int = Field(ge=0, le=255, description="The secret 8-bit value the hidden trigger waits for (0-255).")
 
@@ -219,14 +215,6 @@ def resolve_scope(chip: str, body: ScopeIn = Body(default_factory=ScopeIn)) -> d
     if cells is None:
         cells = {i.id for i in v.nl.insts}
     return {"chip": chip, "scope": body.scope.model_dump(), "touched": touched(v, cells)}
-
-
-@app.post("/api/chips/{chip}/cell-names", operation_id="cell_names", include_in_schema=False)
-def cell_names(chip: str, body: CellNamesIn = Body(default_factory=CellNamesIn)) -> dict:
-    """Web app only (not an agent tool): cell ids -> original instance names (= GDS property 61) for 3D highlights.
-    Hidden from agents because original names would leak which cells were planted."""
-    v = _get(chip)
-    return {c: v.nl._orig.get(c) for c in body.cells}
 
 
 @app.post("/api/chips/{chip}/strip", operation_id="strip_names")

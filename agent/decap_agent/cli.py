@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("stream", help="serve a transcript to the UI")
     s.add_argument("file")
     s.add_argument("--port", type=int, default=8790)
-    stt = sub.add_parser("status", help="list agent sessions (running first, then recent done)")
+    sub.add_parser("status", help="list agent sessions (running first, then recent done)")
     lg = sub.add_parser("log", help="print or follow a session's transcript")
     lg.add_argument("session_id")
     lg.add_argument("-f", "--follow", action="store_true", help="follow append-only until the run ends")
