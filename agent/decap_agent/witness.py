@@ -31,8 +31,9 @@ from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.usage import UsageLimits
 
+from decap.core.claim_expr import expand_temps, fix_mux_precedence, temp_defs, temps_used
+
 from . import lifecycle
-from .claim_expr import expand_temps, fix_mux_precedence, temp_defs, temps_used
 from .transcript import Transcript, result_payload
 
 DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"

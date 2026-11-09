@@ -2,10 +2,10 @@
 
 A claim is a Verilog expression over the chip's ports, flip-flops (q_<cell id>) and the decompiler's register
 names (aliases for their flip-flops), with next(x) = x one clock later and 'A when B' = B -> A. The grammar and
-the code-written English are Ian's (decap/agent/decap_agent/claim_expr.py, stub_witness.english), imported here so
-the agent, its stub, its fallback and this checker read every claim the same way.
+the code-written English are Ian's (core/claim_expr.py), shared with the agent, its stub and its fallback so all
+of them read every claim the same way.
 
-Setup (docs/decap/witness-plan.md): rst_n = 1, ena = 1, registers free. Every flip-flop is cut: its Q
+Setup (docs/archive/research/witness-plan.md): rst_n = 1, ena = 1, registers free. Every flip-flop is cut: its Q
 becomes a free input q_<id>, and next(q_<id>) is its next-state function (D, enable, scan, clear/preset)
 evaluated on the same inputs. So "proven" means: for EVERY input and EVERY register value, one clock step.
 
@@ -26,19 +26,14 @@ import dataclasses
 import hashlib
 import re
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
 
 from . import lib
+from .claim_expr import (SHAPES, ClaimSyntaxError, Evaluator, Node, _has_op, english, literals, names, output_bits, parse,
+                         ref_bits, unparse)
 from .prove import gate_verilog
-
-_AGENT = Path(__file__).resolve().parents[2] / "agent"   # Ian's package, importable as decap_agent (pure stdlib modules)
-if str(_AGENT) not in sys.path:
-    sys.path.append(str(_AGENT))
-from decap_agent.claim_expr import ClaimSyntaxError, Evaluator, Node, literals, names, output_bits, parse, ref_bits, unparse  # noqa: E402
-from decap_agent.stub_witness import SHAPES, _has_op, english  # noqa: E402
 
 FIXED = {"rst_n": 1, "ena": 1}
 BMC_STEPS = 30

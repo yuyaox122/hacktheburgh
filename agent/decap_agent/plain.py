@@ -208,7 +208,7 @@ block". Never use: crucial, essentially, simply, seamlessly, robust, intricate, 
 
 
 def _code_material(chip: str, region: dict, defs: dict[str, str], blocks: list[dict] | None) -> str:
-    from .claim_expr import temps_used
+    from decap.core.claim_expr import temps_used
     focus = [f for f in region.get("focus") or [] if isinstance(f, dict)]
     lines = [f"Chip: {chip}",
              "Inputs: " + ", ".join(f"{i['name']}[{i.get('width', 1)}] ({i.get('kind')})" for i in region.get("inputs", [])),
@@ -258,7 +258,7 @@ async def explain_code(chip: str, region: dict, *, defs: dict[str, str] | None =
 async def reading_for_scope(client, chip: str, scope: dict, model: Any = None) -> dict | None:
     """Fetch the region, the decompiled Verilog (helper wires + its proof verdict) and the block list, then read it."""
     try:
-        from .claim_expr import temp_defs
+        from decap.core.claim_expr import temp_defs
         from .transcript import result_payload
 
         async def look(tool: str, **args):

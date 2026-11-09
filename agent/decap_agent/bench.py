@@ -228,8 +228,8 @@ def _replay_cex(e: dict) -> bool | None:
     there, so a sampling miss is a genuine miss. False: the two models disagree (not a fair comparison)."""
     from decap.api.main import _get
     from decap.api.scope import Model, model
-    from .claim_expr import Evaluator, parse
-    from .claim_expr import names as claim_names
+    from decap.core.claim_expr import Evaluator, parse
+    from decap.core.claim_expr import names as claim_names
     cex = e.get("counterexample") or {}
     try:
         m = model(_get(e["chip"]))

@@ -23,7 +23,8 @@ from fastmcp import Client, FastMCP
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-from .claim_expr import ClaimSyntaxError, Evaluator, names, parse
+from decap.core.claim_expr import ClaimSyntaxError, Evaluator, names, parse
+
 from .transcript import Transcript, result_payload
 
 DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"

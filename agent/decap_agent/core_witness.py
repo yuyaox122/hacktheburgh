@@ -21,8 +21,8 @@ from pydantic import Field
 from decap.api.main import ScopeIn, _get, app  # noqa: F401  (re-exported: DECAP_CORE_APP=decap_agent.core_witness:app)
 from decap.api.scope import DECOMPILER, FIXED, Model, model, netlist_sha, region_of
 
-from .claim_expr import ClaimSyntaxError, Evaluator, is_complete, literals, names, output_bits, parse, ref_bits, unparse
-from .stub_witness import SHAPES, _has_op, english
+from decap.core.claim_expr import (SHAPES, ClaimSyntaxError, Evaluator, _has_op, english, is_complete, literals, names,
+                                   output_bits, parse, ref_bits, unparse)
 
 SOURCE = "fallback-sim"
 

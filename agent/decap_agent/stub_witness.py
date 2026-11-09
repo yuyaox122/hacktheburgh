@@ -18,7 +18,8 @@ from __future__ import annotations
 import itertools
 import random
 
-from .claim_expr import ClaimSyntaxError, Evaluator, Node, is_complete, literals, names, output_bits, parse, unparse
+from decap.core.claim_expr import (SHAPES, ClaimSyntaxError, Evaluator, _has_op, english, is_complete, literals, names,
+                                   output_bits, parse, unparse)
 
 SOURCES = {"en": 1, "ui_in": 8, "count": 8}
 FLOPS = [f"q_ff_{k}" for k in range(8)]
@@ -34,8 +35,6 @@ REGION = {
     "c2": {"inputs": ["ui_in"], "outputs": ["uo_out[0]"], "literals": 16,
            "focus": ["assign uo_out[0] = uo_out[1] | trig;  // trig: an 8-input AND tree over ui_in"]},
 }
-SHAPES = {"adder": ("+", "-"), "incrementer": ("+",), "counter": ("+",), "comparator": ("==", "!=", "<", "<=", ">", ">="),
-          "mux": ("?:",), "decoder": ("==",), "constant": ()}
 
 
 def _deps(kind: str, name: str, planted: bool) -> set[str]:
@@ -65,42 +64,6 @@ def chip_values(src: dict[str, int], n: int | None) -> dict:
 def _assignments(srcs: list[str]):
     for vals in itertools.product(*[range(1 << SOURCES[s]) for s in srcs]):
         yield dict(zip(srcs, vals))
-
-
-def _english(n: Node) -> str:
-    op, a = n.op, n.args
-    if op == "num":
-        return str(n.value)
-    if op in ("sig", "next"):
-        base = n.name if n.hi is None else (f"bit {n.hi} of {n.name}" if n.hi == n.lo else f"bits {n.hi}..{n.lo} of {n.name}")
-        return f"{base} after the next clock" if op == "next" else base
-    if op == "->":
-        return f"whenever {_english(a[0])}, {_english(a[1])}"
-    if op == "?:":
-        return f"({_english(a[1])} if {_english(a[0])}, otherwise {_english(a[2])})"
-    if op == "u!":
-        return f"not ({_english(a[0])})"
-    if op == "u~":
-        return f"the inverse of {_english(a[0])}"
-    if op == "u-":
-        return f"minus {_english(a[0])}"
-    if op in ("r&", "r|", "r^"):
-        return {"r&": "all bits of {} are 1", "r|": "some bit of {} is 1", "r^": "{} has an odd number of 1s"}[op].format(_english(a[0]))
-    if op == "{}":
-        return "the bits " + ", ".join(_english(x) for x in a) + " joined"
-    words = {"==": "equals", "!=": "differs from", "<": "is less than", "<=": "is at most", ">": "is more than",
-             ">=": "is at least", "+": "plus", "-": "minus", "*": "times", "&&": "and", "||": "or", "&": "and",
-             "|": "or", "^": "xor", "<<": "shifted left by", ">>": "shifted right by"}
-    return f"{_english(a[0])} {words[op]} {_english(a[1])}"
-
-
-def english(n: Node) -> str:
-    s = _english(n)
-    return s[0].upper() + s[1:] + "."
-
-
-def _has_op(n: Node, ops) -> bool:
-    return n.op in ops or any(_has_op(x, ops) for x in n.args)
 
 
 def get_region(cones: list[str]) -> dict:
