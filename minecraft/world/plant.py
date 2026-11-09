@@ -1,9 +1,9 @@
 """Plant a hardware trojan in a netlist: `if (ui_in == N) <target> |= 1`, built from SKY130 cells (like Decap's /plant)."""
 from __future__ import annotations
 
-import cells as lib
-import logic
-from netlist import Cell, Netlist
+from . import logic
+from ..common import cells as lib
+from ..common.netlist import Cell, Netlist
 
 PREFIX = "trojan_"
 
@@ -23,7 +23,7 @@ def pick_target(nl: Netlist, n: int) -> str:
 
 def plant(nl: Netlist, n: int, target: str | None = None) -> tuple[str, list[str]]:
     target = target or pick_target(nl, n)
-    lib.fetch({"inv_1", "and4_1", "and2_1", "or2_1"})
+    lib.fetch_types({"inv_1", "and4_1", "and2_1", "or2_1"})
     pre = f"{target}__pre"
     for c in nl.logic:                                 # the original driver now drives an internal net
         for p in lib.cell(c.type).outputs:

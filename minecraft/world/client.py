@@ -1,6 +1,7 @@
 """Launch the installed Minecraft 1.21.11 client straight into the local server (offline name "Decap"), for screenshots.
 
-    python client.py            # needs 1.21.11 installed once through the official launcher
+    python -m minecraft.world.client           # joins 127.0.0.1:25565; needs 1.21.11 installed once (official launcher)
+    python -m minecraft.world.client <world>   # or opens a world from saves/ (Windows: uses %APPDATA%/.minecraft)
 """
 from __future__ import annotations
 
@@ -10,9 +11,10 @@ import sys
 import subprocess
 from pathlib import Path
 
-from server import java
+from . import OUT
+from ..common.server import java
 
-MC = Path(os.environ["APPDATA"]) / ".minecraft"
+MC = Path(os.environ.get("APPDATA", "")) / ".minecraft"     # Windows
 VER = "1.21.11"
 
 
@@ -45,7 +47,7 @@ def main():
             "--userType", "legacy", "--versionType", "release", "--width", "1600", "--height", "900",
             *(["--quickPlaySingleplayer", sys.argv[1]] if len(sys.argv) > 1   # a world in saves/
               else ["--quickPlayMultiplayer", "127.0.0.1:25565"])]
-    subprocess.Popen(args, cwd=MC, stdout=open(Path(__file__).parent / "out" / "client.log", "w"), stderr=subprocess.STDOUT)
+    subprocess.Popen(args, cwd=MC, stdout=open(OUT / "client.log", "w"), stderr=subprocess.STDOUT)
     print("client starting")
 
 

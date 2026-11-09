@@ -1,6 +1,6 @@
 """Drive the in-game chip over RCON and compare it with the Python reference simulator (and an optional intent).
 
-    python check.py tt_um_Electom_cla_4bits -n 40
+    python -m minecraft.world.check tt_um_Electom_cla_4bits -n 40    # server running, decap:build done
 """
 from __future__ import annotations
 
@@ -9,13 +9,11 @@ import json
 import random
 import re
 import time
-from pathlib import Path
 
-import logic
-import netlist as nlmod
-from server import rcon
-
-ROOT = Path(__file__).resolve().parent
+from . import OUT, logic, plant
+from ..common.fetch import netlist_path
+from ..common.netlist import parse
+from .server import rcon
 
 INTENT = {   # optional end-to-end oracle per chip: inputs dict -> expected outputs dict
     "tt_um_Electom_cla_4bits": lambda v: (lambda s: {f"uo_out[{k}]": (s >> k) & 1 for k in range(5)})(
@@ -28,10 +26,9 @@ def main():
     ap.add_argument("chip")
     ap.add_argument("-n", type=int, default=30)
     a = ap.parse_args()
-    meta = json.loads((ROOT / "out" / a.chip / "meta.json").read_text())
-    nl = nlmod.parse(ROOT / "data" / a.chip / f"{a.chip}.v")
+    meta = json.loads((OUT / a.chip / "meta.json").read_text())
+    nl = parse(netlist_path(a.chip))
     if meta.get("plant"):
-        import plant
         plant.plant(nl, meta["plant"]["n"], meta["plant"]["target"])
     prog = logic.build(nl)
     y, pz = meta["y0"], meta["panel_z"]

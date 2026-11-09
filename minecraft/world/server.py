@@ -1,24 +1,22 @@
-"""Headless vanilla 1.21.11 server for building and testing the chip world, plus a tiny RCON client.
+"""The world server (a grass field, RCON on 25575) for building and testing the chip world.
 
-    python server.py setup <chip>      # server/ dir, superflat world, datapack installed
-    python server.py run               # run the server (blocking; start it in the background)
-    python server.py rcon "<command>"  # run one command
-    python server.py export <name>     # copy the built world into your Minecraft saves as <name>
+    python -m minecraft.world.server setup <chip>      # minecraft/server/world/, superflat world, datapack installed
+    python -m minecraft.world.server run               # run the server (blocking; start it in the background)
+    python -m minecraft.world.server rcon "<command>"  # run one command
+    python -m minecraft.world.server export <name>     # copy the built world into your Minecraft saves as <name>
 """
 from __future__ import annotations
 
 import os
 import shutil
-import socket
-import struct
-import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-SRV = ROOT / "server"
-TOOLS = ROOT / "tools"
-JAR = TOOLS / "server-1.21.11.jar"
+from . import OUT
+from ..common.datapack import install
+from ..common.rcon import Rcon
+from ..common.server import SERVERS, Server
+
 PASSWORD = "decap"
 PORT = 25575
 
@@ -33,73 +31,25 @@ PROPS = {
     "motd": "Decap chip in Minecraft", "enable-command-block": "true", "pause-when-empty-seconds": "0",
     "function-permission-level": "4",   # functions may use /tick sprint (redstone settle/clock_fast)
 }
-
-
-def java() -> str:
-    for p in TOOLS.glob("jdk-21*/bin/java.exe"):
-        return str(p)
-    return "java"
+SERVER = Server(dir=SERVERS / "world", props=PROPS, port=PORT, password=PASSWORD, xmx="3G")
+SRV = SERVER.dir
 
 
 def setup(chip: str) -> None:
-    SRV.mkdir(exist_ok=True)
-    (SRV / "eula.txt").write_text("eula=true\n")
-    (SRV / "server.properties").write_text("".join(f"{k}={v}\n" for k, v in PROPS.items()))
-    dst = SRV / "world" / "datapacks" / "decap_chip"
-    if dst.exists():
-        shutil.rmtree(dst)
-    shutil.copytree(ROOT / "out" / chip / "decap_chip", dst)
-    print("ready:", dst)
+    SERVER.setup()
+    print("ready:", install(OUT / chip / "decap_chip", SRV / "world"))
 
 
-def run() -> None:
-    os.chdir(SRV)
-    subprocess.run([java(), "-Xmx3G", "-jar", str(JAR), "nogui"])
-
-
-class Rcon:
+def connect() -> Rcon:
     """A persistent RCON connection (camera paths send a command every tick)."""
-
-    def __init__(self):
-        self.s = socket.create_connection(("127.0.0.1", PORT), timeout=30)
-        self.k = 1
-        self._send(3, PASSWORD)
-        if self._recv()[0] == -1:
-            raise SystemExit("rcon auth failed")
-
-    def _send(self, typ, body):
-        b = body.encode() + b"\x00\x00"
-        self.k += 1
-        self.s.sendall(struct.pack("<iii", len(b) + 8, self.k, typ) + b)
-
-    def _recv(self):
-        n = struct.unpack("<i", _read(self.s, 4))[0]
-        d = _read(self.s, n)
-        return struct.unpack("<ii", d[:8])[0], d[8:-2].decode(errors="replace")
-
-    def __call__(self, cmd: str) -> str:
-        self._send(2, cmd)
-        return self._recv()[1]
-
-    def close(self):
-        self.s.close()
+    return SERVER.rcon(timeout=30).connect()
 
 
 def rcon(*cmds: str) -> list[str]:
-    r = Rcon()
+    r = connect()
     out = [r(c) for c in cmds]
     r.close()
     return out
-
-
-def _read(s, n):
-    b = b""
-    while len(b) < n:
-        x = s.recv(n - len(b))
-        if not x:
-            raise ConnectionError("rcon closed")
-        b += x
-    return b
 
 
 def export(name: str) -> None:
@@ -116,7 +66,7 @@ if __name__ == "__main__":
     if cmd == "setup":
         setup(sys.argv[2])
     elif cmd == "run":
-        run()
+        SERVER.run()
     elif cmd == "rcon":
         for r in rcon(*sys.argv[2:]):
             print(r)

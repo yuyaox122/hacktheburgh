@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import cells as lib
-from netlist import Cell, Netlist
+from ..common import cells as lib
+from ..common.netlist import Cell, Netlist
 
 OBJ = "chip"
 
@@ -45,8 +45,7 @@ def build(nl: Netlist) -> Program:
             if p in c.pins:
                 driver[c.pins[p]] = (c, p)
     used = {n for c in logic for p, n in c.pins.items() if p in lib.cell(c.type).inputs}
-    from netlist import port_bits
-    inputs = [b for b in port_bits(nl, "in") if b in used]
+    inputs = [b for b in nl.bits("in") if b in used]
     flops = [c for c in logic if lib.cell(c.type).ff]
     comb = [c for c in logic if not lib.cell(c.type).ff]
     const = {"0", "1"}
@@ -59,7 +58,7 @@ def build(nl: Netlist) -> Program:
                 for p in d.outputs:
                     if p in c.pins and c.pins[p] not in const:
                         const.add(c.pins[p]); changed = True
-    outputs = [b for b in port_bits(nl, "out") if _resolve(nl, b) in driver and _resolve(nl, b) not in const]
+    outputs = [b for b in nl.bits("out") if _resolve(nl, b) in driver and _resolve(nl, b) not in const]
     known = set(inputs) | {"0", "1"} | {c.pins[p] for c in flops for p in lib.cell(c.type).outputs if p in c.pins}
     known |= {n for n in used if n not in driver}            # undriven nets read as 0
     order, pending, cut = [], list(comb), []
