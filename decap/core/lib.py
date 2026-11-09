@@ -3,15 +3,21 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-PDK = ROOT / "data" / "pdk"
+from ..paths import PDK
+
 PREFIX = "sky130_fd_sc_hd__"
 PHYSICAL = re.compile(r"^(fill|decap|tapvpwrvgnd|tap|diode|fakediode)_")
 PG = ["VGND", "VNB", "VPB", "VPWR"]
+TT_REPO = "TinyTapeout/tinytapeout-08"   # the chips' netlists, info.yaml and GDS
+# Cells for planting triggers (find.plant) and for synthesising imported designs (compare.synthesise): always fetched.
+# The order is the order of the Liberty file Yosys maps against.
+SYNTH_CELLS = ["inv_1", "buf_1", "and2_1", "and3_1", "and4_1", "or2_1", "or3_1", "or4_1", "nand2_1", "nand3_1", "nor2_1",
+               "nor3_1", "xor2_1", "xnor2_1", "mux2_1", "a21oi_1", "a21o_1", "o21ai_0", "o21a_1", "a22o_1", "o22a_1",
+               "and2b_1", "or2b_1", "nand2b_1", "nor2b_1", "a211oi_1", "o211ai_1", "dfrtp_1", "dfxtp_1", "dfstp_2", "conb_1"]
 
 # ---------- boolean expressions: ("var", name) | ("const", 0/1) | ("not", e) | ("and", [e…]) | ("or", [e…]) | ("xor", [e…]) | ("mux", s, a1, a0)
 
@@ -164,7 +170,7 @@ def cell(name: str) -> Cell:
     f = PDK / f"{name}.json"
     if PHYSICAL.match(name) or not f.exists():
         if not PHYSICAL.match(name):
-            raise FileNotFoundError(f"no Liberty JSON for {name} (run python -m ingest.fetch)")
+            raise FileNotFoundError(f"no Liberty JSON for {name} (run python -m decap.ingest.fetch)")
         return Cell(name, base, [], {}, 0.0, physical=True)
     d = json.loads(f.read_text())
     pins = {k[4:]: v for k, v in d.items() if k.startswith("pin,")}
@@ -207,3 +213,17 @@ def yosys_models(types: list[str]) -> str:
             body += [f"  assign {p} = {c.fn_text[p].replace('!', '~')};" for p in c.outputs]
         out.append(f"module {PREFIX}{t}({', '.join(ports)});\n" + "\n".join(body) + "\nendmodule\n")
     return "\n".join(out)
+
+
+def cell_models(netlist_text: str) -> str:
+    """cells.v for reading a gate-level netlist with Yosys: a model of every SKY130 HD cell it uses, plus an empty
+    stub for each cell from another SKY130 library (e.g. sky130_ef_sc_hd__decap: no logic)."""
+    types = sorted(set(re.findall(r"\b" + PREFIX + r"([a-z0-9_]+)\b", netlist_text)))
+    other = sorted(set(re.findall(r"\b(sky130_(?!fd_)[a-z]+_sc_hd__[a-z0-9_]+)\b", netlist_text)))
+    stubs = "".join(f"module {o}(input VGND, input VNB, input VPB, input VPWR);\nendmodule\n" for o in other)
+    return yosys_models(types) + stubs
+
+
+def yosys(*args: str, timeout: float | None = None) -> subprocess.CompletedProcess:
+    """Run Yosys with these arguments, output captured as text. Raises subprocess.TimeoutExpired."""
+    return subprocess.run(["yosys", *args], capture_output=True, text=True, timeout=timeout)

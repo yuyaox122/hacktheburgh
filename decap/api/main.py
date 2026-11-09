@@ -2,53 +2,32 @@
 
 Two audiences, one app:
 - the web app, through the routes in decap/CONTRACTS.md §4 (`/api/bench`, `/api/chip/…`, `/api/plant`, …);
-- AI agents, through the routes under `/api/chips/…`. Ian's agent layer (decap/agent) turns every route into an
+- AI agents, through the routes under `/api/chips/…`. Ian's agent layer (agent/decap_agent) turns every route into an
   MCP tool: operation_id = tool name, docstring = what the agent reads. Bodies use Body(default_factory=…)
   (an Optional body makes FastMCP drop its arguments).
 
-Run:  cd decap && .venv/bin/uvicorn api.main:app --port 8000
-      (or from the repo root: DECAP_CORE_APP=decap.api.main:app for the agent layer)
+Run (repo root, after `uv venv && uv pip install -e .`):  .venv/bin/uvicorn decap.api.main:app --port 8000
+The agent layer serves the same app to agents with DECAP_CORE_APP=decap.api.main:app.
 """
 from __future__ import annotations
 
 import json
 import shutil
-import sys
-from pathlib import Path
 from typing import Literal
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from ..env import load_env_file
+from ..paths import BENCH_JSON, ENV_FILE
 
-
-def _load_env_file(path: Path) -> None:
-    """Read KEY=VALUE lines from decap/.env (gitignored) into the environment, without overriding real env vars.
-    This is where the AI key lives (ANTHROPIC_API_KEY) for the guide and the agent layer. Never commit it."""
-    if not path.is_file():
-        return
-    import os
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k, v = k.strip().removeprefix("export ").strip(), v.strip().strip('"').strip("'")
-        if k and v:
-            os.environ.setdefault(k, v)
-
-
-_load_env_file(ROOT / ".env")
+# decap/.env (gitignored) holds the AI key (ANTHROPIC_API_KEY) for the guide and the agent layer; real env vars win.
+# Loaded before the core is imported, so the guide sees it. Never commit it.
+load_env_file(ENV_FILE)
 
 from fastapi import Body, FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from core import claims, compare, guide, service  # noqa: E402
-
+from ..core import claims, compare, find, guide, service  # noqa: E402
 from .scope import Scope, ScopeIn, probe, public, region_of, resolve, touched  # noqa: E402  (region scope for agent tools)
-
-OUT = ROOT / "out"
 
 app = FastAPI(title="Decap core", version="1.0.0",
               description="Decap turns a chip's gate-level netlist back into readable Verilog and proves it equal with Yosys.")
@@ -97,10 +76,9 @@ def health() -> dict:
 def bench() -> dict:
     """The benchmark: every chip in the frozen dev/test split with its proof verdict, block coverage, line counts
     (decompiled vs the author's source) and the planted-trigger test. 'summary.test' is the held-out headline."""
-    p = OUT / "bench.json"
-    if not p.exists():
-        raise HTTPException(404, "no benchmark yet: run `python -m bench.run`")
-    return json.loads(p.read_text())
+    if not BENCH_JSON.exists():
+        raise HTTPException(404, "no benchmark yet: run `python -m decap.bench.run`")
+    return json.loads(BENCH_JSON.read_text())
 
 
 @app.get("/api/chip/{chip}", operation_id="chip_result", include_in_schema=False)
@@ -196,10 +174,6 @@ class TriggersIn(BaseModel):
     scope: Scope = Field(default_factory=Scope, description="Only hunt inside this region (empty = whole chip).")
 
 
-class CellNamesIn(BaseModel):
-    cells: list[str] = Field(default_factory=list)
-
-
 class PlantIn(BaseModel):
     n: int = Field(ge=0, le=255, description="The secret 8-bit value the hidden trigger waits for (0-255).")
 
@@ -218,9 +192,8 @@ def list_chips() -> list[dict]:
     """List the chips Decap can read: real Tiny Tapeout 08 chips (split 'dev' or held-out 'test'), the warm-up chip,
     and any copies with a planted trigger (ids like 'tt_um_mac+t137'). Includes each chip's verdict when benchmarked."""
     rows = {}
-    bp = OUT / "bench.json"
-    if bp.exists():
-        for r in json.loads(bp.read_text())["chips"]:
+    if BENCH_JSON.exists():
+        for r in json.loads(BENCH_JSON.read_text())["chips"]:
             rows[r["chip"]] = {"chip": r["chip"], "title": r.get("title"), "split": r["split"], "logic_cells": r.get("logic_cells"),
                                "verdict": r.get("verdict"), "coverage_pct": r.get("coverage_pct")}
     for c in service.known_chips():
@@ -242,14 +215,6 @@ def resolve_scope(chip: str, body: ScopeIn = Body(default_factory=ScopeIn)) -> d
     if cells is None:
         cells = {i.id for i in v.nl.insts}
     return {"chip": chip, "scope": body.scope.model_dump(), "touched": touched(v, cells)}
-
-
-@app.post("/api/chips/{chip}/cell-names", operation_id="cell_names", include_in_schema=False)
-def cell_names(chip: str, body: CellNamesIn = Body(default_factory=CellNamesIn)) -> dict:
-    """Web app only (not an agent tool): cell ids -> original instance names (= GDS property 61) for 3D highlights.
-    Hidden from agents because original names would leak which cells were planted."""
-    v = _get(chip)
-    return {c: v.nl._orig.get(c) for c in body.cells}
 
 
 @app.post("/api/chips/{chip}/strip", operation_id="strip_names")
@@ -345,7 +310,6 @@ def find_rare_triggers(chip: str, body: TriggersIn = Body(default_factory=Trigge
     v = _get(chip)
     fl = v.result["flags"]
     if body.max_rate_log2 != 8:
-        from core import find
         fl = service.public(find.flags(v.dec, v.res, k=body.max_rate_log2))
     region = resolve(v, body.scope)
     if region is not None:
@@ -363,7 +327,7 @@ def plant_trigger(chip: str, body: PlantIn) -> dict:
     """Hide a trigger for the secret value N in a copy of the chip: `output_bit |= (ui_in == N)`, built from real
     SKY130 cells and spliced into the netlist, then re-read with fresh names so nothing marks the new cells.
     Returns the new chip id (e.g. 'tt_um_mac+t137') to use with the other tools."""
-    if "+t" in chip:
+    if service.parse_id(chip)[1] is not None:
         raise HTTPException(400, "plant into a clean chip")
     _get(chip)
     v = service.plant(chip, body.n)

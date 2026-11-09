@@ -1,0 +1,243 @@
+/* Witness agent layer: line toolbar, threads, edits, the Agent drawer and its terminal. Tokens only: semantic colours
+   for verdicts, accent for the agent's live/working state, blue (--fall) for accepted agent edits. */
+
+/* ---------- hover toolbar on a decompiled line ---------- */
+.ag-hover { position: fixed; z-index: 25; display: flex; gap: 1px; background: var(--line-2); border: 1px solid var(--line-2);
+  border-radius: var(--r-sm); overflow: hidden; box-shadow: var(--shadow-md); opacity: 0; pointer-events: none;
+  transform: translateY(2px); transition: opacity .12s, transform .12s; }
+.ag-hover.on { opacity: 1; pointer-events: auto; transform: none; }
+.ag-hover button { background: var(--panel-2); border: 0; padding: 4px 11px; font-size: 12px; font-weight: 500; color: var(--fg); }
+.ag-hover button:hover:not(:disabled) { background: var(--panel-3); color: var(--accent); }
+.ag-hover button:disabled { color: var(--faint); cursor: default; }
+.ag-hover button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---------- gutter marks from finished runs ---------- */
+ol.code li.ag-v-ok .n { color: var(--add); }
+ol.code li.ag-v-bad .n { color: var(--del); }
+ol.code li.ag-v-warn .n { color: var(--amber); }
+ol.code li.ag-v-ok .n::after, ol.code li.ag-v-bad .n::after, ol.code li.ag-v-warn .n::after {
+  content: ""; position: absolute; left: 34px; top: 50%; width: 5px; height: 5px; margin-top: -2px; border-radius: 50%; background: currentColor; }
+ol.code li.ag-replaced { display: none; }
+ol.code li.ag-orig-shown .t { text-decoration: line-through; color: var(--muted); }
+.ag-cbub { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); min-width: 18px; height: 16px; padding: 0 5px;
+  border-radius: var(--r-sm); background: var(--accent); color: var(--accent-ink); font: 600 10.5px/16px var(--font-body); text-align: center; }
+
+/* ---------- rows inserted under lines (threads, edits) ---------- */
+ol.code li.ag-row { display: block; white-space: normal; cursor: default; padding: 8px 12px 10px 54px; font-family: var(--font-body);
+  font-size: 13px; line-height: 1.5; background: var(--panel); border-block: 1px solid var(--line); }
+ol.code li.ag-row:hover { background: var(--panel); }
+/* the code list's wrap mode (pre-wrap) and last-cell alignment (justify-self: end) must not reach these rows */
+body:not(.nowrap) ol.code li.ag-row, body.nowrap ol.code li.ag-row { white-space: normal; }
+ol.code li.ag-row > :last-child { justify-self: auto; }
+.ag-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.ag-actions label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.ag-actions .grow { flex: 1; }
+.ag-tag { font: 600 10.5px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ag-edit-h, .ag-att-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ag-diff, .ag-code { margin-top: 6px; font: 12.5px/1.65 var(--font-mono); white-space: pre; overflow-x: auto; border-radius: var(--r-sm); border: 1px solid var(--line); }
+.ag-diff > div { padding: 0 10px; }
+.ag-diff .del { background: color-mix(in srgb, var(--del) 10%, transparent); color: var(--muted); }
+.ag-diff .del > span:first-child, .ag-diff .add > span:first-child { display: inline-block; width: 16px; color: var(--faint); user-select: none; }
+.ag-diff .add { background: color-mix(in srgb, var(--add) 12%, transparent); }
+ol.code li.ag-edit.accepted { border-left: 3px solid var(--fall); padding-left: 51px; background: color-mix(in srgb, var(--fall) 6%, var(--panel)); }
+.ag-edit.accepted .ag-code { border: 0; margin: 0 0 2px; padding: 0; overflow-x: auto; }
+.ag-edit.accepted .ag-tag { color: var(--fall); }
+
+/* comment threads (claude.ai-style cards) */
+.ag-cm { display: grid; gap: 4px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--panel-2); border: 1px solid var(--line); margin-bottom: 6px; max-width: 760px; }
+.ag-cm.agent { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.ag-cm-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.ag-cm-h time { color: var(--faint); font-size: 11px; }
+.ag-cm p { margin: 0; }
+.ag-claim { display: block; font: 12.5px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 8px; }
+.ag-compose { display: grid; gap: 6px; max-width: 760px; }
+.ag-compose textarea { width: 100%; resize: vertical; font: 13px/1.5 var(--font-body); }
+.ag-cex { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ag-cex code { font: 12px/1.4 var(--font-mono); padding: 2px 6px; border-radius: var(--r-xs); border: 1px solid color-mix(in srgb, var(--del) 40%, transparent);
+  background: color-mix(in srgb, var(--del) 8%, transparent); font-variant-numeric: tabular-nums; }
+.ag-lbl { font: 600 10.5px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--del); }
+
+/* Ideas threads: idea cards with a diff and Apply; applied ideas wait under their lines for Yosys, then Keep / Undo */
+.ag-ideas > .ag-edit-h { margin-bottom: 6px; }
+.ag-ideas-list { display: grid; gap: 8px; margin-top: 4px; }
+.ag-idea { display: grid; gap: 4px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--panel); border: 1px solid var(--line); }
+.ag-idea p, .ag-review p { margin: 0; }
+.ag-idea .ag-actions { margin-top: 2px; }
+.ag-intent { font: 600 10.5px/1 var(--font-body); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: var(--r-pill);
+  border: 1px solid var(--line-2); color: var(--muted); }
+.ag-intent.change { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.ag-cm.err { border-color: color-mix(in srgb, var(--del) 45%, var(--line)); }
+.ag-cm.err p { color: var(--fg); }
+ol.code li.ag-edit.ag-review { border-left: 3px solid var(--accent); padding-left: 51px; }
+ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
+.ag-review > [role=status] > p, .ag-review > [role=status] > .ag-cex, .ag-review > [role=status] > .callout { margin-top: 6px; max-width: 760px; }
+.ag-detail { font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+.ag-busy { color: var(--muted); }
+.ag-diff .add.muted { color: var(--faint); }
+
+/* ---------- agent drawer ---------- */
+.ag-drawer { width: min(480px, 100%); }
+/* The whole drawer scrolls as one (header pinned), so a long terminal answer never squeezes the explanations below it. */
+.drawer.ag-drawer { overflow-y: auto; overscroll-behavior: contain; }
+.ag-drawer > * { flex-shrink: 0; }
+.ag-drawer > .pane-h { position: sticky; top: 0; z-index: 3; background: var(--panel); }
+.ag-drawer .pane-h b { font-weight: 500; }
+.ag-intro { padding: 10px 14px 0; font-size: 13px; }
+.ag-intro p { margin: 0; }
+.ag-runs { flex: 1 0 auto; padding: 12px 14px 20px; display: grid; gap: 12px; align-content: start; }
+.ag-run { display: grid; gap: 8px; padding: 12px; border-radius: var(--r); background: var(--panel-2); border: 1px solid var(--line); }
+.ag-run.running { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.ag-run.explained { border-color: color-mix(in srgb, var(--add) 45%, var(--line)); }
+.ag-run > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.ag-run > header b { flex: 1 1 100%; font-weight: 600; }
+.ag-steps { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); display: grid; gap: 2px; }
+.ag-att { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); }
+.ag-att p { margin: 0; font-size: 12.5px; }
+.ag-ok { color: var(--add); }
+
+/* ---------- 3D legend on the Stage ---------- */
+.ag-legend { position: absolute; left: 12px; bottom: 64px; z-index: 5; display: grid; gap: 4px; max-width: min(420px, calc(100% - 24px));
+  padding: 8px 10px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line-2); font-size: 12px; }
+.ag-legend b { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ag-legend button { display: flex; gap: 8px; align-items: baseline; text-align: left; font-size: 12px; color: var(--fg); padding: 2px 0; background: none; border: 0; min-width: 0; }
+.ag-legend button > span { min-width: 0; }
+.ag-legend i { flex: 0 0 9px; width: 9px; height: 9px; border-radius: 2px; transform: translateY(1px); }
+.ag-legend code { font: 11.5px/1.4 var(--font-mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-stagebtn { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .ag-hover { transition: none; } }
+
+/* ---------- terminal: command bar, live transcript, status line ---------- */
+.ag-termbox { display: flex; flex-direction: column; flex: 0 0 auto; border-bottom: 1px solid var(--line); }
+.ag-term { flex: 0 1 auto; overflow-y: auto; min-height: 0; max-height: min(56vh, 560px); padding: 10px 14px 2px;
+  display: flex; flex-direction: column; gap: 2px; }
+.ag-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 14px 0;
+  font: 11px/1.4 var(--font-mono); color: var(--muted); }
+.ag-status .ag-state.working { color: var(--term-teal); }
+.ag-status .ag-state.done { color: var(--add); }
+.ag-status .ag-state.error { color: var(--del); }
+.ag-status .ag-elapsed { color: var(--faint); font-variant-numeric: tabular-nums; }
+.ag-cmd { display: flex; gap: 6px; padding: 8px 14px 10px; }
+.ag-cmd input { flex: 1; min-width: 0; font: 13px/1.5 var(--font-body); }
+
+.ag-line { display: flex; align-items: baseline; font: 12.5px/1.6 var(--font-mono); word-break: break-word; }
+.ag-line .ag-who { flex: 0 0 46px; white-space: nowrap; overflow: hidden; text-align: right; color: var(--faint); font-size: 11px; padding-right: 8px; user-select: none; }
+.ag-line .ag-sep { flex: 0 0 14px; color: var(--line-2); text-align: center; user-select: none; }
+.ag-line .ag-body { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; }
+.ag-line .ag-meta { flex: 0 0 auto; color: var(--faint); font-size: 11px; padding-left: 10px; font-variant-numeric: tabular-nums; }
+
+.ag-line.ag-user .ag-body { color: var(--fg); }
+.ag-line.ag-think .ag-body { color: var(--muted); font-style: italic; }
+.ag-line.ag-tool .ag-body { color: var(--term-teal); }
+.ag-line.ag-tool.err .ag-body { color: var(--del); }
+.ag-line.ag-result .ag-body { color: var(--muted); }
+.ag-line.ag-err .ag-body { color: var(--del); }
+
+.ag-thinkdots::after { content: "…"; animation: ag-dots 1.4s ease-in-out infinite; }
+@keyframes ag-dots { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+.ag-outcome { display: grid; gap: 6px; padding: 9px 11px; margin: 4px 0 2px; border-radius: var(--r-sm);
+  background: var(--panel-2); border: 1px solid var(--line); font: 12px/1.5 var(--font-body); }
+.ag-outcome .ag-sub { color: var(--muted); }
+.ag-outcome .ag-answer { color: var(--fg); white-space: pre-wrap; }
+.ag-outcome code { display: block; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 var(--font-mono); color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { .ag-thinkdots::after { animation: none; } }
+
+/* investigator: plan, visible reasoning, chip memory, evidence-tagged report */
+.ag-line.ag-planline .ag-body { color: var(--fg); }
+.ag-plan-h { color: var(--term-amber); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.ag-plan { list-style: none; margin: 2px 0 4px; padding: 0; display: grid; gap: 1px; }
+.ag-plan li { display: flex; gap: 8px; }
+.ag-plan .ag-n { color: var(--faint); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.ag-line.ag-thought .ag-body { color: var(--muted); font-style: italic; }
+.ag-line.ag-thought .ag-body b { font-style: normal; color: var(--term-amber); font-weight: 500; }
+.ag-line.ag-mem .ag-body { color: var(--muted); }
+.ag-line.ag-mem .ag-body b { color: var(--term-teal); font-weight: 500; }
+.ag-line .ag-arg { color: var(--muted); }
+.ag-findings { margin: 2px 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.ag-findings li { display: flex; gap: 6px; align-items: baseline; line-height: 1.45; }
+.ag-findings .pill { flex: 0 0 auto; }
+.ag-nexts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ag-next { font: inherit; font-size: 12px; text-align: left; padding: 3px 8px; border-radius: var(--r-sm); cursor: pointer;
+  background: transparent; color: var(--term-teal); border: 1px solid var(--line-2); }
+.ag-next:hover { border-color: var(--term-teal); }
+.ag-claimbox summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
+.ag-clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.ag-clamp:hover { -webkit-line-clamp: unset; }
+.ag-suggest { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+
+/* plain-English explanation (decap_agent/plain.py): what people read first; the formal claim folds below */
+.ag-plain { display: grid; gap: 4px; padding: 9px 11px; border-radius: var(--r-sm); margin: 6px 0;
+  background: color-mix(in srgb, var(--add) 7%, transparent); border: 1px solid color-mix(in srgb, var(--add) 22%, transparent); }
+.ag-plain-h { font-weight: 600; color: var(--fg); }
+.ag-plain p { margin: 0; line-height: 1.5; color: var(--fg); }
+.ag-plain .ag-eg { display: flex; gap: 8px; align-items: baseline; color: var(--muted); }
+.ag-plain .ag-eg code { white-space: pre-wrap; word-break: break-word; font: 12px/1.5 var(--font-mono); color: var(--fg); }
+.ag-plain .ag-by { font-size: 11px; color: var(--faint); }
+.ag-how > summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 4px 0; }
+.ag-why { margin: 6px 0; color: var(--muted); }
+.vio { display: inline-flex; gap: 2px; margin-left: 4px; }
+.vio .btn svg { margin-right: 4px; vertical-align: -2px; }
+
+/* Markdown in agent output (md.ts) */
+.md { display: grid; gap: 6px; min-width: 0; }
+.md p { margin: 0; line-height: 1.5; }
+.md .md-h { font-weight: 600; color: var(--fg); margin-top: 2px; }
+.md ul, .md ol { margin: 0; padding-left: 20px; display: grid; gap: 2px; }
+.md code { font: 12px/1.4 var(--font-mono); background: color-mix(in srgb, var(--fg) 8%, transparent); padding: 0 4px; border-radius: var(--r-xs); word-break: break-word; }
+.md pre { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); overflow-x: auto; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.md pre code { background: none; padding: 0; white-space: pre; }
+.md blockquote { margin: 0; padding-left: 10px; border-left: 2px solid var(--line-2); color: var(--muted); }
+.md-tw { overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: 12px; }
+.md th, .md td { border: 1px solid var(--line-2); padding: 3px 8px; text-align: left; vertical-align: top; }
+.md th { color: var(--muted); font-weight: 500; }
+.ag-ftext .md p { display: inline; }
+
+/* The 3D "Witness agent" legend behaves like a notification: it shows in full when a result lands (the page
+   re-creates it on every new result), folds to a small faded tab after ~6 s, and opens again on hover/focus so
+   the rows stay clickable (fly to the cells). The raw claim only shows while it's open. */
+.ag-legend { animation: ag-leg-in .18s ease-out, ag-leg-dim .4s ease 6s forwards; }
+.ag-legend { gap: 0; }
+.ag-legend button { max-height: 160px; max-width: 420px; margin-top: 4px; overflow: hidden; animation: ag-leg-fold .4s ease 6s forwards; }
+.ag-legend code { display: none; }
+.ag-legend:hover, .ag-legend:focus-within { animation: none; opacity: 1; }
+.ag-legend:hover button, .ag-legend:focus-within button { animation: none; max-height: 160px; max-width: 420px; opacity: 1; padding: 2px 0; margin-top: 4px; }
+.ag-legend:hover code, .ag-legend:focus-within code { display: block; margin-top: 2px; font-size: 11px; color: var(--muted);
+  max-height: 3.2em; overflow: hidden; word-break: break-all; }
+.ag-legend b { cursor: default; }
+@keyframes ag-leg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ag-leg-fold { to { max-height: 0; max-width: 0; opacity: 0; padding: 0; margin-top: 0; } }
+@keyframes ag-leg-dim { to { opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .ag-legend, .ag-legend button { animation-duration: .01s; } }
+/* inline code inside rendered markdown stays inline (the claim box's `.ag-outcome code` rule made it a block) */
+.ag-outcome .md code, .ag-plain .md code, .ag-cm .md code, .md p code, .md li code, .md td code {
+  display: inline; white-space: normal; padding: 0 4px; font-size: 12px; }
+.ag-outcome .md pre code { display: block; white-space: pre; }
+.ag-plain .md p { color: var(--fg); }
+.ag-termbox { position: relative; }
+.ag-jump { position: absolute; right: 18px; margin-top: -34px; z-index: 2; font: 12px var(--font-mono); padding: 3px 10px; border-radius: var(--r-pill);
+  border: 1px solid var(--term-teal); background: var(--panel); color: var(--term-teal); cursor: pointer; }
+.ag-jump[hidden] { display: none; }
+.ag-outcome .ag-diff { font: 12px/1.6 var(--font-mono); }
+.ag-outcome .ag-diff div { white-space: pre-wrap; word-break: break-word; padding: 0 8px; }
+.ag-outcome .ag-diff .del { background: color-mix(in srgb, var(--del) 12%, transparent); color: var(--fg); }
+.ag-outcome .ag-diff .add { background: color-mix(in srgb, var(--add) 12%, transparent); color: var(--fg); }
+.ag-outcome .ag-diff span { display: inline-block; width: 14px; color: var(--muted); }
+.ag-outcome .ag-diff i { color: var(--faint); font-style: normal; }
+.ag-line .ag-pre { white-space: pre-wrap; font-style: normal; }
+
+/* Decompile pane as an editor (editor.ts) */
+.ag-editor { display: flex; flex-direction: column; height: 100%; min-height: 420px; }
+.ag-ed-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.ag-ed-bar .grow { flex: 1; }
+.ag-ed-main { flex: 1 1 auto; min-height: 260px; overflow: auto; }
+.ag-ed-main .cm-editor { height: 100%; }
+.ag-ed-out { flex: 0 0 auto; max-height: 42%; overflow: auto; padding: 8px 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; font-size: 13px; }
+.ag-ed-ideas { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
+.ag-ed-pre { margin: 4px 0; padding: 6px 8px; border-radius: var(--r-sm); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+
+/* Agent button pulses while a command runs, so a collapsed drawer still shows the agent is busy. */
+#btnAgent { position: relative; }
+#btnAgent.ag-running::after { content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); animation: ag-dots 1.2s ease-in-out infinite; }

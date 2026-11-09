@@ -117,7 +117,7 @@ def _run1(gold: str, gate: str, types, top: str, timeout: int, steps: str | None
         Path(td, "cells.v").write_text(lib.yosys_models(types))
         Path(td, "run.ys").write_text(_script(top, td, steps) if steps else _script(top, td))
         try:
-            r = subprocess.run(["yosys", "-q", "-l", f"{td}/log.txt", f"{td}/run.ys"], capture_output=True, text=True, timeout=timeout)
+            r = lib.yosys("-q", "-l", f"{td}/log.txt", f"{td}/run.ys", timeout=timeout)
             log = Path(td, "log.txt").read_text() if Path(td, "log.txt").exists() else r.stdout + r.stderr
             err = r.returncode != 0
         except subprocess.TimeoutExpired:
@@ -177,7 +177,7 @@ def bounded(nl: Netlist, verilog: str, cycles: int = 20, timeout: int = 120) -> 
             f"sat -verify -prove trigger 0 -set-init-zero {rst}-seq {cycles} -timeout {timeout} miter\n")
         Path(td, "b.ys").write_text(script)
         try:
-            r = subprocess.run(["yosys", "-q", f"{td}/b.ys"], capture_output=True, text=True, timeout=timeout + 30)
+            r = lib.yosys("-q", f"{td}/b.ys", timeout=timeout + 30)
         except subprocess.TimeoutExpired:
             return 0
         return cycles if r.returncode == 0 else 0

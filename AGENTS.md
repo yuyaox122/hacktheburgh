@@ -31,12 +31,13 @@ Humans over agents. The three teammates are equal, and team decisions are made t
 
 ## 4. Who owns what
 
-Rows are added as streams are agreed. For anything not listed, ask on the board before editing outside files you created. The most specific folder wins (`decap/agent/` beats `decap/`).
+Rows are added as streams are agreed. For anything not listed, ask on the board before editing outside files you created. The most specific folder wins (`minecraft/world/` beats `minecraft/`).
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
-| Decap core: ingest, decompiler + Yosys proof, bench, API, web app | `@yuyaox122` (Yuyao) | `decap/` (except decap/agent/, next row) |
-| Decap agent layer: MCP skills, `decap` CLI, agent transcript stream, run replay | `@izhangfly` (Ian) | `decap/agent/` |
-| Minecraft export: a real TT08 chip as a playable world (GDS as blocks, netlist as a datapack) | `@advcode118` (Alex) | `minecraft/` |
-| Redstone backend: a chip's gates compiled into real redstone, checked in vanilla (add-on to #23) | `@yuyaox122` (Yuyao) | `redstone/` |
-| Shared (AGENTS.md, README, tools/, .claude/, .github/) | everyone (`@all`): any teammate may change these; post on the board when you do | repo root |
+| Core: ingest, decompiler + Yosys proof, bench, API | `@yuyaox122` (Yuyao) | `decap/` |
+| Web app | `@yuyaox122` (Yuyao) | `web/` (except `web/src/agent/`, next row) |
+| Witness agent layer: MCP tools, `decap` CLI, transcripts, replay, the web Agent drawer | `@izhangfly` (Ian) | `agent/`, `web/src/agent/` |
+| Minecraft world export: a real TT08 chip as a playable world | `@advcode118` (Alex) | `minecraft/world/` |
+| Redstone backend: a chip's gates compiled into real redstone | `@yuyaox122` (Yuyao) | `minecraft/redstone/` |
+| Shared (`minecraft/common/`, AGENTS.md, README, docs/, pyproject.toml, tools/, .claude/, .github/) | everyone (`@all`): any teammate may change these; post on the board when you do | repo root |

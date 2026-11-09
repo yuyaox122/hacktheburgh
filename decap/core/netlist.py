@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,15 +76,12 @@ class Netlist:
 
 
 def _yosys_json(netlist_text: str, top: str | None) -> dict:
-    types = sorted(set(re.findall(r"\b" + lib.PREFIX + r"([a-z0-9_]+)\b", netlist_text)))
-    other = sorted(set(re.findall(r"\b(sky130_(?!fd_)[a-z]+_sc_hd__[a-z0-9_]+)\b", netlist_text)))
-    stubs = "".join(f"module {o}(input VGND, input VNB, input VPB, input VPWR);\nendmodule\n" for o in other)
     with tempfile.TemporaryDirectory() as td:
-        Path(td, "cells.v").write_text(lib.yosys_models(types) + stubs)
+        Path(td, "cells.v").write_text(lib.cell_models(netlist_text))
         Path(td, "net.v").write_text(netlist_text)
         script = f"read_verilog -lib {td}/cells.v\nread_verilog {td}/net.v\n" + \
                  (f"hierarchy -top {top}\n" if top else "hierarchy -auto-top\n") + f"flatten\nwrite_json {td}/out.json\n"
-        r = subprocess.run(["yosys", "-q", "-p", script.replace("\n", "; ")], capture_output=True, text=True)
+        r = lib.yosys("-q", "-p", script.replace("\n", "; "))
         if r.returncode:
             raise RuntimeError("yosys could not read the netlist:\n" + (r.stderr or r.stdout)[-2000:])
         return json.loads(Path(td, "out.json").read_text())

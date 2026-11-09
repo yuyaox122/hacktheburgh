@@ -10,11 +10,12 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 
 import anthropic
 
-MODEL = os.environ.get("DECAP_GUIDE_MODEL", "claude-sonnet-5-5")   # SPEC §6.5
+from . import llm
+
+MODEL = llm.api_model(os.environ.get("DECAP_GUIDE_MODEL"))   # bare or 'anthropic:' (the agent layer's spelling)
 
 RULES = """You are the guide inside Decap, a tool that turns a chip's gate-level netlist (all internal names stripped)
 back into readable Verilog and proves it equal with Yosys.
@@ -40,20 +41,11 @@ def available() -> bool:
 def _ask_cli(system: str, msgs: list[dict]) -> tuple[str, str]:
     """One-shot `claude -p` with no tools; the conversation is passed as a transcript."""
     convo = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in msgs)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE_CODE") and k != "CLAUDECODE"}
-    out = subprocess.run(
-        ["claude", "-p", "--output-format", "json", "--model", os.environ.get("DECAP_GUIDE_CLI_MODEL", "sonnet"),
-         "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
-         "--system-prompt", system],
-        input=f"{convo}\n\nReply to the last USER message, as JSON only.", capture_output=True, text=True,
-        timeout=120, env=env, cwd=tempfile.gettempdir(),
-    )
-    if out.returncode != 0:
-        raise RuntimeError(f"claude CLI failed: {(out.stderr or out.stdout)[-400:]}")
-    data = json.loads(out.stdout)
-    if data.get("is_error"):
-        raise RuntimeError(f"claude CLI error: {str(data.get('result'))[:400]}")
-    return str(data.get("result", "")), "claude-cli:" + os.environ.get("DECAP_GUIDE_CLI_MODEL", "sonnet")
+    alias = os.environ.get("DECAP_GUIDE_CLI_MODEL", "sonnet")
+    out = subprocess.run(llm.cli_command(alias, system), input=f"{convo}\n\nReply to the last USER message, as JSON only.",
+                         capture_output=True, text=True, timeout=120, env=llm.cli_env(), cwd=llm.CLI_CWD)
+    data = llm.cli_result(out.returncode, out.stdout, out.stderr)
+    return str(data.get("result", "")), "claude-cli:" + alias
 
 
 def context_text(result: dict, selection: dict | None) -> str:

@@ -1,34 +1,67 @@
-# HackTheBurgh 2026: bASIC
+# bASIC: View Source for silicon
 
-**bASIC: View Source for silicon.** Decap reads a real chip's gate-level netlist, with every internal name stripped, back into short Verilog a person can review. It then proves with Yosys that the Verilog is exactly the same circuit, and shows a trigger planted for the judge's number as a line of code. Measured on 18 held-out Tiny Tapeout 08 chips: 15 proven, and 16 of 16 planted triggers caught (with false alarms on 3 of 16 clean chips).
+A chip is manufactured from its **gate-level netlist**, not from the Verilog its author wrote, and nobody can read a netlist. bASIC can:
+
+1. **Read it back.** Take a real chip's netlist, with every internal name stripped, and turn it back into short Verilog a person can review.
+2. **Prove it.** Show with Yosys that the Verilog is exactly the same circuit as the gates. No AI is involved in the decompiler or the proof.
+3. **Catch what doesn't belong.** Plant a hidden trigger, for example `out |= (ui_in == 137)`, and it comes back as a line of code nobody wrote.
+4. **Explain it.** AI agents (*Witness*) explain any region of the chip in one sentence. A sentence only counts once Yosys proves it.
+
+Built at HackTheBurgh 2026 (7–8 Nov) by Yuyao Xie, Ian Zhang and Alex. Live site: <https://basic-asic.vercel.app>.
+
+## Results
+
+Measured on Tiny Tapeout 08 chips. The dev/test split was frozen before any tuning. Details and caveats: [decap/README.md](decap/README.md).
+
+| | Held-out test (18 chips) | Dev (9 chips) |
+|---|---|---|
+| Proven equal by Yosys | **15** (+1 tested only, 2 unreadable) | 9 |
+| Planted trigger found blind | **16 of 16** | 9 of 9 |
+| False alarms on clean copies | 3 of 16 | 4 of 9 |
 
 ## What's where
 
-| Folder | What | Start here |
-|---|---|---|
-| `decap/` | The decompiler, Yosys proofs, benchmark, FastAPI backend | [decap/README.md](decap/README.md), [decap/CONTRACTS.md](decap/CONTRACTS.md) |
-| `decap/web/` | The web app: Explore (3D chip), Results, Decompile, Compare, Minecraft | [decap/web/README.md](decap/web/README.md) |
-| `decap/agent/` | Witness: AI agents whose claims about a chip region count only once Yosys proves them; `decap` CLI and MCP skills | [decap/agent/README.md](decap/agent/README.md) |
-| `redstone/` | Compiles a chip or any small Verilog into real Minecraft redstone, checked in a vanilla server | [redstone/README.md](redstone/README.md) |
-| `docs/` | The pitch and its facts, the Witness plan, event notes | [docs/decap/PITCH.md](docs/decap/PITCH.md), [docs/decap/witness-plan.md](docs/decap/witness-plan.md), [docs/event-info.md](docs/event-info.md) |
-| `tools/`, `.claude/`, `.github/` | The team message board | below |
+```
+decap/        The core (Python): ingest, decompiler, Yosys proofs, find/fix triggers, benchmark, FastAPI
+agent/        Witness: AI agents whose claims count only once proven; the `decap` CLI and MCP server
+web/          The web app (Vite + TypeScript + three.js): 3D chip, results, decompile, compare, Minecraft
+minecraft/    Chips in Minecraft: real redstone builds (redstone/) and the chip as a world (world/)
+docs/         How chips work, plus the hackathon archive (pitches, plans, prototype)
+tools/board   The team's agent message board (a pinned GitHub issue)
+```
 
-`docs/decap/prototype.html` is the original single-file prototype that the web app was ported from. It runs on the Jane Street warm-up, so don't host it publicly.
-
-Who owns which folder, and how we work: [AGENTS.md](AGENTS.md).
-
-## Agent board
-
-This repo uses [hackathon-agent-board](https://github.com/azizu06/hackathon-agent-board): one pinned GitHub issue that every teammate's coding agent reads and posts to. Agents tag each other by GitHub login, and each one waits for its own tag, so work gets handed between agents without anyone sending a text. Rules for agents live in [AGENTS.md](AGENTS.md) (Claude Code loads them via `CLAUDE.md`).
-
-**Setup:** install the [GitHub CLI](https://cli.github.com) (`brew install gh`), run `gh auth login` once, then `tools/board whoami` to check it works. If the board isn't issue #1, `export BOARD_ISSUE=<number>`.
-
-| Command | What it does |
+| Start here | For |
 |---|---|
-| `tools/board post "[Yuyao's Claude] ..."` | Posts to the board. Every post starts with whose agent it is. |
-| `tools/board unread` | Shows posts since your last check and flags the ones that tag you. |
-| `tools/board wait` | Blocks until someone else posts, then prints it. |
-| `tools/board read -n 20` | Shows the last 20 posts. |
-| `tools/board whoami` | Prints your GitHub login so you can check `gh` is set up. |
+| [docs/how-chips-work.md](docs/how-chips-work.md) | New to chips? A plain-English guide from Verilog to silicon. |
+| [decap/README.md](decap/README.md) | How the decompiler and proofs work, and the full results. |
+| [decap/CONTRACTS.md](decap/CONTRACTS.md) | The JSON shapes and API routes every part shares. |
+| [agent/README.md](agent/README.md) | Witness, the CLI and connecting an IDE agent over MCP. |
+| [web/README.md](web/README.md) | The web app's pages, scripts and code map. |
+| [minecraft/README.md](minecraft/README.md) | Building chips in Minecraft. |
 
-`tools/board wait` polls every 30 s (one API call when nothing is new). Use `--interval 60` if many agents share one account. Claude Code gets the hooks in `.claude/`, which show unread posts at session start and on every prompt.
+## Run it
+
+You need `gh` (logged in), `yosys`, `iverilog`, [`uv`](https://docs.astral.sh/uv/), Python 3.12+ and Node 22. Everything runs from the repo root, and one Python environment covers the core, the agent and Minecraft.
+
+```bash
+uv venv -p 3.12 .venv && uv pip install -e '.[dev]'
+.venv/bin/python -m decap.ingest.fetch        # chips, their authors' sources and the SKY130 cells → decap/data/
+.venv/bin/python -m decap.bench.run           # decompile and prove every chip → decap/out/ (about 2 min)
+
+cd web && npm install && npm run stage-data && npm run sync-data
+npm run dev:all                               # API on :8000 and the app on http://localhost:5173
+```
+
+Optional extras:
+
+- **Guide chat:** set `ANTHROPIC_API_KEY` in `decap/.env` (see `decap/.env.example`). Without a key the chat says it's offline, and everything else works.
+- **Witness agent:** `.venv/bin/decap serve --port 8791`, then press `A` in the app. Model keys and options: [agent/README.md](agent/README.md).
+- **Minecraft:** see [minecraft/README.md](minecraft/README.md).
+
+Checks: `.venv/bin/pytest -q` (agent tests; set `DECAP_REAL_CORE_ROOT=$PWD` to include the real-core ones), `.venv/bin/python -m decap.bench.claims_check`, `cd web && npm run build && npm run check-data`.
+
+## Working on this repo
+
+[AGENTS.md](AGENTS.md) has the team rules: who owns which folder, the branch and PR workflow, and the agent message board. Coding agents load it through `CLAUDE.md`. The board is one pinned GitHub issue that every teammate's agent reads and posts to through `tools/board` (`post`, `unread`, `wait`, `read -n 20`, `whoami`). It uses [hackathon-agent-board](https://github.com/azizu06/hackathon-agent-board).
+
+Data rule: the Jane Street warm-up chip has no licence. It is fetched locally and never committed or hosted.

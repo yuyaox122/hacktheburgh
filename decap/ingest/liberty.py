@@ -9,7 +9,7 @@ Output shape (CONTRACTS.md §3):
   { "<type>": { "pins": {"A": "in", "Y": "out"}, "function": {"Y": "!(A&B)"}, "area": 6.256,
                 "ff": null | {"clocked_on", "next_state", "clear"?, "preset"?, "state": ["IQ", "IQ_N"]} } }
 
-Usage: python -I ingest/liberty.py [--pdk DIR] [--out FILE] [netlist.v ...]
+Usage: python -m decap.ingest.liberty [--pdk DIR] [--out FILE] [netlist.v ...]
 """
 import argparse
 import glob
@@ -18,10 +18,8 @@ import os
 import re
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)  # decap/
-PHYS_PREFIXES = ("fill_", "decap_", "tapvpwrvgnd_", "diode_")
-PG_PINS = {"VGND", "VNB", "VPB", "VPWR"}
+from ..core.lib import PG, PHYSICAL
+from ..paths import CHIPS_OUT, PDK, TT08, WARMUP, WEB_DATA
 
 
 def used_types(paths):
@@ -41,7 +39,7 @@ def phys_width_sites(t):
 def cell_entry(pdk, t):
     path = os.path.join(pdk, t + ".json")
     if not os.path.exists(path):
-        if t.startswith(PHYS_PREFIXES):
+        if PHYSICAL.match(t):
             sites = phys_width_sites(t)
             return {"pins": {}, "function": {}, "area": round(sites * 0.46 * 2.72, 4), "ff": None, "phys": True}
         return None
@@ -52,7 +50,7 @@ def cell_entry(pdk, t):
         if not k.startswith("pin,"):
             continue
         name = k[4:]
-        if name in PG_PINS:
+        if name in PG:
             continue
         direction = v.get("direction")
         pins[name] = "out" if direction == "output" else "in" if direction == "input" else "inout"
@@ -71,19 +69,19 @@ def cell_entry(pdk, t):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--pdk", default=os.path.join(ROOT, "data", "pdk"))
-    ap.add_argument("--out", default=os.path.join(ROOT, "web", "public", "data", "lib.json"))
+    ap.add_argument("--pdk", default=str(PDK))
+    ap.add_argument("--out", default=str(WEB_DATA / "lib.json"))
     ap.add_argument("netlists", nargs="*")
     a = ap.parse_args()
     netlists = a.netlists or (
-        [os.path.join(ROOT, "data", "warmup", "01_netlist.v")]
-        + sorted(glob.glob(os.path.join(ROOT, "data", "tt08", "*", "netlist.v")))
+        [str(WARMUP / "01_netlist.v")]
+        + sorted(glob.glob(str(TT08 / "*" / "netlist.v")))
     )
     netlists = [n for n in netlists if os.path.exists(n)]
     if not netlists:
         sys.exit("no netlists found (fetch data first)")
     types = used_types(netlists)
-    for f in glob.glob(os.path.join(ROOT, "out", "chips", "*.json")):
+    for f in glob.glob(str(CHIPS_OUT / "*.json")):
         try:
             with open(f) as fh:
                 types.update(c["type"] for c in json.load(fh).get("netlist", {}).get("cells", []))
