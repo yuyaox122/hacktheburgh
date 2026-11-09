@@ -1,4 +1,4 @@
-"""Witness bench driver (witness-plan section 4): the measured number.
+"""Witness bench driver (docs/archive/research/witness-plan.md section 4): the measured number.
 
     decap bench --split dev  [--max-regions 4] [--model cli:sonnet]     dry run (dev chips only; tune on these)
     decap bench --freeze-hash                                            print the hash to post before scoring
@@ -33,7 +33,7 @@ from typing import Any
 from fastmcp import Client, FastMCP
 
 from .transcript import Transcript, result_payload
-from .witness import DONE, INSTRUCTIONS, PROMPT_VERSION, explain_region
+from .witness import INSTRUCTIONS, PROMPT_VERSION, explain_region
 
 PKG = Path(__file__).resolve().parent
 TRUE = {"proven", "inductive"}
@@ -184,7 +184,7 @@ async def run_bench(server: FastMCP, chips: list[str], *, model: Any = None, max
 def ablate(events: list[dict], modes=(("random", 1024), ("biased", 4096))) -> dict:
     """Re-check every claim an agent made (transcript kind='claim' events) with simulation instead of Yosys.
 
-    Needs the real core importable (PYTHONPATH=<checkout>). No LLM calls. Answers: of the claims Yosys refuted,
+    Needs the real core (decap/data fetched). No LLM calls. Answers: of the claims Yosys refuted,
     how many would plain random testing (Monte Carlo) or biased testing have passed?"""
     from .core_witness import ClaimIn, check_claim
     rows, seen = [], set()
@@ -228,8 +228,8 @@ def _replay_cex(e: dict) -> bool | None:
     there, so a sampling miss is a genuine miss. False: the two models disagree (not a fair comparison)."""
     from decap.api.main import _get
     from decap.api.scope import Model, model
-    from .claim_expr import Evaluator, parse
-    from .claim_expr import names as claim_names
+    from decap.core.claim_expr import Evaluator, parse
+    from decap.core.claim_expr import names as claim_names
     cex = e.get("counterexample") or {}
     try:
         m = model(_get(e["chip"]))

@@ -1,39 +1,30 @@
 """Run the benchmark: decompile + prove every chip in the frozen split, check the author's source, and
 run the trojan test (one planted copy with a seeded random N, plus the clean copy) on each.
 
-    python -m bench.run                 # dev + test + warm-up
-    python -m bench.run --split test    # only the held-out test set
-    python -m bench.run --chips tt_um_mac,tt_um_ring_divider
+    python -m decap.bench.run                 # dev + test + warm-up
+    python -m decap.bench.run --split test    # only the held-out test set
+    python -m decap.bench.run --chips tt_um_mac,tt_um_ring_divider
 
-Writes out/chips/<chip>.json (clean result, CONTRACTS.md §1) and out/bench.json (§2).
+Writes decap/out/chips/<chip>.json (clean result, CONTRACTS.md §1) and decap/out/bench.json (§2).
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import sys
+import subprocess
 import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from core import chip as C  # noqa: E402
-from core import find, netlist, pipeline  # noqa: E402
-
-OUT = ROOT / "out"
+from ..core import chip as C
+from ..core import find, netlist, service
+from ..paths import BENCH_FIRST_RUN, BENCH_JSON, DECAP, SPLIT
 
 
 def trojan_n(chip: str) -> int:
     return int(hashlib.sha256(f"decap-trojan:{chip}".encode()).hexdigest(), 16) % 256
-
-
-def public_flags(fl):
-    return [{k: v for k, v in f.items() if not k.startswith("_")} for f in fl]
 
 
 def caught(fl, info) -> tuple[bool, int | None]:
@@ -51,7 +42,7 @@ def run_chip(chip: str, split: str) -> dict:
         nl = netlist.load(C.netlist_path(chip))
         result, dec = C.decompile_chip(chip, split, nl)
         fl = find.flags(dec, result)
-        result["flags"] = public_flags(fl)
+        result["flags"] = service.public(fl)
         C.save(result)
         row = {"chip": chip, "title": result["title"], "split": split, "verdict": result["verdict"],
                "logic_cells": result["stats"]["logic_cells"], "flops": result["stats"]["flops"],
@@ -60,18 +51,12 @@ def run_chip(chip: str, split: str) -> dict:
                "author_check": result["author_source"]["check"], "language": result["language"],
                "points": result["proof"]["points"], "attempts": result["proof"]["attempts"]}
         # trojan test
-        n = trojan_n(chip)
-        planted, info = find.plant(nl, n, res={"registers": result.get("_registers", {})})
-        pres, pproof, pdec = pipeline.run(planted, return_decompiler=True)
-        pfl = find.flags(pdec, pres)
-        ok, line = caught(pfl, info)
-        prow = C.assemble(chip, split, planted, pres, pproof, C.info(chip), {"files": {}, "lines": 0, "check": "unavailable",
-                                                                             "check_detail": "planted copy"}, variant="planted")
-        prow["flags"] = public_flags(pfl)
-        prow["plant"] = info
-        C.save(prow, f"{chip}__planted")
-        row["trojan"] = {"n": info["n"], "target": info["target"], "caught": ok, "flag_line": line,
-                         "planted_verdict": C.verdict_of(pproof), "planted_flags": len(pfl), "clean_flags": len(fl)}
+        p = service.plant_variant(chip, split, nl, {"registers": result.get("_registers", {})}, trojan_n(chip),
+                                  {"files": {}, "lines": 0, "check": "unavailable", "check_detail": "planted copy"})
+        ok, line = caught(p.flags, p.plant)
+        C.save(p.result, f"{chip}__planted")
+        row["trojan"] = {"n": p.plant["n"], "target": p.plant["target"], "caught": ok, "flag_line": line,
+                         "planted_verdict": C.verdict_of(p.proof), "planted_flags": len(p.flags), "clean_flags": len(fl)}
         row["seconds_total"] = round(time.time() - t0, 2)
         return row
     except Exception as e:
@@ -97,7 +82,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--no-warmup", action="store_true")
     a = ap.parse_args()
-    split = json.loads((ROOT / "bench" / "split.json").read_text())
+    split = json.loads(SPLIT.read_text())
     todo = []
     if a.chips:
         names = a.chips.split(",")
@@ -110,8 +95,8 @@ def main():
         if not a.no_warmup and a.split == "all" and C.netlist_path("warmup").exists():
             todo.append(("warmup", "warmup"))
     prev = {}
-    if (OUT / "bench.json").exists():
-        prev = {r["chip"]: r for r in json.loads((OUT / "bench.json").read_text()).get("chips", [])}
+    if BENCH_JSON.exists():
+        prev = {r["chip"]: r for r in json.loads(BENCH_JSON.read_text()).get("chips", [])}
     rows = []
     with ProcessPoolExecutor(a.jobs) as ex:
         for row in ex.map(run_chip, [c for c, _ in todo], [s for _, s in todo]):
@@ -124,9 +109,8 @@ def main():
         prev[r["chip"]] = r
     allrows = sorted(prev.values(), key=lambda r: ({"test": 0, "dev": 1, "warmup": 2}.get(r["split"], 3), r["chip"]))
     tro = [r for r in allrows if r["split"] == "test" and "trojan" in r]
-    import subprocess
-    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
-    dirty = subprocess.run(["git", "status", "--porcelain", "core"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=DECAP).stdout.strip()
+    dirty = subprocess.run(["git", "status", "--porcelain", "core"], capture_output=True, text=True, cwd=DECAP).stdout.strip()
     bench = {
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "decompiler_commit": sha + ("+dirty" if dirty else ""),
@@ -137,14 +121,13 @@ def main():
                                "clean_flags_total": sum(r["trojan"]["clean_flags"] for r in tro), "k": find.FLAG_K}},
         "chips": allrows,
     }
-    fr = OUT / "bench_first_run.json"
-    if fr.exists():
-        f = json.loads(fr.read_text())
+    if BENCH_FIRST_RUN.exists():
+        f = json.loads(BENCH_FIRST_RUN.read_text())
         bench["first_run"] = {"decompiler_commit": f.get("decompiler_commit"), "generated": f.get("generated"),
                               "summary": f["summary"],
                               "note": "The first scored run of the frozen test set. Later runs include fixes made after "
                                       "seeing its failures (derived-clock wires, hierarchical netlists); both are reported."}
-    (OUT / "bench.json").write_text(json.dumps(bench, indent=1))
+    BENCH_JSON.write_text(json.dumps(bench, indent=1))
     print(json.dumps(bench["summary"], indent=1))
 
 

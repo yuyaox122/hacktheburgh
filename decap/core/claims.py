@@ -2,10 +2,10 @@
 
 A claim is a Verilog expression over the chip's ports, flip-flops (q_<cell id>) and the decompiler's register
 names (aliases for their flip-flops), with next(x) = x one clock later and 'A when B' = B -> A. The grammar and
-the code-written English are Ian's (decap/agent/decap_agent/claim_expr.py, stub_witness.english), imported here so
-the agent, its stub, its fallback and this checker read every claim the same way.
+the code-written English are Ian's (core/claim_expr.py), shared with the agent, its stub and its fallback so all
+of them read every claim the same way.
 
-Setup (docs/decap/witness-plan.md): rst_n = 1, ena = 1, registers free. Every flip-flop is cut: its Q
+Setup (docs/archive/research/witness-plan.md): rst_n = 1, ena = 1, registers free. Every flip-flop is cut: its Q
 becomes a free input q_<id>, and next(q_<id>) is its next-state function (D, enable, scan, clear/preset)
 evaluated on the same inputs. So "proven" means: for EVERY input and EVERY register value, one clock step.
 
@@ -26,19 +26,13 @@ import dataclasses
 import hashlib
 import re
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
 
 from . import lib
+from .claim_expr import ClaimSyntaxError, Node, literals, names, output_bits, parse_checked, readings, ref_bits, shape_ok
 from .prove import gate_verilog
-
-_AGENT = Path(__file__).resolve().parents[2] / "agent"   # Ian's package, importable as decap_agent (pure stdlib modules)
-if str(_AGENT) not in sys.path:
-    sys.path.append(str(_AGENT))
-from decap_agent.claim_expr import ClaimSyntaxError, Evaluator, Node, literals, names, output_bits, parse, ref_bits, unparse  # noqa: E402
-from decap_agent.stub_witness import SHAPES, _has_op, english  # noqa: E402
 
 FIXED = {"rst_n": 1, "ena": 1}
 BMC_STEPS = 30
@@ -223,8 +217,7 @@ def _yosys(gate: str, top: str, types: list[str], sat: str, timeout: int, seq: b
             f"read_verilog {td}/cells.v {td}/gate.v\nhierarchy -top {top}\nproc\nflatten\n"
             f"{'async2sync' + chr(10) if seq else ''}opt_clean\nsat {sat}\n")
         try:
-            r = subprocess.run(["yosys", "-q", "-l", f"{td}/log.txt", f"{td}/run.ys"], capture_output=True, text=True,
-                               timeout=timeout + 15)
+            r = lib.yosys("-q", "-l", f"{td}/log.txt", f"{td}/run.ys", timeout=timeout + 15)
         except subprocess.TimeoutExpired:
             return {"status": "timeout"}
         log = Path(td, "log.txt").read_text() if Path(td, "log.txt").exists() else r.stdout + r.stderr
@@ -282,7 +275,7 @@ DECOMPILER = _decompiler()
 
 
 def netlist_sha(v) -> str:
-    """Same hash as decap_agent.core_witness, so caches keyed on either agree."""
+    """A chip variant's netlist, hashed: claim caches (agent runs/cache) are keyed on it and on DECOMPILER."""
     raw = v.text if v.text else repr(sorted((i.id, i.cell.name if hasattr(i.cell, "name") else str(i.cell),
                                              sorted(i.conns.items(), key=str)) for i in v.nl.insts))
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -300,8 +293,9 @@ def region_outputs(outputs: list[dict]) -> set[tuple[str, str]]:
     return want
 
 
-def uncovered(sig: Signals, node: Node, outputs: list[dict]) -> list[str]:
-    """Region output bits the claim never mentions, through any alias (as Ian's fallback: core_witness.uncovered)."""
+def uncovered(sig, node: Node, outputs: list[dict]) -> list[str]:
+    """Region output bits the claim never mentions, through any alias (Ian's coverage rule). sig: anything with
+    widths, ports, nextable(name) and fids(name): Signals here, scope.Model in the agent's simulation fallback."""
     said = set()
     for kind, name, hi, lo in ref_bits(node):
         rng = range(sig.widths[name]) if hi is None else range(lo, hi + 1)
@@ -326,6 +320,26 @@ def uncovered(sig: Signals, node: Node, outputs: list[dict]) -> list[str]:
     return missing
 
 
+def credit(node: Node, label: str, on_topic: bool, missing: list[str], complete: bool | None, cone: int | None,
+           unknown: str = "completeness check timed out") -> tuple[bool, str]:
+    """Does a true claim explain its region? (cleared, reason). It must be about the region's outputs (on_topic),
+    mention every output bit (missing: none), pin them down for every input (complete), and be a labelled shape or
+    use at most 1/3 of the literals of the region's decompiled lines (cone). unknown: the reason when completeness
+    could not be decided. Shared with the agent's simulation fallback (decap_agent.core_witness)."""
+    lits = literals(node)
+    label_ok = shape_ok(label, node)
+    short = cone is not None and lits * 3 <= cone
+    cleared = on_topic and complete is True and (label_ok or short)
+    reason = ("says nothing about this region's outputs" if not on_topic
+              else f"does not cover every output of the region: missing {', '.join(missing[:6])}" if missing
+              else "true, but it does not say what the output is for every input" if complete is False
+              else unknown if complete is None
+              else f"labelled shape: {label}" if label_ok
+              else f"{lits} literals vs {cone} in the decompiled lines" if short
+              else "no shorter than the decompile and no known shape")
+    return cleared, reason
+
+
 def check(v, claim: str, label: str = "", region: dict | None = None, do_check: bool = True,
           timeout: int = TIMEOUT) -> dict:
     """Check one claim. region: get_region's output for the claim's scope (outputs, cone_literals, touched);
@@ -341,17 +355,10 @@ def check(v, claim: str, label: str = "", region: dict | None = None, do_check: 
         return {**base, **kw, "seconds": round(time.time() - t0, 2)}
 
     try:
-        node = parse(claim)
-        ev = Evaluator(sig.widths)
-        ev.check_names(node)
-        for kind, name in names(node):
-            if kind == "next" and not sig.nextable(name):
-                raise ClaimSyntaxError(f"next() takes a register or flip-flop, not {name!r}")
-            if kind == "sig" and name in FIXED:
-                raise ClaimSyntaxError(f"{name} is fixed at {FIXED[name]} for every claim; leave it out")
+        node, _ = parse_checked(claim, sig.widths, sig.nextable, FIXED)
     except ClaimSyntaxError as e:
         return done(verdict="unparseable", error=str(e))
-    out = {"formal": unparse(formal(sig, node)), "english": english(node), "literals": literals(node)}
+    out = readings(node, formal(sig, node))
     if not do_check:
         return done(verdict="unchecked", **out)
     used = names(node)
@@ -408,17 +415,7 @@ def check(v, claim: str, label: str = "", region: dict | None = None, do_check: 
         alt = {(k, n) for k, n, _ in ob}
         c = _yosys(free_module(sig, node, alt, ob), "claimfree", [], f"-prove __ok 1 -timeout {timeout}", timeout)
         complete = True if c["status"] == "proven" else False if c["status"] == "failed" else None
-    shape = SHAPES.get(label)
-    label_ok = shape is not None and (label == "constant" or _has_op(node, shape))
-    short = cone is not None and lits * 3 <= cone
-    cleared = on_topic and complete is True and (label_ok or short)
-    reason = ("says nothing about this region's outputs" if not on_topic
-              else f"does not cover every output of the region: missing {', '.join(missing[:6])}" if missing
-              else "true, but it does not say what the output is for every input" if complete is False
-              else "completeness check timed out" if complete is None
-              else f"labelled shape: {label}" if label_ok
-              else f"{lits} literals vs {cone} in the decompiled lines" if short
-              else "no shorter than the decompile and no known shape")
+    cleared, reason = credit(node, label, on_topic, missing, complete, cone)
     verdict = truth if cleared else "partial" if on_topic and complete is False else "restated"
     return done(verdict=verdict, truth=truth, **out, **extra,
                 credit={"cleared": cleared, "complete": complete, **({"missing": missing} if missing else {}), "reason": reason, "literals": lits, "cone_literals": cone})

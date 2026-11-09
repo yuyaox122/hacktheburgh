@@ -286,10 +286,10 @@ async def repair(chip: str, verilog: str, *, call, suspects: list[dict] | None =
     else:
         note("thought", step="localize", why="no suspects given: the agent works from the counterexample and the chip's real outputs")
 
-    from .cli_model import resolve
-    agent = Agent(resolve(model, os.environ.get("DECAP_WITNESS_MODEL") or "deepseek:deepseek-chat"),
+    from .cli_model import DEEPSEEK, resolve
+    agent = Agent(resolve(model, os.environ.get("DECAP_WITNESS_MODEL") or DEEPSEEK),
                   instructions=INSTRUCTIONS, output_type=Edit, defer_model_check=True, retries=2)
-    model_obj = resolve(model, os.environ.get("DECAP_WITNESS_MODEL") or "deepseek:deepseek-chat")
+    model_obj = resolve(model, os.environ.get("DECAP_WITNESS_MODEL") or DEEPSEEK)
 
     # 1. rank lines: the localiser's suspects if given, else the agent ranks them from the evidence
     ranked = [x["line"] for x in sorted(sus, key=lambda x: -(x.get("p") or 0))]

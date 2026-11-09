@@ -7,15 +7,13 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 
+from .. import paths
 from . import chip as C
 from . import find, netlist, pipeline, prove
 from .sim import Sim
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "out"
-SPLIT = json.loads((ROOT / "bench" / "split.json").read_text())
+SPLIT = json.loads(paths.SPLIT.read_text())
 
 _lock = threading.RLock()
 
@@ -48,6 +46,7 @@ def known_chips() -> list[str]:
 
 
 def parse_id(cid: str) -> tuple[str, int | None]:
+    """'tt_um_mac+t137' -> ('tt_um_mac', 137): a planted copy's base chip and trigger value; a clean id -> (id, None)."""
     m = re.match(r"^(.+)\+t(\d+)$", cid)
     return (m.group(1), int(m.group(2))) if m else (cid, None)
 
@@ -62,7 +61,7 @@ def get(cid: str) -> Variant:
     if n is None:
         nl = netlist.load(C.netlist_path(base))
         res, proof, dec = pipeline.run(nl, return_decompiler=True)
-        saved = OUT / "chips" / f"{base}.json"
+        saved = paths.CHIPS_OUT / f"{base}.json"
         if saved.exists():
             result = json.loads(saved.read_text())
             # the saved result may predate a decompiler change: keep its author check, refresh the rest
@@ -83,7 +82,21 @@ def get(cid: str) -> Variant:
 
 
 def public(fl):
+    """Flags without their private keys (`_net`), as results and the API show them."""
     return [{k: x for k, x in f.items() if not k.startswith("_")} for f in fl]
+
+
+def plant_variant(base: str, split: str, nl, res: dict, n: int, src: dict) -> Variant:
+    """A copy of a chip with a trigger for n planted (find.plant), decompiled, proven and flagged like any chip.
+    res: the clean decompile (its registers give a chip without an 8-bit input an operand); src: the result's
+    author_source. Used by plant() below and by the benchmark's trojan test."""
+    pnl, info = find.plant(nl, n, res=res)
+    pres, proof, dec = pipeline.run(pnl, return_decompiler=True)
+    result = C.assemble(base, split, pnl, pres, proof, C.info(base), src, variant="planted")
+    fl = find.flags(dec, pres)
+    result["flags"] = public(fl)
+    result["plant"] = info
+    return Variant(f"{base}+t{n}", base, pnl, pres, proof, dec, result, fl, info)
 
 
 def plant(base: str, n: int) -> Variant:
@@ -92,18 +105,12 @@ def plant(base: str, n: int) -> Variant:
         if cid in _cache:
             return _cache[cid]
     clean = get(base)
-    pnl, info = find.plant(clean.nl, n, res=clean.res)
-    res, proof, dec = pipeline.run(pnl, return_decompiler=True)
     src = {k: v for k, v in clean.result["author_source"].items()}
     src["check"], src["check_detail"] = "unavailable", "call prove_equiv with against='author_source'"
-    result = C.assemble(base, clean.result["split"], pnl, res, proof, C.info(base), src, variant="planted")
-    fl = find.flags(dec, res)
-    result["flags"] = public(fl)
-    result["plant"] = info
-    result["chip"] = base
-    result["variant_id"] = cid
-    text = find.write_netlist(pnl, pnl.insts, pnl.ports, {i.id: pnl._orig.get(i.id, i.id) for i in pnl.insts})
-    v = Variant(cid, base, pnl, res, proof, dec, result, fl, info, text)
+    v = plant_variant(base, clean.result["split"], clean.nl, clean.res, n, src)
+    v.result["variant_id"] = cid
+    pnl = v.nl
+    v.text = find.write_netlist(pnl, pnl.insts, pnl.ports, {i.id: pnl._orig.get(i.id, i.id) for i in pnl.insts})
     with _lock:
         _cache[cid] = v
     return v
@@ -145,8 +152,7 @@ def prove_against(cid: str, against: str) -> dict:
         if not src.get("files"):
             return {"verdict": "unavailable", "detail": "no author source for this chip", "counterexample": None}
         check, detail, cex = C.author_check(v.base, src, v.nl.top, nl_text=v.text, want_cex=True)
-        verdict = {"proven": "proven", "bounded": "tested", "failed": "failed"}.get(check, "unavailable")
-        return {"verdict": verdict, "check": check, "detail": detail, "counterexample": cex}
+        return {"verdict": C.check_verdict(check), "check": check, "detail": detail, "counterexample": cex}
     p = v.proof
     return {"verdict": C.verdict_of(p), "detail": v.result["proof"]["detail"], "points": p["points"], "proven": p["proven"],
             "control_caught": p.get("control_caught"), "counterexample": None}

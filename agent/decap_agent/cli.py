@@ -35,30 +35,21 @@ import os
 
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 
+from fastmcp import Client  # noqa: E402
+
+from decap.env import load_env_file  # noqa: E402
+from decap.paths import RUNS, SPLIT  # noqa: E402
+
+from .server import build_server, load_core_app  # noqa: E402
+from .transcript import Transcript, load, result_payload  # noqa: E402
+
+CACHE = RUNS / "cache"
+
 
 def load_secrets(path: str | None = None) -> list[str]:
     """Load KEY=VALUE lines (e.g. DEEPSEEK_API_KEY) from a file OUTSIDE the repo, default ~/.config/decap/secrets.env.
     Never printed, never written anywhere; values already in the environment win. Returns the key names loaded."""
-    p = Path(os.path.expanduser(path or os.environ.get("DECAP_SECRETS", "~/.config/decap/secrets.env")))
-    loaded = []
-    try:
-        for line in p.read_text().splitlines():
-            k, sep, v = line.strip().partition("=")
-            if sep and k and not k.startswith("#") and k not in os.environ:
-                v = v.split("#", 1)[0].strip()   # drop inline '# comment' (e.g. DECAP_GUIDE_CLI=1  # default)
-                os.environ[k] = v.strip('"').strip("'")
-                loaded.append(k)
-    except OSError:
-        pass
-    return loaded
-
-from fastmcp import Client
-
-from .server import build_server, load_core_app
-from .transcript import Transcript, load, result_payload
-
-RUNS = Path(__file__).resolve().parent.parent / "runs"
-CACHE = RUNS / "cache"
+    return load_env_file(os.path.expanduser(path or os.environ.get("DECAP_SECRETS", "~/.config/decap/secrets.env")))
 
 
 def _scope(args) -> dict[str, Any]:
@@ -216,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
                                                           "biased simulation instead of Yosys (no LLM; real core only)")
     tl = sub.add_parser("timeline", help="render the Witness timeline page from transcripts")
     tl.add_argument("files", nargs="+")
-    tl.add_argument("-o", "--out", default=str(Path(__file__).resolve().parent.parent / "prototypes" / "witness-timeline.html"))
+    tl.add_argument("-o", "--out", default=str(RUNS / "witness-timeline.html"))
     tl.add_argument("--bench", help="bench JSON (for region sizes)")
     tl.add_argument("--ablation", help="ablation JSON from 'decap bench --ablate FILE --out X'")
     tl.add_argument("--include-fallback", action="store_true", help="also show simulation-checked runs")
@@ -231,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("stream", help="serve a transcript to the UI")
     s.add_argument("file")
     s.add_argument("--port", type=int, default=8790)
-    stt = sub.add_parser("status", help="list agent sessions (running first, then recent done)")
+    sub.add_parser("status", help="list agent sessions (running first, then recent done)")
     lg = sub.add_parser("log", help="print or follow a session's transcript")
     lg.add_argument("session_id")
     lg.add_argument("-f", "--follow", action="store_true", help="follow append-only until the run ends")
@@ -341,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
             first = next(r["chip"] for r in rows if r.get("split") == "dev")
             region = asyncio.run(_call(server, "get_region", {"chip": first, "scope": {}}))
             model_name = args.model or os.environ.get("DECAP_WITNESS_MODEL", DEFAULT_MODEL)
-            _print(freeze_hash(model_name, Path("decap/bench/split.json"), region.get("decompiler", "unknown")))
+            _print(freeze_hash(model_name, SPLIT, region.get("decompiler", "unknown")))
             return 0
         if args.ablate:
             from .bench import ablate
@@ -358,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["DECAP_HELDOUT_OK"] = "1"   # the frozen bench is the one thing allowed past heldout.py
         chips = [r["chip"] for r in rows if r.get("split") == args.split]
         if args.split == "test":   # chips an agent already saw before the held-out guard (split.json, hashed by the freeze)
-            seen = set(json.loads(Path("decap/bench/split.json").read_text()).get("witness_exclude", []))
+            seen = set(json.loads(SPLIT.read_text()).get("witness_exclude", []))
             chips = [c for c in chips if c not in seen]
         if args.chips:
             want = args.chips.split(",")

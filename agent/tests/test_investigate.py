@@ -132,7 +132,7 @@ def test_block_scope_is_narrowed_to_the_blocks_own_register():
 
 
 def test_claims_can_select_bits_of_next_and_use_helper_wires():
-    from decap_agent.claim_expr import expand_temps, parse, temp_defs, temps_used, unparse
+    from decap.core.claim_expr import expand_temps, parse, temp_defs, temps_used, unparse
     assert unparse(parse("next(shreg0)[0] == shreg0[1]")) == "next(shreg0[0]) == shreg0[1]"
     assert unparse(parse("next(x[7:4])[1] == 1'b1")) == "next(x[5]) == 1'd1"
     d = temp_defs("wire t4 = a & b;\n wire t5 = (q | t4);")
@@ -141,7 +141,7 @@ def test_claims_can_select_bits_of_next_and_use_helper_wires():
 
 
 def test_mux_claim_precedence_is_fixed_to_what_the_writer_meant():
-    from decap_agent.claim_expr import fix_mux_precedence
+    from decap.core.claim_expr import fix_mux_precedence
     assert fix_mux_precedence("next(d) == (u == 1) ? d : s") == "next(d) == ((u == 1) ? d : s)"
     assert fix_mux_precedence("next(a) == b && next(d) == c ? d : s") == "(next(a) == b) && (next(d) == (c ? d : s))"
     assert fix_mux_precedence("next(d) == (c ? d : s)") == "next(d) == (c ? d : s)"   # already right: unchanged

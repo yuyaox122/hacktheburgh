@@ -14,11 +14,10 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
-
 from fastmcp.server.middleware import Middleware
 
-SPLIT = Path(__file__).resolve().parents[2] / "decap" / "bench" / "split.json"
+from decap.core.service import parse_id
+from decap.paths import SPLIT
 BLOCKED_TOOLS = {"benchmark"}   # reads or re-runs results across chips, test split included
 
 _cache: set[str] | None = None
@@ -46,7 +45,7 @@ def refusal(tool: str, args: dict) -> str | None:
         return (f"{tool} is off for interactive agents: it touches the held-out test chips, which only the frozen "
                 f"bench may run. Work on the current chip instead.")
     chip = str(args.get("chip") or "")
-    base = chip.split("+")[0]
+    base = parse_id(chip)[0]
     if base and base in test_chips():
         return (f"{chip} is a held-out test chip. Interactive agents can't open or re-run it until the frozen bench "
                 f"has scored it (AGENTS.md rule 4). Use a dev chip.")

@@ -16,7 +16,7 @@ gitignored web/public/data/ only). Shape: CONTRACTS.md §3 / SPEC §6.3, all dis
 mapping is module-level: each cell points at its module's main statement (the `always` block for flip-flops,
 the last `assign`/`<=` for logic). Clock-tree buffers belong to no source line (src null).
 
-Usage: python -I ingest/ingest_def.py [--def F] [--netlist F] [--source F] [--pdk DIR] [--out F]
+Usage: python -m decap.ingest.ingest_def [--def F] [--netlist F] [--source F] [--pdk DIR] [--out F]
 """
 import argparse
 import json
@@ -24,12 +24,11 @@ import os
 import re
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-WARM = os.path.join(ROOT, "data", "warmup")
+from ..core.lib import PHYSICAL, PREFIX
+from ..paths import PDK, WARMUP, WEB_DATA
+
+WARM = str(WARMUP)
 SITE, ROW_H = 0.46, 2.72
-PHYS_PREFIXES = ("fill_", "decap_", "tapvpwrvgnd_", "diode_")
-PREFIX = "sky130_fd_sc_hd__"
 
 
 def clean(name):
@@ -237,13 +236,13 @@ def main():
     ap.add_argument("--def", dest="def_", default=os.path.join(WARM, "03_post_place_and_route.def"))
     ap.add_argument("--netlist", default=os.path.join(WARM, "01_netlist.v"))
     ap.add_argument("--source", default=os.path.join(WARM, "00_source.v"))
-    ap.add_argument("--pdk", default=os.path.join(ROOT, "data", "pdk"))
-    ap.add_argument("--out", default=os.path.join(ROOT, "..", "web", "public", "data", "design.json"))
+    ap.add_argument("--pdk", default=str(PDK))
+    ap.add_argument("--out", default=str(WEB_DATA / "design.json"))
     ap.add_argument("--credit", default="Warm-up chip: Jane Street asic-puzzle-2026")
     a = ap.parse_args()
     for p in (a.def_, a.netlist):
         if not os.path.exists(p):
-            sys.exit(f"missing {p} (run ingest/fetch.py first)")
+            sys.exit(f"missing {p} (run python -m decap.ingest.fetch first)")
 
     d = parse_def(a.def_)
     gates = parse_netlist(a.netlist)
@@ -264,7 +263,7 @@ def main():
         return (mod, "/".join(ip))
 
     def sites_of(t):
-        if t.startswith(PHYS_PREFIXES):
+        if PHYSICAL.match(t):
             m = re.search(r"_(\d+)$", t)
             return 1 if t.startswith("tapvpwrvgnd") else int(m.group(1)) if m else 1
         f = os.path.join(a.pdk, t + ".json")
@@ -277,7 +276,7 @@ def main():
     for c in d["comps"]:
         t = c["type"]
         w = round(sites_of(t) * SITE, 3)
-        if t.startswith(PHYS_PREFIXES):
+        if PHYSICAL.match(t):
             phys.append({"type": t, "x": c["x"], "y": c["y"], "w": w, "orient": c["orient"]})
             continue
         g = gates.get(c["name"])

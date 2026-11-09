@@ -10,7 +10,7 @@ from fastmcp import Client
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from decap_agent.claim_expr import ClaimSyntaxError, Evaluator, literals, parse
+from decap.core.claim_expr import ClaimSyntaxError, Evaluator, literals, parse
 from decap_agent.server import build_server
 from decap_agent.stub_core import create_stub_app
 from decap_agent.transcript import Transcript, load, result_payload
@@ -292,7 +292,7 @@ def test_witness_api_formalise_confirm_step(tmp_path):
 
 
 def test_claim_parser_is_tolerant_of_loose_model_output():
-    from decap_agent.claim_expr import Evaluator, parse, unparse
+    from decap.core.claim_expr import Evaluator, parse, unparse
     # comma -> &&, bit-select after a sub-expression, trailing prose stripped
     assert unparse(parse("next(a) == 1, next(b) == 0")) == "(next(a) == 1) && (next(b) == 0)"
     assert unparse(parse("uo_out == (ui_in + uio_in)[7:1]")) == "uo_out == ((ui_in + uio_in)[7:1])"

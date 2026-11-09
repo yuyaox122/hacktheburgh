@@ -29,10 +29,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from decap.paths import RUNS
+
 from .server import build_server
 from .transcript import Transcript
 
-RUNS = Path(__file__).resolve().parent.parent / "runs"
 CACHE = RUNS / "cache"
 SLIM_DROP = {"result"}   # tool results can be large; the stream carries what the UI draws
 
@@ -248,7 +249,7 @@ def create_witness_app(core_app=None, model: Any = None, runs: Path = RUNS, read
     async def explain_text(body: ExplainTextIn) -> dict:
         """The editor's Explain: plain English for the lines a person selected (read from the code itself)."""
         from fastmcp import Client
-        from .claim_expr import temp_defs
+        from decap.core.claim_expr import temp_defs
         from .plain import explain_code
         from .transcript import result_payload
         async with Client(build_server(core_app)) as c:

@@ -7,7 +7,7 @@ returns the input where the two differ.
 
 Round trip worth showing: download the decompiled Verilog, upload it back, and it comes back proven.
 
-Needs the real core (DECAP_CORE_APP=decap.api.main:app with the repo on PYTHONPATH); the stub has no netlist.
+Needs the real core (DECAP_CORE_APP=decap.api.main:app); the stub has no netlist.
 """
 
 from __future__ import annotations
@@ -59,5 +59,4 @@ def check_verilog(chip: str, verilog: str, filename: str = "upload.v") -> dict:
     if not name.endswith((".v", ".sv")):
         name += ".v"
     check, detail, cex = C.author_check(v.base, {"files": {name: text}}, top, nl_text=v.text, want_cex=True)
-    verdict = {"proven": "proven", "bounded": "tested", "failed": "failed"}.get(check, "unavailable")
-    return {"verdict": verdict, "check": check, "detail": detail, "counterexample": cex, "renamed_from": renamed, "top": top}
+    return {"verdict": C.check_verdict(check), "check": check, "detail": detail, "counterexample": cex, "renamed_from": renamed, "top": top}

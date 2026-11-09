@@ -2,7 +2,7 @@
 
 The shapes every part of Decap agrees on. Change one only with a board post (`tools/board`), since other streams depend on it.
 
-Folders: `ingest/` (Python, data in), `core/` (Python: netlist, simulator, decompiler, proofs, plant/flag/fix, compare), `bench/` (frozen split, benchmark runner), `api/` (FastAPI), `web/` (Vite + TypeScript + three.js). Data lives in the gitignored `data/` (inputs) and `out/` (results). `web/public/data/` is generated and gitignored.
+Folders (the `decap` Python package): `ingest/` (data in), `core/` (netlist, simulator, decompiler, proofs, plant/flag/fix, compare, claim checker), `bench/` (frozen split, benchmark runner), `api/` (FastAPI); every path is in `paths.py`. The web app is `web/` and the agent layer `agent/` at the repo root. Data lives in the gitignored `decap/data/` (inputs) and `decap/out/` (results). `web/public/data/` is generated and gitignored.
 
 ## 1. Chip result (`out/chips/<chip>.json`, served as `/api/chip/<chip>`, copied to `web/public/data/chips/<chip>.json`)
 
@@ -66,7 +66,7 @@ Cell ids `c<k>` and net names `n<k>` are stable for a given netlist file. Port b
 }
 ```
 
-## 3. Explore design (`web/public/data/designs/<chip>.json` from `ingest/ingest_gds.py --all`; the local warm-up `design.json` from `ingest/ingest_def.py`)
+## 3. Explore design (`web/public/data/designs/<chip>.json` from `python -m decap.ingest.ingest_gds --all`; the local warm-up `design.json` from `python -m decap.ingest.ingest_def`)
 
 Shape (the GDS version adds `title`, `intro`, `hint` and `io`): `{ name, pdk, die:{w,h}, rowHeight, site, ports:[{name,dir,x,y}], cells:[{id,type,x,y,w,orient,pins,module,src}], phys:[{type,x,y,w}], routes:[{net,layer,pts}], source:{files,modules} }`, plus `lib.json` from Liberty: `{ "<type>": { "pins": {"A":"in","Y":"out"}, "function": {"Y": "!(A&B)"}, "area": 6.256, "ff": null | {"clocked_on","next_state","clear"?,"preset"?} } }`.
 
@@ -83,14 +83,14 @@ Shape (the GDS version adds `title`, `intro`, `hint` and `io`): `{ name, pdk, di
 | POST | `/api/compare` | `{ verilog }`, `{ netlist }` or `{ chip }` | `{ fingerprint, neighbours: [{ chip, title, score, why, logic_cells, area_um2, blocks, excerpt }] }` |
 | POST | `/api/chat` | `{ messages: [{role, content}], context }` | `{ reply, highlights: { cells: [], lines: [] } }`; 503 with `{ error }` when no LLM key is set |
 
-Agent tools (operation_id = MCP tool name via `decap/agent`; docstrings are what agents read): `list_chips`, `strip_names`, `recover_blocks`, `decompile`, `prove_equiv` (`against`: netlist | author_source → counterexample), `simulate`, `find_rare_triggers`, `plant_trigger` (returns id `chip+tN`), `cone_of_influence` (flag, block or cell id), `remove_trigger`, `critical_path` (estimate), `compare_design`, `benchmark`, `review_edit` (below). Paths are under `/api/chips/{chip}/…`; see `api/main.py`. Web-only routes are hidden from the schema so they don't become tools.
+Agent tools (operation_id = MCP tool name via the agent layer, `agent/`; docstrings are what agents read): `list_chips`, `strip_names`, `recover_blocks`, `decompile`, `prove_equiv` (`against`: netlist | author_source → counterexample), `simulate`, `find_rare_triggers`, `plant_trigger` (returns id `chip+tN`), `cone_of_influence` (flag, block or cell id), `remove_trigger`, `critical_path` (estimate), `compare_design`, `benchmark`, `review_edit` (below). Paths are under `/api/chips/{chip}/…`; see `api/main.py`. Web-only routes are hidden from the schema so they don't become tools.
 
 Witness (`get_region`, `probe_truth` in `api/scope.py`, Ian's; `propose_claim` in `core/claims.py`): `POST /api/chips/{chip}/claim` with `{ claim, scope, label?, check = true }` returns `{ verdict, truth, formal, english, literals, counterexample?, refute_kind?, credit?: { cleared, complete, reason, literals, cone_literals }, touched, netlist_sha, decompiler, method, seconds, source: "yosys" }`.
 - `verdict`: `proven` · `inductive` (true from reset, proven by k-induction) · `bounded` (holds 30 cycles from reset only) · `refuted` · `partial` · `restated` · `tautology` · `unparseable` · `timeout` · `unchecked` (`check: false`).
 - `truth` says whether the claim holds (`proven`, `inductive`, `bounded`, `refuted`, `tautology`) separately from credit. A true claim (`proven`/`inductive`) shows that verdict only when `credit.cleared`; otherwise `partial` or `restated`.
 - Setup: rst_n = 1, ena = 1, flip-flops cut (registers free), one clock step. `counterexample`: `{ input bus: int, q_<id>: bit, each name the claim used: value }`; `refute_kind`: `semantic` (also fails from reset) or `reset_only`.
 - Credit needs all of: the claim names one of the region's outputs; it is complete (SAT finds no two different values of those output bits that both satisfy it); and it has a labelled shape or at most 1/3 of the region's `cone_literals`.
-- Self-test: `python -m bench.claims_check`.
+- Self-test: `python -m decap.bench.claims_check`.
 
 Review an edit (`review_edit`, `service.review_edit`; the web's Ideas, issue #68, and any IDE agent): `POST /api/chips/{chip}/review-edit` with `{ verilog, baseline? }` (the FULL edited module; same module name and port list; `baseline` = the full module before this edit, with edits already kept) returns `{ chip, verdict, headline, detail, counterexample, seconds, this_edit? }`. Works for planted ids (`chip+tN`, checked against their own planted gates).
 - `verdict` (vs the chip's gates): `same` (proven equal; headline "Same circuit (proven)") · `tested_same` (no difference in 20 clock cycles from reset, not proven) · `changed` (`counterexample` `{ ui_in, uio_in, ena, rst_n: int, step: int }` = the inputs at the first clock step, counted from reset, where the outputs differ; `detail` lists the inputs of every step up to it; or headline "Behaviour changed: a register now uses a different clock or clock edge", no counterexample) · `broken`, with one of these headlines: "Doesn't compile" (the Yosys error line in `detail`), "Ports or module name changed", "Wiring problem" (an undriven wire, two drivers, a logic loop or a latch that the decompile doesn't have), "Undefined value (x or z)", "Can't be checked: simulation-only code" (`ifdef`/`include`, translate_off, `initial`, `$display`, `#` delays; refused before Yosys reads the text), "Yosys couldn't check this edit" (out of time, or the comparison itself failed).

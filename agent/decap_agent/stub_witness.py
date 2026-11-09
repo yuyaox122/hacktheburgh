@@ -18,7 +18,8 @@ from __future__ import annotations
 import itertools
 import random
 
-from .claim_expr import ClaimSyntaxError, Evaluator, Node, is_complete, literals, names, output_bits, parse, unparse
+from decap.core.claim_expr import (ClaimSyntaxError, is_complete, is_tautology, names, output_bits, parse_checked, readings,
+                                   shape_ok)
 
 SOURCES = {"en": 1, "ui_in": 8, "count": 8}
 FLOPS = [f"q_ff_{k}" for k in range(8)]
@@ -34,8 +35,6 @@ REGION = {
     "c2": {"inputs": ["ui_in"], "outputs": ["uo_out[0]"], "literals": 16,
            "focus": ["assign uo_out[0] = uo_out[1] | trig;  // trig: an 8-input AND tree over ui_in"]},
 }
-SHAPES = {"adder": ("+", "-"), "incrementer": ("+",), "counter": ("+",), "comparator": ("==", "!=", "<", "<=", ">", ">="),
-          "mux": ("?:",), "decoder": ("==",), "constant": ()}
 
 
 def _deps(kind: str, name: str, planted: bool) -> set[str]:
@@ -65,42 +64,6 @@ def chip_values(src: dict[str, int], n: int | None) -> dict:
 def _assignments(srcs: list[str]):
     for vals in itertools.product(*[range(1 << SOURCES[s]) for s in srcs]):
         yield dict(zip(srcs, vals))
-
-
-def _english(n: Node) -> str:
-    op, a = n.op, n.args
-    if op == "num":
-        return str(n.value)
-    if op in ("sig", "next"):
-        base = n.name if n.hi is None else (f"bit {n.hi} of {n.name}" if n.hi == n.lo else f"bits {n.hi}..{n.lo} of {n.name}")
-        return f"{base} after the next clock" if op == "next" else base
-    if op == "->":
-        return f"whenever {_english(a[0])}, {_english(a[1])}"
-    if op == "?:":
-        return f"({_english(a[1])} if {_english(a[0])}, otherwise {_english(a[2])})"
-    if op == "u!":
-        return f"not ({_english(a[0])})"
-    if op == "u~":
-        return f"the inverse of {_english(a[0])}"
-    if op == "u-":
-        return f"minus {_english(a[0])}"
-    if op in ("r&", "r|", "r^"):
-        return {"r&": "all bits of {} are 1", "r|": "some bit of {} is 1", "r^": "{} has an odd number of 1s"}[op].format(_english(a[0]))
-    if op == "{}":
-        return "the bits " + ", ".join(_english(x) for x in a) + " joined"
-    words = {"==": "equals", "!=": "differs from", "<": "is less than", "<=": "is at most", ">": "is more than",
-             ">=": "is at least", "+": "plus", "-": "minus", "*": "times", "&&": "and", "||": "or", "&": "and",
-             "|": "or", "^": "xor", "<<": "shifted left by", ">>": "shifted right by"}
-    return f"{_english(a[0])} {words[op]} {_english(a[1])}"
-
-
-def english(n: Node) -> str:
-    s = _english(n)
-    return s[0].upper() + s[1:] + "."
-
-
-def _has_op(n: Node, ops) -> bool:
-    return n.op in ops or any(_has_op(x, ops) for x in n.args)
 
 
 def get_region(cones: list[str]) -> dict:
@@ -172,25 +135,17 @@ def probe(cones: list[str], planted: int | None, n: int, seed: int, fix: dict | 
 def check(claim: str, cones: list[str], planted: int | None, label: str = "", run: bool = True) -> dict:
     """The stub checker: exhaustive simulation over every source the claim depends on."""
     try:
-        node = parse(claim)
-        ev = Evaluator(WIDTHS)
-        ev.check_names(node)
-        for kind, name in names(node):
-            if kind == "next" and name not in FLOPS + ["count"]:
-                raise ClaimSyntaxError(f"next() takes a register or flip-flop, not {name!r}")
+        node, ev = parse_checked(claim, WIDTHS, lambda name: name in FLOPS or name == "count")
     except ClaimSyntaxError as e:
         return {"verdict": "unparseable", "error": str(e)}
-    out = {"formal": unparse(node), "english": english(node), "literals": literals(node)}
+    out = readings(node)
     if not run:
         return {"verdict": "unchecked", **out}
 
     # tautology: true whatever the chip does (every name free); skipped when that space is too big
+    if is_tautology(ev, node):
+        return {"verdict": "tautology", "truth": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
     refs = sorted(names(node))
-    free_bits = sum(8 if (k == "next" and n == "count") else WIDTHS[n] for k, n in refs)
-    if free_bits <= 16:
-        sizes = [1 << (8 if (k == "next" and n == "count") else WIDTHS[n]) for k, n in refs]
-        if all(ev.holds(node, dict(zip(refs, vals))) for vals in itertools.product(*[range(s) for s in sizes])):
-            return {"verdict": "tautology", "truth": "tautology", **out, "reason": "true of any chip: it says nothing about this one"}
 
     srcs = sorted(set().union(*[_deps(k, n, planted is not None) for k, n in refs]))
     for a in _assignments(srcs):
@@ -204,8 +159,7 @@ def check(claim: str, cones: list[str], planted: int | None, label: str = "", ru
             return {"verdict": "refuted", "truth": "refuted", **out, "counterexample": cex, "refute_kind": "semantic"}
 
     cone_lits = get_region(cones)["cone_literals"] if cones else None
-    shape_ops = SHAPES.get(label)
-    label_ok = shape_ops is not None and (label == "constant" or _has_op(node, shape_ops))
+    label_ok = shape_ok(label, node)
     short = cone_lits is not None and out["literals"] * 3 <= cone_lits
     want = {("next", "count")} | {("next", f) for f in FLOPS} if "c0" in cones else set()
     if {"c1", "c2"} & set(cones):

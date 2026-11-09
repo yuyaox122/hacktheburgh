@@ -33,10 +33,13 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.usage import UsageLimits
 
+from decap.paths import RUNS
+
+from .cli_model import DEEPSEEK
 from .transcript import Transcript, result_payload
 
-MEMORY = Path(__file__).resolve().parent.parent / "runs" / "memory"
-DEFAULT_MODEL = "deepseek:deepseek-chat"
+MEMORY = RUNS / "memory"
+DEFAULT_MODEL = DEEPSEEK
 MAX_EXPLAINS = 3          # each explain is its own look->claim->Yosys loop; keep a run under ~2 minutes
 REQUEST_LIMIT = 16
 
@@ -180,7 +183,6 @@ def build_investigator(model: Any = None) -> Agent[Deps, Report]:
         if ctx.deps.blocks and block not in ctx.deps.blocks:
             return {"error": f"no block {block}; known: {', '.join(list(ctx.deps.blocks)[:30])}"}
         ctx.deps.explains += 1
-        from .witness import explain_region
         try:
             return await _explain_block(ctx, block)
         except Exception as e:   # one bad block must not abort the whole investigation

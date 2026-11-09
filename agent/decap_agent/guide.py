@@ -1,7 +1,7 @@
 """Decap's AI guide (spec section 6.5): a pydantic-ai agent whose only source of facts is Decap's tools.
 
-Provider-agnostic: DECAP_GUIDE_MODEL picks the model, e.g. 'anthropic:claude-sonnet-5-5',
-'anthropic:claude-haiku-5-5', or an OpenAI model with the free JetBrains key. The guide reaches
+Provider-agnostic: DECAP_GUIDE_MODEL picks the model, e.g. 'anthropic:claude-sonnet-5-5' (or the core guide's bare
+'claude-sonnet-5-5'), 'anthropic:claude-haiku-5-5', or an OpenAI model with the free JetBrains key. The guide reaches
 the tools through the same MCP server outside agents use, so its calls land in the transcript too.
 """
 
@@ -15,9 +15,9 @@ from fastmcp import FastMCP
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPToolset
 
+from .cli_model import SONNET as DEFAULT_MODEL
+from .cli_model import resolve
 from .transcript import Transcript
-
-DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
 
 RULES = """You are Decap's guide. Decap turns chips back into readable code and proves it.
 - At most 110 words, plain language.
@@ -39,7 +39,6 @@ def build_guide(server: FastMCP, model: Any = None, chip: str | None = None) -> 
     tools = MCPToolset(server)
     if chip:
         tools = tools.filtered(lambda ctx, tool: tool.name not in CROSS_CHIP)
-    from .cli_model import resolve
     return Agent(resolve(model, os.environ.get("DECAP_GUIDE_MODEL", DEFAULT_MODEL)),
                  instructions=RULES, toolsets=[tools], defer_model_check=True)
 

@@ -9,7 +9,7 @@ Decap decompiles a chip's gate-level netlist (names stripped) into readable Veri
 
 ## How to use
 - If the `decap` MCP server is connected, call its tools directly.
-- Otherwise run the CLI from the repo root: `decap/agent/.venv/bin/decap <command>`:
+- Otherwise run the CLI from the repo root: `.venv/bin/decap <command>`:
   - `decap tools`: list the tools.
   - `decap call <tool> -a key=value ...`: call one tool, JSON out.
   - `decap demo --n <0-255>`: the full hidden-trigger story without an LLM.

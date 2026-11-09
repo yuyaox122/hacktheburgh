@@ -1,4 +1,4 @@
-"""The formaliser (witness-plan section 3, the judge's moment): a person's sentence -> one checkable claim.
+"""The formaliser (docs/archive/research/witness-plan.md section 3, the judge's moment): a person's sentence -> one checkable claim.
 
     "LED 3 lights when switches 1 and 2 are on"  ->  (ui_in[1] & ui_in[2]) -> uo_out[3]
 
@@ -23,10 +23,12 @@ from fastmcp import Client, FastMCP
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-from .claim_expr import ClaimSyntaxError, Evaluator, names, parse
+from decap.core.claim_expr import ClaimSyntaxError, Evaluator, names, parse
+
+from .cli_model import SONNET
 from .transcript import Transcript, result_payload
 
-DEFAULT_MODEL = "anthropic:claude-sonnet-5-5"
+DEFAULT_MODEL = SONNET
 PROMPT_VERSION = "formalise-v1"
 
 # Tiny Tapeout pinout, used when no chip region is given (and by the evaluation)

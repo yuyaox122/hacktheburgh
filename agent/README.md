@@ -1,4 +1,4 @@
-# Decap agent layer (`decap/agent/`)
+# Decap agent layer (`agent/`)
 
 Owner: **@izhangfly** (AGENTS.md section 4). The rest of `decap/` is Yuyao's core.
 
@@ -21,23 +21,25 @@ What's in here:
 
 ## Quick start
 
+The agent layer is the `decap_agent` package of the repo's one Python project (`pyproject.toml` at the root), so
+install it from the repo root:
+
 ```bash
-cd decap/agent
-uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[dev]"
+uv venv -p 3.12 .venv && uv pip install -e '.[dev]'
 .venv/bin/decap tools                 # the tools an agent sees
 .venv/bin/decap demo --n 137          # plant 137, find it, prove it. No LLM.
 .venv/bin/decap agent-send "audit this chip" --chip tt_um_kapilan_alarm   # needs a model key, see below
-.venv/bin/pytest -q
+.venv/bin/pytest -q                   # agent/tests
 ```
 
 Without a real core you get a stub (`decap_agent/stub_core.py`): a made-up 8-bit counter, with every result
-marked `"source": "stub"`. To use the real core, run from a checkout whose `decap/data/` is fetched
-(`cd decap && python -m ingest.fetch`) with `brew install yosys` done:
+marked `"source": "stub"`. To use the real core, fetch `decap/data/` (`.venv/bin/python -m decap.ingest.fetch`)
+with `brew install yosys` done:
 
 ```bash
-export DECAP_CORE_APP=decap.api.main:app PYTHONPATH=$PWD
-decap/agent/.venv/bin/decap demo --n 137          # first dev chip, or --chip tt_um_mac
-DECAP_REAL_CORE_ROOT=$PWD decap/agent/.venv/bin/pytest -q decap/agent/tests
+export DECAP_CORE_APP=decap.api.main:app
+.venv/bin/decap demo --n 137          # first dev chip, or --chip tt_um_mac
+DECAP_REAL_CORE_ROOT=$PWD .venv/bin/pytest -q
 ```
 
 On `tt_um_Electom_cla_4bits` the demo takes about 3 s. It plants a trigger for 137 (9 cells, proven), finds
@@ -50,9 +52,9 @@ through your local `claude` login (`decap_agent/cli_model.py`). Use it when the 
 call tools, so it works for the bench and region claims but not for the investigator. **Gemini:** put `GOOGLE_API_KEY` (from AI Studio)
 in the same secrets file and use `--model google-gla:gemini-flash-latest` (the `google` extra is in pyproject).
 
-**Connect an IDE agent.** Claude Code: `claude mcp add decap -- decap/agent/.venv/bin/decap mcp`. JetBrains
-Air picks up the repo's `.mcp.json`. Its paths are for Ian's Mac, so edit them on another machine. Anything
-else: command `decap/agent/.venv/bin/decap`, args `mcp`.
+**Connect an IDE agent.** Claude Code: `claude mcp add decap -- .venv/bin/decap mcp`. JetBrains
+Air picks up the repo's `.mcp.json` (the root `.venv`, started from the repo root). Anything
+else: command `.venv/bin/decap`, args `mcp`.
 
 ## The Witness terminal
 
@@ -99,7 +101,7 @@ sees:
 Two guards stop it overclaiming. A `yosys` finding about a block that wasn't explained in this run is relabelled
 `unverified`. If the hunt was inconclusive and the summary still says "no hidden logic", a correction is added.
 
-## Witness: the region loop (`decap_agent/witness.py`, plan in docs/decap/witness-plan.md)
+## Witness: the region loop (`decap_agent/witness.py`, plan in docs/archive/research/witness-plan.md)
 
 ```
 decap explain CHIP --cone-of 'uo_out[0]'      # look, claim, check, refine (max 2)
