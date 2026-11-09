@@ -1,23 +1,56 @@
-# bASIC: View Source for silicon
+# bASIC
 
-A chip is manufactured from its **gate-level netlist**, not from the Verilog its author wrote, and nobody can read a netlist. bASIC can:
+**We built an agentic IDE for ASIC chip design. It shows you exactly what a chip is doing, gate by gate, even in Minecraft.**
 
-1. **Read it back.** Take a real chip's netlist, with every internal name stripped, and turn it back into short Verilog a person can review.
-2. **Prove it.** Show with Yosys that the Verilog is exactly the same circuit as the gates. No AI is involved in the decompiler or the proof.
-3. **Catch what doesn't belong.** Plant a hidden trigger, for example `out |= (ui_in == 137)`, and it comes back as a line of code nobody wrote.
-4. **Explain it.** AI agents (*Witness*) explain any region of the chip in one sentence. A sentence only counts once Yosys proves it.
+**Live:** <https://basic-asic.vercel.app> · Built at HackTheBurgh 2026 (7–8 Nov) by Yuyao Xie, Ian Zhang and Alex De Vrieze.
 
-Built at HackTheBurgh 2026 (7–8 Nov) by Yuyao Xie, Ian Zhang and Alex. Live site: <https://basic-asic.vercel.app>.
+> You can't review what you can't read.
 
-## Results
+## The problem
 
-Measured on Tiny Tapeout 08 chips. The dev/test split was frozen before any tuning. Details and caveats: [basic/README.md](basic/README.md).
+Every chip in bASIC is a real Tiny Tapeout 08 chip, rebuilt from its public layout. Its logic is tens to hundreds of gates packed into a tile about 160 × 110 micrometres. The file it was manufactured from (the gate-level netlist) has every internal name stripped, so nobody can read it.
+
+That matters because hardware is forever. Once a chip is made, you can't patch a bug or a hidden trigger. It has to be right the first time.
+
+## The demo
+
+### 1. Explore a real chip
+
+The chip in 3D from its real layout: cells, four metal layers and vias. Click any gate to see what it does, its live pin values and the line of code it belongs to. Press Run and watch the wires that carry a 1 light up.
+
+### 2. Explain: read it back as code
+
+bASIC turns the stripped netlist back into short Verilog a person can review, then proves with Yosys that the code is exactly the same circuit as the gates. No AI is involved in the decompiler or the proof. Plant a hidden trigger, such as `out |= (ui_in == 137)`, and it comes back as a line of code nobody wrote.
+
+### 3. The agent layer
+
+AI agents (*Witness*) work on the chip like a teammate in an IDE. They get three things:
+
+- **A verification layer.** The agent proposes and Yosys decides. Every claim comes back proven, refuted with the input that breaks it, or clearly labelled "tested only".
+- **Access to the Verilog.** Explain any block in one proven sentence, suggest edits, or edit the code yourself. Every edit is checked against the real gates: same circuit, changed, or broken.
+- **A formal checker.** Ask "is anything hidden?", "audit this chip" or "red team drill" in the terminal. The answers rest on equivalence proofs, not on the model's word.
+
+IDE agents (Claude Code, JetBrains, Cursor) get the same tools over MCP.
+
+### 4. Verify, then the results
+
+**Verify** runs the 4-bit CLA chip on its real layout against 1,000 random inputs at once. It then swaps in a "rev B" with one gate changed and traces the difference back to that cell.
+
+**Results** covers every chip in the benchmark. The dev/test split was frozen before any tuning ([details and caveats](basic/README.md)).
 
 | | Held-out test (18 chips) | Dev (9 chips) |
 |---|---|---|
 | Proven equal by Yosys | **15** (+1 tested only, 2 unreadable) | 9 |
 | Planted trigger found blind | **16 of 16** | 9 of 9 |
 | False alarms on clean copies | 3 of 16 | 4 of 9 |
+
+### 5. Minecraft
+
+Because it's pretty cool. bASIC compiles a chip, or any small Verilog, into real redstone: repeaters, comparators and dust, no command blocks. Every build is checked against the netlist in a vanilla server. The chip's real layout can also be walked through as a world, with levers for inputs and lamps for outputs.
+
+## In short
+
+You can't review what you can't read, and nobody can read silicon that is micrometres wide. bASIC reads it back, proves what it read, and lets you and your agents work on it like code.
 
 ## What's where
 
