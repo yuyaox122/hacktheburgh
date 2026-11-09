@@ -3,6 +3,7 @@
 // per-face shade (top 1, N/S .8, E/W .6, bottom .5), nearest-neighbour pixels, cutout alpha, redstone tinted by power.
 
 import * as THREE from "three";
+import { getJson } from "../api/http";
 
 interface Face { uv?: number[]; texture: string | null; tintindex?: number; rotation?: number }
 interface Element { from: number[]; to: number[]; shade?: boolean; faces: Record<string, Face>;
@@ -16,12 +17,8 @@ export interface McAssets { blockstates: Record<string, BlockState>; models: Rec
  *  Dev server only: Mojang's textures must never ship on the public site (vite.config also strips dist/mc). */
 export async function loadMcAssets(): Promise<McAssets | null> {
   if (!import.meta.env.DEV) return null;
-  try {
-    const r = await fetch("/mc/assets.json");
-    if (!r.ok) return null;
-    const d = await r.json();
-    return d?.blockstates && d?.models ? d : null;
-  } catch { return null; }
+  const d = await getJson<McAssets>("/mc/assets.json").catch(() => null);
+  return d?.blockstates && d?.models ? d : null;
 }
 
 const DEFAULTS: Record<string, string> = { powered: "false", locked: "false", lit: "false", mode: "compare", delay: "1",

@@ -5,7 +5,7 @@
 //         the netlist in one pass from the sampled failures; the top suspects are confirmed by re-simulation. The heatmap is each cell's
 //         fault probability (engine.ts has the model).
 
-import { loadDesign } from "../api/core";
+import { loadChip, loadDesign } from "../api/core";
 import type { Design, Lib } from "../api/types";
 import { Stage3D } from "../three/stage3d";
 import { SAMPLES, verify, type Result } from "../sim/verify";
@@ -287,7 +287,7 @@ function select(id: string | null) {
 
 async function boot() {
   ({ design, lib } = await loadDesign(CHIP));
-  proof = await fetch(`/data/chips/${CHIP}.json`).then((r) => (r.ok ? r.json() : null)).then((j) => (j?.verdict === "proven" ? { ...j.proof, proven: true } : null)).catch(() => null);
+  proof = await loadChip(CHIP).then(({ data }) => (data.verdict === "proven" ? { ...data.proof, proven: true } : null), () => null);
   bugCell = design.cells.find((c) => c.id === BUG.cell)!; bugFrom = bugCell.type;
   view = new Stage3D($("vfView"), design, lib, { onCell: (id) => { if (!running) select(id); }, onNet: () => {}, onPort: () => {}, onPhys: () => {} });
   view.start();

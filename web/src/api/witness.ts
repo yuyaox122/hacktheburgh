@@ -1,5 +1,7 @@
-// Client for the Witness agent API (decap/agent: `decap serve`, proxied at /witness by vite.config.ts).
-// The agent proposes; only the core's Yosys checker (core/claims.py) decides what is proven.
+// Client for the Witness agent API (agent/: `decap serve`, proxied at /witness by vite.config.ts), plus the core's
+// review-edit route the agent features use. The agent proposes; only the core's Yosys checker decides what is proven.
+
+import { ApiError, DOWN, postJson, reachable, request, stream } from "./http";
 
 export interface Scope { cone_of?: string; cells?: string[]; nets?: string[] }
 
@@ -47,28 +49,8 @@ export type AgentEvent =
 export const INTERACTIVE_REFINES = 2;   // the code reading always answers; the proof search is the bonus
 
 /** POST /witness/explain and read its Server-Sent Events as they arrive. `fresh` skips the server's run cache. */
-export async function explain(chip: string, scope: Scope, onEvent: (e: AgentEvent) => void, signal?: AbortSignal,
-                              fresh = false): Promise<void> {
-  const res = await fetch("/witness/explain", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chip, scope, max_refine: INTERACTIVE_REFINES, cache: !fresh }), signal,
-  });
-  if (!res.ok || !res.body) throw new Error(`The agent service answered ${res.status}. Is 'decap serve' running on port 8791?`);
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i: number;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
-      if (line) onEvent(JSON.parse(line.slice(6)) as AgentEvent);
-    }
-  }
-}
+export const explain = (chip: string, scope: Scope, onEvent: (e: AgentEvent) => void, signal?: AbortSignal, fresh = false) =>
+  stream<AgentEvent>("/witness/explain", { chip, scope, max_refine: INTERACTIVE_REFINES, cache: !fresh }, onEvent, signal, DOWN.witness);
 
 export interface Formal {
   text: string; claim: string; english: string | null; assumptions: string[]; ambiguous: boolean; alternative: string;
@@ -80,43 +62,27 @@ export type TerminalEvent = AgentEvent | ({ kind: "done" } & Record<string, unkn
 /** A natural-language command for the chip agent (the terminal): 'is anything hidden?', 'what does block b0 do?'... */
 export async function command(chip: string, text: string, onEvent: (e: TerminalEvent) => void, signal?: AbortSignal,
                               upload?: { verilog: string; filename?: string; repair?: boolean; suspects?: unknown[] }): Promise<void> {
-  const res = await fetch("/witness/command", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, command: text, ...upload }), signal,
-  });
-  if (!res.ok || !res.body) throw new Error(`The agent service answered ${res.status}. Is 'decap serve' running on port 8791?`);
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
   let ended = false;   // a stream that stops without done/error must not leave the panel spinning
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i: number;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
-      if (!line) continue;
-      const ev = JSON.parse(line.slice(6)) as TerminalEvent;
-      if (ev.kind === "done" || ev.kind === "error") ended = true;
-      onEvent(ev);
-    }
-  }
+  await stream<TerminalEvent>("/witness/command", { chip, command: text, ...upload }, (ev) => {
+    if (ev.kind === "done" || ev.kind === "error") ended = true;
+    onEvent(ev);
+  }, signal, DOWN.witness);
   if (!ended) throw new Error("The agent's stream ended before it finished. Try again.");
 }
 
 /** The judge's / commenter's sentence -> one formal line (+ the checker's verdict when check = true). */
-export async function formalise(chip: string, sentence: string, scope: Scope, check: boolean): Promise<Formal> {
-  const res = await fetch("/witness/formalise", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, sentence, scope, check }),
-  });
-  if (!res.ok) throw new Error(`The agent service answered ${res.status}. Is 'decap serve' running on port 8791?`);
-  return res.json();
-}
+export const formalise = (chip: string, sentence: string, scope: Scope, check: boolean) =>
+  postJson<Formal>("/witness/formalise", { chip, sentence, scope, check }, undefined, DOWN.witness);
 
-export async function agentUp(): Promise<boolean> {
-  try { return (await fetch("/witness/healthz")).ok; } catch { return false; }
-}
+export const agentUp = () => reachable("/witness/healthz");
+
+/** Plain English for some lines of Verilog (the editor's "Explain selection"). */
+export const explainText = (chip: string, lines: { line: number; text: string }[]) =>
+  postJson<{ headline: string; explanation: string; example?: string }>("/witness/explain-text", { chip, lines }, undefined, DOWN.witness);
+
+export interface Session { id: string; chip?: string; kind?: string; status?: string; started_at?: string; command?: string }
+/** Recent agent sessions (the terminal's /status). */
+export const sessions = () => request<Session[]>("/witness/status", { down: DOWN.witness });
 
 // ---------- Ideas: the agent proposes edits to a region, the core's Yosys reviews the edited module ----------
 
@@ -132,29 +98,8 @@ export interface IdeasAsk {
   history: { role: "user" | "agent"; text: string }[];
 }
 
-/** Why a request failed, in plain English: FastAPI's {detail}, else the status with a hint at which service is down. */
-async function failure(res: Response, down: string): Promise<Error> {
-  let detail = "";
-  try {
-    const j = await res.json() as { detail?: unknown };
-    detail = typeof j.detail === "string" ? j.detail : j.detail ? JSON.stringify(j.detail) : "";
-  } catch { /* not JSON */ }
-  if (detail) return new Error(detail);
-  return new Error(res.status >= 500 ? down : `The server answered ${res.status}.`);
-}
-
 /** POST /witness/ideas: 2-3 concrete edits for lines `lines` of the current Verilog (kept edits applied). */
-export async function ideas(body: IdeasAsk, signal?: AbortSignal): Promise<IdeasReply> {
-  let res: Response;
-  try {
-    res = await fetch("/witness/ideas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
-  } catch (e) {
-    if ((e as Error).name === "AbortError") throw e;
-    throw new Error("The agent service isn't reachable. Start it with 'decap serve --port 8791' (decap/agent).");
-  }
-  if (!res.ok) throw await failure(res, `The agent service answered ${res.status}. Is 'decap serve' running on port 8791?`);
-  return res.json();
-}
+export const ideas = (body: IdeasAsk, signal?: AbortSignal) => postJson<IdeasReply>("/witness/ideas", body, signal, DOWN.witness);
 
 export interface Verdict {
   verdict: "same" | "tested_same" | "changed" | "broken";
@@ -173,17 +118,11 @@ export const REVIEW_TIMEOUT_MS = 150_000;   // the core gives the review 90 s; a
 /** POST /api/chips/{chip}/review-edit: Yosys checks the full edited module against the chip's real gates, and (with
  * `baseline`, the text before this edit) what this edit alone does. */
 export async function reviewEdit(chip: string, verilog: string, baseline?: string): Promise<Review> {
-  let res: Response;
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), REVIEW_TIMEOUT_MS);
   try {
-    res = await fetch(`/api/chips/${encodeURIComponent(chip)}/review-edit`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(baseline != null ? { verilog, baseline } : { verilog }),
-      signal: ctl.signal,
-    });
+    return await postJson<Review>(`/api/chips/${encodeURIComponent(chip)}/review-edit`, baseline != null ? { verilog, baseline } : { verilog }, ctl.signal, DOWN.core);
   } catch (e) {
-    if ((e as Error).name === "AbortError") throw new Error(`Yosys didn't answer within ${REVIEW_TIMEOUT_MS / 1000} s. Review it again, or try a smaller edit.`);
-    throw new Error("Decap's core API isn't reachable, so Yosys can't review the edit. Start it on port 8000.");
+    if ((e as Error).name === "AbortError") throw new ApiError(0, `Yosys didn't answer within ${REVIEW_TIMEOUT_MS / 1000} s. Review it again, or try a smaller edit.`);
+    throw e;
   } finally { clearTimeout(t); }
-  if (!res.ok) throw await failure(res, `Decap's core API answered ${res.status}. Is it running on port 8000?`);
-  return res.json();
 }

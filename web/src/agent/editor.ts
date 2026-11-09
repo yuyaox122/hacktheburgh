@@ -16,7 +16,7 @@ import { verilog } from "@codemirror/legacy-modes/mode/verilog";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { loadChip } from "../api/core";
 import { esc } from "../ui/dom";
-import { ideas, reviewEdit, type IdeaOut, type Review } from "../api/witness";
+import { explainText, ideas, reviewEdit, type IdeaOut, type Review } from "../api/witness";
 import { cexHtml } from "./codeAgent";
 import { md } from "../lib/md";
 import { withAcceptedEdits } from "./verilogIO";
@@ -133,9 +133,7 @@ async function explainSel() {
   const lines = text().split("\n").slice(a - 1, b).map((t, i) => ({ line: a + i, text: t }));
   out(`<span class="spin"></span> Reading lines ${a}–${b}…`);
   try {
-    const res = await fetch("/witness/explain-text", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chip, lines }) });
-    if (!res.ok) throw new Error(`the agent answered ${res.status}`);
-    const p = await res.json() as { headline: string; explanation: string; example?: string };
+    const p = await explainText(chip, lines);
     out(`<b>Lines ${a}–${b}: ${esc(p.headline)}</b>${md(p.explanation)}${p.example ? `<p class="muted">e.g. <code>${esc(p.example)}</code></p>` : ""}
       <span class="muted">Read from these lines by the agent; Check with Yosys for a verdict.</span>`);
   } catch (e) { out(`<span class="pill bad">error</span> ${esc((e as Error).message)}`); }

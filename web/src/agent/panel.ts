@@ -4,7 +4,8 @@
 import { $, esc } from "../ui/dom";
 import { app } from "../ui/state";
 import { icon } from "../ui/icons";
-import { agentUp, command, type TerminalEvent } from "../api/witness";
+import { DOWN } from "../api/http";
+import { agentUp, command, sessions, type TerminalEvent } from "../api/witness";
 import { cexHtml, pill } from "./codeAgent";
 import { runAgent, suggestEditFrom } from "./agent";
 import { store, type Run } from "./store";
@@ -96,7 +97,7 @@ export class AgentPanel {
       void this.runCommand(`Check my file ${d.filename} (${d.text.split("\n").length} lines) against this chip`,
         { verilog: d.text, filename: d.filename }, d.chip);
     });
-    void agentUp().then((ok) => { if (!ok) $("#agIntro", this.el).innerHTML = `<div class="callout bad">The agent service isn't reachable. Start it with <code>decap serve --port 8791</code> (decap/agent).</div>`; });
+    void agentUp().then((ok) => { if (!ok) $("#agIntro", this.el).innerHTML = `<div class="callout bad">${esc(DOWN.witness)}</div>`; });
   }
 
   setChip(chip: string | null, verilog?: string) {
@@ -148,7 +149,7 @@ export class AgentPanel {
 
   private async status() {
     try {
-      const rows = await (await fetch("/witness/status")).json() as Array<{ id: string; chip?: string; kind?: string; status?: string; started_at?: string; command?: string }>;
+      const rows = await sessions();
       this.term.note("/status", rows.length ? rows.slice().reverse().map((r) =>
         `${(r.started_at ?? "").slice(11, 19)}  ${(r.status ?? "?").padEnd(8)} ${(r.kind ?? "").padEnd(11)} ${r.chip ?? ""}  ${(r.command ?? "").slice(0, 40)}`).join("\n") : "no agent sessions yet");
     } catch (e) { this.term.error(`/status: ${(e as Error).message}`); }
