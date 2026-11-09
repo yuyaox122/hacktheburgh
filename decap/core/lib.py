@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -212,3 +213,17 @@ def yosys_models(types: list[str]) -> str:
             body += [f"  assign {p} = {c.fn_text[p].replace('!', '~')};" for p in c.outputs]
         out.append(f"module {PREFIX}{t}({', '.join(ports)});\n" + "\n".join(body) + "\nendmodule\n")
     return "\n".join(out)
+
+
+def cell_models(netlist_text: str) -> str:
+    """cells.v for reading a gate-level netlist with Yosys: a model of every SKY130 HD cell it uses, plus an empty
+    stub for each cell from another SKY130 library (e.g. sky130_ef_sc_hd__decap: no logic)."""
+    types = sorted(set(re.findall(r"\b" + PREFIX + r"([a-z0-9_]+)\b", netlist_text)))
+    other = sorted(set(re.findall(r"\b(sky130_(?!fd_)[a-z]+_sc_hd__[a-z0-9_]+)\b", netlist_text)))
+    stubs = "".join(f"module {o}(input VGND, input VNB, input VPB, input VPWR);\nendmodule\n" for o in other)
+    return yosys_models(types) + stubs
+
+
+def yosys(*args: str, timeout: float | None = None) -> subprocess.CompletedProcess:
+    """Run Yosys with these arguments, output captured as text. Raises subprocess.TimeoutExpired."""
+    return subprocess.run(["yosys", *args], capture_output=True, text=True, timeout=timeout)

@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import subprocess
 import tempfile
 from collections import Counter
 from pathlib import Path
@@ -60,7 +59,7 @@ opt_clean -purge
 write_verilog -noattr -noexpr {td}/out.v
 """
         Path(td, "s.ys").write_text(script)
-        r = subprocess.run(["yosys", "-q", f"{td}/s.ys"], capture_output=True, text=True, timeout=timeout)
+        r = lib.yosys("-q", f"{td}/s.ys", timeout=timeout)
         if r.returncode:
             err = [l for l in (r.stderr + r.stdout).splitlines() if "ERROR" in l]
             raise ValueError("Yosys could not synthesise the design: " + (err[0] if err else (r.stderr or r.stdout)[-400:]))

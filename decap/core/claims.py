@@ -217,8 +217,7 @@ def _yosys(gate: str, top: str, types: list[str], sat: str, timeout: int, seq: b
             f"read_verilog {td}/cells.v {td}/gate.v\nhierarchy -top {top}\nproc\nflatten\n"
             f"{'async2sync' + chr(10) if seq else ''}opt_clean\nsat {sat}\n")
         try:
-            r = subprocess.run(["yosys", "-q", "-l", f"{td}/log.txt", f"{td}/run.ys"], capture_output=True, text=True,
-                               timeout=timeout + 15)
+            r = lib.yosys("-q", "-l", f"{td}/log.txt", f"{td}/run.ys", timeout=timeout + 15)
         except subprocess.TimeoutExpired:
             return {"status": "timeout"}
         log = Path(td, "log.txt").read_text() if Path(td, "log.txt").exists() else r.stdout + r.stderr

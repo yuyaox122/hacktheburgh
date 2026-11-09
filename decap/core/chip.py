@@ -114,7 +114,7 @@ def edit_structure(verilog: str, top: str, timeout: float = 30) -> dict:
         Path(td, "s.ys").write_text(f"read_verilog -sv {td}/e.v\nhierarchy -top {top}\nproc; flatten\n"
                                     f"tee -q -o {td}/check.txt check\nwrite_rtlil {td}/e.il\nmemory\nwrite_json {td}/e.json\n")
         try:
-            r = subprocess.run(["yosys", "-q", f"{td}/s.ys"], capture_output=True, text=True, timeout=max(1, timeout))
+            r = lib.yosys("-q", f"{td}/s.ys", timeout=max(1, timeout))
         except subprocess.TimeoutExpired:
             return {"error": f"timed out after {int(timeout)}s", "timeout": True}
         if r.returncode != 0:
@@ -199,9 +199,6 @@ def _author_check(chip, src, top, timeout, nl_text, first_diff=False, deadline=N
     def left():   # seconds this Yosys run may take: `timeout`, or less when the caller's deadline is near
         return timeout if deadline is None else min(timeout, deadline - time.time())
     nl_text = gate_verilog or nl_text or netlist_path(chip).read_text(errors="replace")
-    types = sorted(set(re.findall(r"\b" + lib.PREFIX + r"([a-z0-9_]+)\b", nl_text)))
-    other = sorted(set(re.findall(r"\b(sky130_(?!fd_)[a-z]+_sc_hd__[a-z0-9_]+)\b", nl_text)))
-    stubs = "".join(f"module {o}(input VGND, input VNB, input VPB, input VPWR);\nendmodule\n" for o in other)
     with tempfile.TemporaryDirectory() as td:
         sd = Path(td, "src"); sd.mkdir()
         for k, v in files.items():
@@ -209,7 +206,7 @@ def _author_check(chip, src, top, timeout, nl_text, first_diff=False, deadline=N
         for k, v in src.get("files", {}).items():
             if not k.endswith((".v", ".sv")):
                 (sd / k).write_text(v)
-        Path(td, "cells.v").write_text(lib.yosys_models(types) + stubs)
+        Path(td, "cells.v").write_text(lib.cell_models(nl_text))
         Path(td, "net.v").write_text(nl_text)
         ports = "input [7:0] ui_in, output [7:0] uo_out, input [7:0] uio_in, output [7:0] uio_out, output [7:0] uio_oe, input ena, input clk, input rst_n"
         conn = ".clk(clk),.ena(ena),.rst_n(rst_n),.ui_in(ui_in),.uio_in(uio_in),.uio_oe(uio_oe),.uio_out(uio_out),.uo_out(uo_out)"
@@ -242,7 +239,7 @@ proc; opt_clean; async2sync
         try:
             if left() < 1:
                 raise subprocess.TimeoutExpired("yosys", 0)
-            r = subprocess.run(["yosys", "-q", f"{td}/eq.ys"], capture_output=True, text=True, timeout=left())
+            r = lib.yosys("-q", f"{td}/eq.ys", timeout=left())
             if r.returncode == 0:
                 return "proven", "Yosys equivalence (equiv_make / equiv_simple / equiv_induct), author source vs shipped netlist", None
             if "ERROR" in r.stderr + r.stdout and "unproven" not in (r.stderr + r.stdout):
@@ -253,7 +250,7 @@ proc; opt_clean; async2sync
         try:
             if left() < 1:
                 return "unavailable", f"ran out of time ({timeout}s budget)", None
-            r = subprocess.run(["yosys", f"{td}/bmc.ys"], capture_output=True, text=True, timeout=left())
+            r = lib.yosys(f"{td}/bmc.ys", timeout=left())
             if r.returncode == 0:
                 return "bounded", "No difference in 20 clock cycles from reset (bounded check; not a full proof)", None
             if re.search(r"proof did fail|failed", r.stderr + r.stdout, re.I):
@@ -264,7 +261,7 @@ proc; opt_clean; async2sync
                             break
                         Path(td, "short.ys").write_text(bmc(n))
                         try:   # optional: a timeout here keeps the difference already found
-                            s = subprocess.run(["yosys", f"{td}/short.ys"], capture_output=True, text=True, timeout=left())
+                            s = lib.yosys(f"{td}/short.ys", timeout=left())
                         except subprocess.TimeoutExpired:
                             break
                         if s.returncode != 0 and re.search(r"proof did fail|failed", s.stdout + s.stderr, re.I):
