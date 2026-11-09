@@ -22,10 +22,10 @@ export const LAYERS: { key: LayerKey; label: string; colour: string; on: boolean
   { key: "m4", label: "Metal 4", colour: "var(--met4)", on: true },
   { key: "m3", label: "Metal 3", colour: "var(--met3)", on: true },
   { key: "m2", label: "Metal 2", colour: "var(--met2)", on: true },
-  { key: "via", label: "Vias", colour: "#c9d3e3", on: true },
+  { key: "via", label: "Vias", colour: "var(--via)", on: true },
   { key: "m1", label: "Metal 1 and rails", colour: "var(--met1)", on: true },
   { key: "cell", label: "Cells", colour: "var(--adder)", on: true },
-  { key: "pkg", label: "Package", colour: "#c9a24a", on: true },
+  { key: "pkg", label: "Package", colour: "var(--pkg)", on: true },
 ];
 type Group = "pkg" | "sub" | "cell" | "m1" | "via" | "m2" | "via2" | "m3" | "via3" | "m4" | "power";
 const EXPLODE_IDX: Record<Group, number> = { pkg: 0, sub: 0, cell: 1, m1: 2, via: 3, m2: 4, via2: 5, m3: 6, via3: 7, m4: 8, power: 9 };
@@ -174,7 +174,7 @@ export class Stage3D {
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.25;
-    const bg = new THREE.Color(css("--bg") || "#0b0b0d");
+    const bg = new THREE.Color(css("--bg"));
     // Studio backdrop: a soft cool pool of light behind the chip, falling off to the page colour at the edges.
     this.scene.background = this.backdrop(bg);
     this.scene.fog = new THREE.FogExp2(bg.clone().lerp(new THREE.Color(0x1a2233), 0.35), 0.0022);
@@ -353,7 +353,7 @@ export class Stage3D {
     }
     for (const [layer, vs] of viasBy) {
       const spec = VIA[layer];
-      const m = inst(box, std({ color: 0xc9d3e3, metalness: 0.9, roughness: 0.2 }), vs.length, this.G[spec.g]);
+      const m = inst(box, std({ color: new THREE.Color(css("--via")), metalness: 0.9, roughness: 0.2 }), vs.length, this.G[spec.g]);
       vs.forEach((v, i) => setBox(m, i, v.x, spec.y, v.z, spec.s, layer === "mcon" ? 0.08 : 0.16, spec.s));
       m.count = vs.length;
     }
@@ -365,7 +365,7 @@ export class Stage3D {
       if (horiz ? !inV(y1) : x1 < V.x0 || x1 > V.x1) continue;
       if (horiz) { x1 = clip(x1, V.x0, V.x1); x2 = clip(x2, V.x0, V.x1); } else { y1 = clip(y1, V.y0, V.y1); y2 = clip(y2, V.y0, V.y1); }
       const len = Math.abs(horiz ? x2 - x1 : y2 - y1);
-      const mat = std({ color: p.layer === "met5" ? 0xb69344 : 0xc9a24a, metalness: 0.9, roughness: 0.3, transparent: true, opacity: 0.55 });
+      const mat = std({ color: p.layer === "met5" ? new THREE.Color(css("--pkg")).multiplyScalar(0.9) : new THREE.Color(css("--pkg")), metalness: 0.9, roughness: 0.3, transparent: true, opacity: 0.55 });
       add(this.G.power, mat, horiz ? len : p.width, 0.12, horiz ? p.width : len, (x1 + x2) / 2, p.layer === "met5" ? Y.m5 : Y.m4 + 0.08, this.sz((y1 + y2) / 2));
     }
 

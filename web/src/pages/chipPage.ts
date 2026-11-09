@@ -5,7 +5,7 @@ import type { BenchChip, ChipResult, FixResult, Lib } from "../api/types";
 import { fix as apiFix, loadBench, loadChip, loadLib, loadStageIndex, plantSources, startPlant, type Source } from "../api/core";
 import { cap, kindColour, kindWord } from "../lib/kinds";
 import { NetGraph } from "../ui/graph";
-import { $, $$, codeText, esc, toast, wrapOn } from "../ui/dom";
+import { $, $$, codeText, css, esc, toast, wrapOn } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { app } from "../ui/state";
 import { pendingBuild } from "../api/redstone";
@@ -373,8 +373,8 @@ export class ChipPage {
   setAgentMarks(m: Map<string, string>) { this.agentMarks = m; if (this.result) this.applyMarks(); }
   private applyMarks() {
     const r = this.result!, m = new Map<string, string>(this.agentMarks);
-    for (const f of r.flags) for (const c of f.cone) m.set(c, "#ff453a");
-    if (this.showPlanted) for (const c of this.fixRes?.data.removed_cells ?? []) m.set(c, "#64d2ff");
+    for (const f of r.flags) for (const c of f.cone) m.set(c, css("--del"));
+    if (this.showPlanted) for (const c of this.fixRes?.data.removed_cells ?? []) m.set(c, css("--fall"));
     this.graph?.setMarks(m);
   }
 

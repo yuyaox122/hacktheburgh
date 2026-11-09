@@ -6,7 +6,7 @@
 //         fault probability (engine.ts has the model).
 
 import { loadChip, loadDesign } from "../api/core";
-import { esc } from "../ui/dom";
+import { css, esc } from "../ui/dom";
 import type { Design, Lib } from "../api/types";
 import { Stage3D } from "../three/stage3d";
 import { SAMPLES, verify, type Result } from "../sim/verify";
@@ -24,15 +24,19 @@ const pct = (p: number) => (p >= 0.995 ? "99" : p < 0.01 && p > 0 ? "<1" : Strin
 const rate = (x: number) => (x > 0 && x < 0.001 ? "<0.1" : (x * 100).toFixed(1).replace(/\.0$/, ""));
 const ms = (x: number) => (x < 0.1 ? "<0.1 ms" : `${x.toFixed(1)} ms`);
 
-/** Heat ramp for fault probability, on a log scale so 1% still glows. */
-const STOPS: [number, [number, number, number]][] = [[0, [36, 64, 140]], [0.35, [120, 70, 200]], [0.6, [255, 159, 10]], [0.82, [255, 69, 58]], [1, [255, 236, 220]]];
+/** Heat ramp for fault probability, on a log scale so 1% still glows. Colours: --heat-0..4 in styles/tokens.css. */
+const AT = [0, 0.35, 0.6, 0.82, 1];
+let stops: [number, number[]][] = [];
+const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 function heat(p: number): string {
+  if (!stops.length) stops = AT.map((t, i) => [t, rgb(css(`--heat-${i}`))]);
   const t = Math.max(0, Math.min(1, 1 + Math.log10(Math.max(p, 1e-9)) / 3));
-  let i = 0; while (i < STOPS.length - 2 && t > STOPS[i + 1][0]) i++;
-  const [t0, a] = STOPS[i], [t1, b] = STOPS[i + 1], k = (t - t0) / (t1 - t0 || 1);
+  let i = 0; while (i < stops.length - 2 && t > stops[i + 1][0]) i++;
+  const [t0, a] = stops[i], [t1, b] = stops[i + 1], k = (t - t0) / (t1 - t0 || 1);
   return `#${a.map((x, j) => Math.round(x + (b[j] - x) * k).toString(16).padStart(2, "0")).join("")}`;
 }
-const GREEN = "#30d158", CLEAR = "#2c6e49", FLASH = "#ffffff";
+/** Right, cleared and flashing cells; read once the page is on screen (the tokens are CSS). */
+let GREEN = "", CLEAR = "", FLASH = "";
 
 root.innerHTML = `
   <main class="vf-view" id="vfView"></main>
@@ -63,9 +67,9 @@ root.innerHTML = `
   </aside>
   <div class="vf-verdict" id="vfVerdict" hidden></div>
   <footer class="vf-ctrl">
-    <button class="vf-btn primary" id="vfGo" type="button">Verify the 4-bit CLA</button>
-    <button class="vf-btn" id="vfRevB" type="button" disabled>Introduce rev B</button>
-    <button class="vf-btn plain" id="vfReplay" type="button" disabled>Replay</button>
+    <button class="btn lg primary" id="vfGo" type="button">Verify the 4-bit CLA</button>
+    <button class="btn lg" id="vfRevB" type="button" disabled>Introduce rev B</button>
+    <button class="btn lg plain" id="vfReplay" type="button" disabled>Replay</button>
   </footer>`;
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector(`#${id}`) as T;
 const btn = (id: string) => byId<HTMLButtonElement>(id);
@@ -132,10 +136,11 @@ function drawStrip(frac: number) {
   if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   const g = cv.getContext("2d")!; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
   // One row per 32-bit word: the whole word lands at once, which is what bit-parallel simulation does.
+  const empty = css("--hover"), wrong = css("--del");
   const rows = R.words, cols = 32, cw = w / cols, ch = h / rows, wordsDone = Math.floor(frac * rows + 1e-9);
   for (let i = 0; i < R.patterns; i++) {
     const r = Math.floor(i / 32);
-    g.fillStyle = r >= wordsDone ? "rgba(255,255,255,.06)" : R.ok[i] ? GREEN : "#ff453a";
+    g.fillStyle = r >= wordsDone ? empty : R.ok[i] ? GREEN : wrong;
     g.fillRect((i % cols) * cw + 0.5, r * ch + 0.5, cw - 1, ch - 1);
   }
 }
@@ -286,6 +291,7 @@ function select(id: string | null) {
 }
 
 async function boot() {
+  GREEN = css("--add"); CLEAR = css("--heat-clear"); FLASH = css("--white");
   ({ design, lib } = await loadDesign(CHIP));
   proof = await loadChip(CHIP).then(({ data }) => (data.verdict === "proven" ? { ...data.proof, proven: true } : null), () => null);
   bugCell = design.cells.find((c) => c.id === BUG.cell)!; bugFrom = bugCell.type;

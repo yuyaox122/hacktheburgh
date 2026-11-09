@@ -11,7 +11,7 @@ export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)")
 export function hiVerilog(line: string): string {
   const i = line.indexOf("//");
   const code = i >= 0 ? line.slice(0, i) : line, com = i >= 0 ? line.slice(i) : "";
-  const h = esc(code)
+  const h = esc(code).replaceAll("&#39;", "'")   // text, not an attribute: keep ' so 8'd0 still reads as one number
     .replace(/\b(\d+'[sS]?[dbhoDBHO][0-9a-fA-F_xXzZ]+|\d+)\b/g, '<span class="num">$1</span>')
     .replace(/\b(module|endmodule|input|output|inout|wire|reg|logic|always|always_ff|always_comb|posedge|negedge|if|else|assign|genvar|generate|endgenerate|for|begin|end|case|endcase|default|parameter|localparam|integer)\b/g, '<span class="k">$1</span>')
     .replace(/(&lt;=|&amp;&amp;|\|\||==|!=|[\^~!?])/g, '<span class="op">$1</span>');

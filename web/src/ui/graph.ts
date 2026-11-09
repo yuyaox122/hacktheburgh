@@ -242,11 +242,11 @@ export class NetGraph {
       const mark = this.marks.get(n.id);
       if (mark || n.id === this.selected || n === this.hover || (this.hl?.has(n.id) && this.hl.size < this.nodes.length)) {
         g.lineWidth = (n.id === this.selected ? 2.4 : 1.6) / Math.max(0.6, this.view.s);
-        g.strokeStyle = n.id === this.selected ? "#ffffff" : mark ?? (n === this.hover ? "#ffffff" : accent);
+        g.strokeStyle = n.id === this.selected || (!mark && n === this.hover) ? css("--white") : mark ?? accent;
         g.stroke();
       }
       if (showText) {
-        g.fillStyle = n.kind === "cell" ? "#0b0b0d" : accent;
+        g.fillStyle = n.kind === "cell" ? css("--bg") : accent;
         g.fillText(n.label.length > 10 ? n.label.slice(0, 9) + "…" : n.label, n.x, n.y + 0.5);
       }
     }

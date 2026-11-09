@@ -11,7 +11,8 @@
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { StreamLanguage, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
+import { StreamLanguage, syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { verilog } from "@codemirror/legacy-modes/mode/verilog";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { loadChip } from "../api/core";
@@ -33,9 +34,18 @@ const theme = EditorView.theme({
   ".cm-gutters": { backgroundColor: "transparent", color: "var(--faint)", border: "none" },
   ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--fg) 5%, transparent)" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--fg)" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { backgroundColor: "color-mix(in srgb, #5ec8ff 30%, transparent)" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { backgroundColor: "color-mix(in srgb, var(--fall) 30%, transparent)" },
   "&.cm-focused": { outline: "none" },
 }, { dark: true });
+
+/** The same Verilog colours as the read-only code panes (ui/dom.ts hiVerilog; --syn-* tokens). */
+const verilogColours = HighlightStyle.define([
+  { tag: [tags.keyword, tags.modifier, tags.typeName, tags.definitionKeyword], color: "var(--syn-kw)" },
+  { tag: [tags.number, tags.bool, tags.atom], color: "var(--syn-num)" },
+  { tag: [tags.operator, tags.punctuation], color: "var(--syn-op)" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: "var(--syn-com)" },
+  { tag: [tags.string], color: "var(--syn-num)" },
+]);
 
 export const isOpen = () => !!view;
 /** Open the editor over the Decompile pane's body (the read-only view stays underneath, hidden). */
@@ -66,7 +76,7 @@ export async function open(chipId: string, paneBody: HTMLElement) {
       doc: drafts.get(chipId) ?? original,
       extensions: [
         lineNumbers(), history(), drawSelection(), highlightActiveLine(), bracketMatching(), highlightSelectionMatches(),
-        StreamLanguage.define(verilog), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), theme,
+        StreamLanguage.define(verilog), syntaxHighlighting(verilogColours), theme,
         keymap.of([{ key: "Mod-s", preventDefault: true, run: () => { void check(); return true; } },
           indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.updateListener.of((u) => { if (u.docChanged) drafts.set(chip, u.state.doc.toString()); }),

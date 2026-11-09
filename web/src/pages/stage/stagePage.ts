@@ -670,7 +670,7 @@ export class StagePage {
     const lw = Math.min(110, Math.max(36, ...lanes.map((l) => g.measureText(l.label).width + 12)));
     const rowH = h / lanes.length, step = (w - lw) / n;
     const hist = this.history, first = n - hist.length;
-    const inCol = "rgba(235,235,245,0.55)", outCol = css("--high") || "#ffd60a", grid = "rgba(255,255,255,0.05)";
+    const inCol = css("--muted"), outCol = css("--high"), fg = css("--fg"), grid = css("--hover");
     // faint clock grid
     g.strokeStyle = grid; g.lineWidth = 1; g.beginPath();
     for (let i = 0; i <= n; i += 5) { const x = Math.round(lw + i * step) + 0.5; g.moveTo(x, 0); g.lineTo(x, h); }
@@ -678,7 +678,7 @@ export class StagePage {
     lanes.forEach((lane, r) => {
       const y0 = r * rowH, pad = Math.min(4, rowH * 0.18), hi = y0 + pad, lo = y0 + rowH - pad, mid = (hi + lo) / 2;
       const col = lane.out ? outCol : inCol;
-      g.fillStyle = lane.out ? "rgba(245,245,247,0.9)" : "rgba(235,235,245,0.6)";
+      g.fillStyle = lane.out ? fg : inCol;
       g.font = `500 10.5px ${font}`; g.textBaseline = "middle";
       g.fillText(lane.label, 0, mid, lw - 8);
       if (!hist.length) return;
@@ -704,9 +704,9 @@ export class StagePage {
         const xa = lw + (first + run.a) * step, xb = lw + (first + run.b) * step;
         g.beginPath();
         g.moveTo(xa, mid); g.lineTo(xa + k, hi); g.lineTo(xb - k, hi); g.lineTo(xb, mid); g.lineTo(xb - k, lo); g.lineTo(xa + k, lo); g.closePath();
-        g.fillStyle = lane.out ? "rgba(255,214,10,0.12)" : "rgba(235,235,245,0.06)"; g.fill(); g.stroke();
+        g.fillStyle = col; g.globalAlpha = lane.out ? 0.12 : 0.08; g.fill(); g.globalAlpha = 1; g.stroke();
         const label = String(run.v);
-        if (xb - xa - 2 * k > g.measureText(label).width + 4) { g.fillStyle = lane.out ? outCol : "rgba(245,245,247,0.85)"; g.fillText(label, (xa + xb) / 2, mid + 0.5); }
+        if (xb - xa - 2 * k > g.measureText(label).width + 4) { g.fillStyle = lane.out ? outCol : fg; g.fillText(label, (xa + xb) / 2, mid + 0.5); }
       }
       g.textAlign = "start";
     });

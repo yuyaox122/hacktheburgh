@@ -11,7 +11,7 @@ import { verifyIcon, verifyPage } from "./pages/verifyPage";
 import { Guide } from "./ui/guide";
 import { Palette } from "./ui/palette";
 import { Demo } from "./ui/demo";
-import { $, $$, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
+import { $, $$, css, esc, isTyping, setWrap, wrapOn } from "./ui/dom";
 import { icon } from "./ui/icons";
 import { app, type PaletteCommand } from "./ui/state";
 import { AgentPanel } from "./agent/panel";
@@ -58,7 +58,7 @@ function paintAgent(chipId: string) {
   if (app.route === "chip" && chip?.chip === chipId) { decorateCode(chip); chip.setAgentMarks(store.marks(chipId)); }
   if (app.route === "stage" && stage?.chipName === chipId) {
     const legend = store.runs(chipId).filter((r) => r.status === "done" && r.cells.length).slice(0, 5).map((r) => ({
-      label: `${r.label}: ${r.explained ? "proven" : r.final ?? ""}`, colour: r.explained ? "#4cc38a" : r.final === "refuted" ? "#ef6b73" : "#e9a23b",
+      label: `${r.label}: ${r.explained ? "proven" : r.final ?? ""}`, colour: css(r.explained ? "--add" : r.final === "refuted" ? "--del" : "--amber"),
       cells: r.cells, claim: r.attempts[r.attempts.length - 1]?.claim }));
     stage.setAgentMarks(store.marks(chipId), legend);
   }

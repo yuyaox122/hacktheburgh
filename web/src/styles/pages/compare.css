@@ -1,10 +1,10 @@
 /* Compare (#/compare): input card, fingerprint, neighbour cards. */
 .compare { max-width: 980px; margin: 0 auto; padding: 56px 32px 80px; display: grid; gap: 28px; align-content: start; }
-.compare .card { background: var(--panel); border-radius: var(--r-lg); padding: 16px; display: grid; gap: 12px; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .06); }
+.compare .card { background: var(--panel); border-radius: var(--r-lg); padding: 16px; display: grid; gap: 12px; box-shadow: var(--card-edge); }
 .compare textarea { width: 100%; min-height: 240px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; resize: vertical; background: var(--bg); }
 .compare .acts .grow { flex: 1; }
 .ncards { display: grid; gap: 12px; }
-.ncard { background: var(--panel); border-radius: var(--r-lg); padding: 16px 18px; display: grid; gap: 8px; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .06); }
+.ncard { background: var(--panel); border-radius: var(--r-lg); padding: 16px 18px; display: grid; gap: 8px; box-shadow: var(--card-edge); }
 .ncard .hd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ncard .hd .rank { color: var(--faint); font-variant-numeric: tabular-nums; }
 .ncard .hd a { font-weight: 600; font-size: 14px; color: var(--fg); }
@@ -18,7 +18,7 @@
 .fp-stats div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--bg); }
 .fp-stats b { font-family: var(--font-display); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg); line-height: 1.1; }
 .fp-stats span { font-size: 12px; color: var(--muted); }
-.fp-bar { display: flex; gap: 2px; height: 10px; border-radius: 5px; overflow: hidden; background: rgba(118, 118, 128, .24); }
+.fp-bar { display: flex; gap: 2px; height: 10px; border-radius: var(--r-xs); overflow: hidden; background: var(--fill); }
 .fp-bar i { display: block; height: 100%; min-width: 3px; }
 .fp-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; }
 .fp-legend > span { display: inline-flex; align-items: center; gap: 6px; }
@@ -26,6 +26,6 @@
 .fp-legend .muted { font-size: 11.5px; }
 .compare .pill b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .compare { padding: 32px 16px 64px; } .fp-stats b { font-size: 20px; } }
-.score { height: 4px; border-radius: 2px; background: rgba(118, 118, 128, .24); overflow: hidden; width: 120px; display: inline-block; }
+.score { height: 4px; border-radius: 2px; background: var(--fill); overflow: hidden; width: 120px; display: inline-block; }
 .score i { display: block; height: 100%; background: var(--accent); }
 @media (max-width: 900px) { .compare { padding: 32px 16px 64px; } }
