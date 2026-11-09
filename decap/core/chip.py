@@ -22,19 +22,19 @@ def netlist_path(chip: str) -> Path:
     return chip_dir(chip) / "netlist.v"
 
 
+def info_field(chip: str, key: str) -> str:
+    """One field of the chip's info.yaml ('' if absent). No YAML dependency: the fields are flat."""
+    f = chip_dir(chip) / "info.yaml"
+    m = re.search(rf"^\s*{key}:\s*\"?([^\"\n#]*)\"?", f.read_text(errors="replace"), re.M) if f.exists() else None
+    return m.group(1).strip() if m else ""
+
+
 def info(chip: str) -> dict:
     if chip == "warmup":
         return {"title": "Jane Street ASIC puzzle warm-up", "author": "Jane Street (asic-puzzle-2026)", "language": "Verilog",
                 "description": "Shift registers, an adder and a comparator."}
-    f = chip_dir(chip) / "info.yaml"
     out = {"title": chip, "author": "", "language": "", "description": ""}
-    if f.exists():
-        t = f.read_text(errors="replace")
-        for k in out:
-            m = re.search(rf"^\s*{k}:\s*\"?([^\"\n#]*)\"?", t, re.M)
-            if m and m.group(1).strip():
-                out[k] = m.group(1).strip()
-    return out
+    return {k: info_field(chip, k) or default for k, default in out.items()}
 
 
 def code_lines(text: str) -> int:

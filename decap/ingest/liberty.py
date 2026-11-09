@@ -18,9 +18,8 @@ import os
 import re
 import sys
 
+from ..core.lib import PG, PHYSICAL
 from ..paths import CHIPS_OUT, PDK, TT08, WARMUP, WEB_DATA
-PHYS_PREFIXES = ("fill_", "decap_", "tapvpwrvgnd_", "diode_")
-PG_PINS = {"VGND", "VNB", "VPB", "VPWR"}
 
 
 def used_types(paths):
@@ -40,7 +39,7 @@ def phys_width_sites(t):
 def cell_entry(pdk, t):
     path = os.path.join(pdk, t + ".json")
     if not os.path.exists(path):
-        if t.startswith(PHYS_PREFIXES):
+        if PHYSICAL.match(t):
             sites = phys_width_sites(t)
             return {"pins": {}, "function": {}, "area": round(sites * 0.46 * 2.72, 4), "ff": None, "phys": True}
         return None
@@ -51,7 +50,7 @@ def cell_entry(pdk, t):
         if not k.startswith("pin,"):
             continue
         name = k[4:]
-        if name in PG_PINS:
+        if name in PG:
             continue
         direction = v.get("direction")
         pins[name] = "out" if direction == "output" else "in" if direction == "input" else "inout"

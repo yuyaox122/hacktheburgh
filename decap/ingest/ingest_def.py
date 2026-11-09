@@ -24,12 +24,11 @@ import os
 import re
 import sys
 
+from ..core.lib import PHYSICAL, PREFIX
 from ..paths import PDK, WARMUP, WEB_DATA
 
 WARM = str(WARMUP)
 SITE, ROW_H = 0.46, 2.72
-PHYS_PREFIXES = ("fill_", "decap_", "tapvpwrvgnd_", "diode_")
-PREFIX = "sky130_fd_sc_hd__"
 
 
 def clean(name):
@@ -264,7 +263,7 @@ def main():
         return (mod, "/".join(ip))
 
     def sites_of(t):
-        if t.startswith(PHYS_PREFIXES):
+        if PHYSICAL.match(t):
             m = re.search(r"_(\d+)$", t)
             return 1 if t.startswith("tapvpwrvgnd") else int(m.group(1)) if m else 1
         f = os.path.join(a.pdk, t + ".json")
@@ -277,7 +276,7 @@ def main():
     for c in d["comps"]:
         t = c["type"]
         w = round(sites_of(t) * SITE, 3)
-        if t.startswith(PHYS_PREFIXES):
+        if PHYSICAL.match(t):
             phys.append({"type": t, "x": c["x"], "y": c["y"], "w": w, "orient": c["orient"]})
             continue
         g = gates.get(c["name"])

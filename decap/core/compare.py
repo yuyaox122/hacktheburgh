@@ -16,9 +16,6 @@ from pathlib import Path
 from ..paths import CHIPS_OUT
 from . import lib, netlist, pipeline
 
-SYNTH_CELLS = ["inv_1", "buf_1", "and2_1", "and3_1", "and4_1", "or2_1", "or3_1", "or4_1", "nand2_1", "nand3_1", "nor2_1",
-               "nor3_1", "xor2_1", "xnor2_1", "mux2_1", "a21oi_1", "a21o_1", "o21ai_0", "o21a_1", "a22o_1", "o22a_1",
-               "and2b_1", "or2b_1", "nand2b_1", "nor2b_1", "a211oi_1", "o211ai_1", "dfrtp_1", "dfxtp_1", "dfstp_2", "conb_1"]
 KINDS = ["counter", "shift", "register", "adder", "subtractor", "multiplier", "comparator", "mux", "table", "reduce",
          "bitwise", "copy", "logic"]
 FAMILIES = {"xor": "xor", "xnor": "xor", "mux": "mux", "df": "flop", "and": "and", "nand": "and", "or": "or", "nor": "or",
@@ -26,7 +23,7 @@ FAMILIES = {"xor": "xor", "xnor": "xor", "mux": "mux", "df": "flop", "and": "and
             "buf": "buf", "clkbuf": "buf", "dly": "buf"}
 
 
-def liberty_text(cells=SYNTH_CELLS) -> str:
+def liberty_text(cells=lib.SYNTH_CELLS) -> str:
     out = ["library(decap_min) {", '  delay_model : table_lookup;', '  time_unit : "1ns";', '  capacitive_load_unit (1,pf);']
     for name in cells:
         c = lib.cell(name)

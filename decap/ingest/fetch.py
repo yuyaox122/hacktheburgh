@@ -22,16 +22,12 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from ..core.lib import PHYSICAL, SYNTH_CELLS, TT_REPO
 from ..paths import CANDIDATES, DATA
-TT_REPO = "TinyTapeout/tinytapeout-08"
+
 PDK_REPO = "google/skywater-pdk-libs-sky130_fd_sc_hd"
 WARMUP_REPO = "janestreet/asic-puzzle-2026"
 WARMUP_FILES = ["00_source.v", "01_netlist.v", "02_netlist_with_power_rails.v", "03_post_place_and_route.def"]
-PHYSICAL = re.compile(r"^(fill|decap|tapvpwrvgnd|diode|fakediode|tap)_")
-# Always fetched: cells for planting triggers and for synthesising imported designs (Compare).
-EXTRA_CELLS = ["inv_1", "buf_1", "and2_1", "and3_1", "and4_1", "or2_1", "or3_1", "or4_1", "nand2_1", "nand3_1", "nor2_1",
-               "nor3_1", "xor2_1", "xnor2_1", "mux2_1", "a21oi_1", "a21o_1", "o21ai_0", "o21a_1", "a22o_1", "o22a_1",
-               "and2b_1", "or2b_1", "nand2b_1", "nor2b_1", "dfrtp_1", "dfxtp_1", "dfstp_2", "conb_1", "a211oi_1", "o211ai_1"]
 
 
 def gh_raw(repo: str, path: str, ref: str | None = None) -> bytes | None:
@@ -123,7 +119,7 @@ def main() -> None:
                 print("warm-up missing:", f, file=sys.stderr)
         if (DATA / "warmup" / "01_netlist.v").exists():
             nets.append(DATA / "warmup" / "01_netlist.v")
-    cells = sorted(used_cells(nets) | set(EXTRA_CELLS))
+    cells = sorted(used_cells(nets) | set(SYNTH_CELLS))
     with ThreadPoolExecutor(8) as ex:
         missing = [m for m in ex.map(lambda c: fetch_cell(c, a.seed_pdk), cells) if m]
     print(f"{len(chips)} chips, {len(cells)} cell types" + (f", missing Liberty: {missing}" if missing else ""))

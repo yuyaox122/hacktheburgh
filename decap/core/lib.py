@@ -11,6 +11,12 @@ from ..paths import PDK
 PREFIX = "sky130_fd_sc_hd__"
 PHYSICAL = re.compile(r"^(fill|decap|tapvpwrvgnd|tap|diode|fakediode)_")
 PG = ["VGND", "VNB", "VPB", "VPWR"]
+TT_REPO = "TinyTapeout/tinytapeout-08"   # the chips' netlists, info.yaml and GDS
+# Cells for planting triggers (find.plant) and for synthesising imported designs (compare.synthesise): always fetched.
+# The order is the order of the Liberty file Yosys maps against.
+SYNTH_CELLS = ["inv_1", "buf_1", "and2_1", "and3_1", "and4_1", "or2_1", "or3_1", "or4_1", "nand2_1", "nand3_1", "nor2_1",
+               "nor3_1", "xor2_1", "xnor2_1", "mux2_1", "a21oi_1", "a21o_1", "o21ai_0", "o21a_1", "a22o_1", "o22a_1",
+               "and2b_1", "or2b_1", "nand2b_1", "nor2b_1", "a211oi_1", "o211ai_1", "dfrtp_1", "dfxtp_1", "dfstp_2", "conb_1"]
 
 # ---------- boolean expressions: ("var", name) | ("const", 0/1) | ("not", e) | ("and", [e…]) | ("or", [e…]) | ("xor", [e…]) | ("mux", s, a1, a0)
 

@@ -24,24 +24,24 @@ import json
 import math
 import re
 import struct
-import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
 
 from ..core import netlist as NL
+from ..core.chip import info_field
+from ..core.lib import PG, PHYSICAL, TT_REPO
 from ..paths import CHIPS_OUT, GDS, TT08, WEB_DATA
+from .fetch import gh_raw
 
 _NOTES = Path(__file__).with_name("chip_notes.json")
 CHIP_NOTES: dict = json.loads(_NOTES.read_text()) if _NOTES.is_file() else {}
 
-TT_REPO = "TinyTapeout/tinytapeout-08"
 CONDUCTOR = {(67, 20): "li1", (68, 20): "met1", (69, 20): "met2", (70, 20): "met3", (71, 20): "met4", (71, 16): "met4"}
 VIAS = {(67, 44): ("mcon", "li1", "met1"), (68, 44): ("via", "met1", "met2"), (69, 44): ("via2", "met2", "met3"),
         (70, 44): ("via3", "met3", "met4")}
 PORT_LABEL = (71, 5)
-PHYSICAL = re.compile(r"^(fill|decap|tapvpwrvgnd|diode|fakediode|tap)_")
 PREFIX = re.compile(r"^sky130_(fd|ef)_sc_hd__")
-POWER = {"VPWR", "VGND", "VPB", "VNB"}
+POWER = set(PG)
 
 
 # ---------------------------------------------------------------------------------------------- GDS reader
@@ -182,8 +182,9 @@ def ensure_gds(chip: str) -> Path:
     p = GDS / f"{chip}.gds"
     if not p.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
-        raw = subprocess.run(["gh", "api", f"repos/{TT_REPO}/contents/projects/{chip}/{chip}.gds",
-                              "-H", "Accept: application/vnd.github.raw"], capture_output=True, check=True).stdout
+        raw = gh_raw(TT_REPO, f"projects/{chip}/{chip}.gds")
+        if raw is None:
+            raise RuntimeError(f"could not download the GDS of {chip} (gh api)")
         p.write_bytes(raw)
     return p
 
@@ -197,12 +198,6 @@ def pinout(chip: str) -> dict[str, str]:
             if m.group(2).strip():
                 out[m.group(1)] = m.group(2).strip()
     return out
-
-
-def info_field(chip: str, key: str) -> str:
-    f = TT08 / chip / "info.yaml"
-    m = re.search(rf'^\s*{key}:\s*"?([^"\n]*)"?', f.read_text(), re.M) if f.exists() else None
-    return m.group(1).strip() if m else ""
 
 
 def io_fields(pins: dict[str, str], reads: set[str]) -> dict:
