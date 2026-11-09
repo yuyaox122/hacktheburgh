@@ -1,40 +1,31 @@
 // Explore page (route #/stage): a real chip in 3D (a Tiny Tapeout chip from its GDS, or the warm-up), its source,
-// an inspector, and the live simulator.
+// an inspector, and the live simulator. Helpers: netlist.ts (fan-in/out), inspector.ts (the right pane's HTML),
+// waveform.ts (the logic analyser), inputs.ts (custom inputs).
 
 import type { Design, DesignCell, IoField, Lib } from "../../api/types";
 import type { StageChip } from "../../api/core";
 import { Sim } from "../../sim/sim";
 import { Stage3D, LAYERS, type LayerKey } from "../../three/stage3d";
 import { usedArea } from "../../three/geometry";
-import { category, CATEGORY_LABEL, CATEGORY_VAR, describe, fullName, toWordsSafe } from "../../lib/cells";
-import { parse, evalExpr, vars } from "../../sim/expr";
-import { $, $$, codeText, css, esc, wrapOn } from "../../ui/dom";
+import { category, CATEGORY_LABEL, CATEGORY_VAR } from "../../lib/cells";
+import { cap } from "../../lib/kinds";
+import { $, $$, codeText, esc, wrapOn } from "../../ui/dom";
 import { icon } from "../../ui/icons";
 import { app } from "../../ui/state";
-import { cap } from "../../lib/kinds";
 import * as stageAgent from "../../agent/stageAgent";
+import { Connectivity } from "./netlist";
+import { cellHtml, categoryTitle, chipHtml, lineHtml, netHtml, physHtml, portHtml } from "./inspector";
+import { drawWave, type Lane } from "./waveform";
+import { loadCustomInputs, parseCustomInput, saveCustomInputs } from "./inputs";
 
 const SPEEDS: [number, string][] = [[900, "0.5×"], [450, "1×"], [120, "4×"]];
-
-/** One lane of the logic analyser: a single wire, or a named number drawn as a bus. */
-interface Lane { label: string; bits: string[]; out: boolean }
-
-const CUSTOM_KEY = (chip: string) => `basic.customInputs.${chip}`;
-function loadCustomInputs(chip: string): IoField[] {
-  try { const v = JSON.parse(localStorage.getItem(CUSTOM_KEY(chip)) ?? "[]"); return Array.isArray(v) ? v.filter((f) => f && typeof f.name === "string" && Array.isArray(f.bits)) : []; }
-  catch { return []; }
-}
-function saveCustomInputs(chip: string, fields: IoField[]) {
-  try { localStorage.setItem(CUSTOM_KEY(chip), JSON.stringify(fields)); } catch { /* private mode: custom inputs last for this visit only */ }
-}
 
 export class StagePage {
   readonly el: HTMLElement;
   view: Stage3D | null = null;
   sim: Sim;
-  private byId = new Map<string, DesignCell>();
-  private drivers = new Map<string, string>();
-  private sinks = new Map<string, { id: string; pin: string }[]>();
+  private net: Connectivity;
+  private byId: Map<string, DesignCell>;
   private selected: string | null = null;
   private selLines = new Set<number>();
   private selModule: string | null = null;
@@ -61,14 +52,8 @@ export class StagePage {
   private lanes: Lane[];
 
   constructor(private design: Design, private lib: Lib, private chips: StageChip[] = []) {
-    for (const c of design.cells) {
-      this.byId.set(c.id, c);
-      const L = lib[c.type];
-      for (const [p, n] of Object.entries(c.pins)) {
-        if (L?.pins[p] === "out") this.drivers.set(n, c.id);
-        else { if (!this.sinks.has(n)) this.sinks.set(n, []); this.sinks.get(n)!.push({ id: c.id, pin: p }); }
-      }
-    }
+    this.net = new Connectivity(design, lib);
+    this.byId = this.net.byId;
     this.sim = new Sim(design.cells, lib);
     this.inputs = design.ports.filter((p) => p.dir === "in").map((p) => p.name);
     this.outputs = design.ports.filter((p) => p.dir === "out").map((p) => p.name);
@@ -333,19 +318,9 @@ export class StagePage {
   private addCustomInput() {
     const name = ($<HTMLInputElement>("#stCiName", this.el).value || "").trim();
     const spec = ($<HTMLInputElement>("#stCiBits", this.el).value || "").trim();
-    const msg = $("#stCiMsg", this.el);
-    const bits: string[] = [];
-    for (const part of spec.split(",").map((x) => x.trim()).filter(Boolean)) {
-      const m = /^(\w+)\[(\d+)(?::(\d+))?\]$/.exec(part);
-      if (!m) { msg.textContent = `Can't read "${part}": use ui_in[2] or ui_in[7:4]`; return; }
-      const hi = +m[2], lo = m[3] !== undefined ? +m[3] : hi;
-      for (let k = Math.min(lo, hi); k <= Math.max(lo, hi); k++) bits.push(`${m[1]}[${k}]`);
-    }
-    const missing = bits.filter((b) => !this.netSet.has(b));
-    if (!name || !bits.length) { msg.textContent = "Give it a name and at least one bit"; return; }
-    if (missing.length) { msg.textContent = `This chip's gates don't use ${missing.slice(0, 3).join(", ")}`; return; }
-    if (bits.length > 16) { msg.textContent = "At most 16 bits"; return; }
-    if ([...(this.io?.in ?? []), ...this.custom].some((f) => f.name === name)) { msg.textContent = `"${name}" already exists`; return; }
+    const r = parseCustomInput(name, spec, this.netSet, [...(this.io?.in ?? []), ...this.custom]);
+    if ("error" in r) { $("#stCiMsg", this.el).textContent = r.error; return; }
+    const bits = r.bits;
     this.custom = [...this.custom, { name, bits }];
     saveCustomInputs(this.design.name, this.custom);
     this.insDirty = true;
@@ -381,12 +356,7 @@ export class StagePage {
     if (!id) { this.view?.select(null); this.view?.setHighlight(null); this.renderInsp(); this.renderSource(); return; }
     const c = this.byId.get(id);
     if (!c) return;
-    const nb = new Set([id]);
-    const L = this.lib[c.type];
-    for (const [p, n] of Object.entries(c.pins)) {
-      if (L?.pins[p] === "out") for (const s of this.sinks.get(n) ?? []) nb.add(s.id);
-      else { const d = this.drivers.get(n); if (d) nb.add(d); }
-    }
+    const nb = this.net.neighbours(c);
     this.view?.select(id);
     this.view?.setHighlight(nb, new Set(Object.values(c.pins)));
     if (c.src) this.selLines.add(c.src);
@@ -405,89 +375,45 @@ export class StagePage {
     this.renderSource();
     const insts = Object.entries(this.design.source.instances ?? {}).filter(([, m]) => m === mod).map(([i]) => i);
     this.head(`Line ${ln}`);
-    $("#stInsp", this.el).innerHTML = `
-      <div class="insp-title"><div><b class="mono">${esc(this.srcLines[ln - 1]?.trim() || `Line ${ln}`)}</b><small>${esc(this.srcFile)}, line ${ln}</small></div><span class="pill gold">${set.size} cell${set.size === 1 ? "" : "s"}</span></div>
-      <p class="insp-role">${ids.length ? `After synthesis, this line became the ${ids.length === 1 ? "cell" : `${ids.length} cells`} lit in the view.` : mod ? `Part of module <b>${esc(mod)}</b>${insts.length ? `, used ${insts.length === 1 ? "once" : `${insts.length} times`}` : ""}. Its cells are lit in the view.` : "No cells come from this line."}</p>
-      ${this.cellLinks([...set])}`;
+    $("#stInsp", this.el).innerHTML = lineHtml({ text: this.srcLines[ln - 1]?.trim() ?? "", file: this.srcFile, ln, cells: [...set], direct: ids.length, mod, uses: insts.length });
     this.bindLinks();
   }
   selectNet(net: string) {
     this.selected = null;
-    const d = this.drivers.get(net), s = this.sinks.get(net) ?? [];
+    const d = this.net.driver(net), s = this.net.readers(net);
     const ids = new Set([...(d ? [d] : []), ...s.map((x) => x.id)]);
     this.view?.select(null); this.view?.setHighlight(ids, new Set([net]));
-    const v = this.sim.get(net);
     this.head("Wire");
-    $("#stInsp", this.el).innerHTML = `
-      <div class="insp-title"><div><b class="mono">${esc(net)}</b><small>Read by ${s.length} cell${s.length === 1 ? "" : "s"}</small></div><span class="bit${v ? " on" : ""}">${v}</span></div>
-      <p class="insp-role">A wire carries one bit from the cell that drives it to every cell that reads it.</p>
-      <dl class="kv"><dt>Driven by</dt><dd>${d ? `<button type="button" class="linkbtn" data-cell="${esc(d)}">${esc(d)}</button>` : this.inputs.includes(net) ? "Input pin" : "Nothing"}</dd></dl>
-      ${s.length ? `<div class="group"><span class="eyebrow">Read by</span><div class="chips">${s.map((x) => `<button type="button" class="linkbtn" data-cell="${esc(x.id)}">${esc(x.id)}.${esc(x.pin)}</button>`).join("")}</div></div>` : ""}`;
+    $("#stInsp", this.el).innerHTML = netHtml(net, this.sim.get(net), d, s, this.inputs.includes(net));
     this.bindLinks();
   }
   selectPort(name: string) {
     const p = this.design.ports.find((x) => x.name === name);
     if (!p) return;
-    const ids = p.dir === "out" ? this.fanIn(name) : this.fanOut(name);
+    const ids = p.dir === "out" ? this.net.fanIn(name) : this.net.fanOut(name);
     this.selected = null;
     this.view?.select(null); this.view?.setHighlight(ids);
     if (ids.size) this.view?.flyTo([...ids]);
     const v = this.sim.get(name);
     this.head(p.dir === "out" ? "Output pin" : "Input pin");
-    $("#stInsp", this.el).innerHTML = `
-      <div class="insp-title"><div><b class="mono">${esc(name)}</b><small>${p.dir === "out" ? "Output" : "Input"} at ${p.x.toFixed(1)}, ${p.y.toFixed(1)} µm</small></div><span class="bit${v ? " on" : ""}">${v}</span></div>
-      <p class="insp-role">${p.dir === "out" ? `Lit: every cell that can change ${esc(name)}, back to the flip-flops. Like Go to Definition, for silicon.` : `Lit: every cell ${esc(name)} can reach before the next flip-flop. Like Find Usages, for silicon.`}</p>
-      ${p.dir === "in" && name !== this.clk ? `<div class="acts"><button class="btn sm" type="button" data-toggle="${esc(name)}">Set to ${v ? 0 : 1}</button></div>` : ""}
-      ${this.cellLinks([...ids])}`;
+    $("#stInsp", this.el).innerHTML = portHtml(p, v, [...ids], p.dir === "in" && name !== this.clk);
     this.bindLinks();
     $$("[data-toggle]", this.el).forEach((b) => b.addEventListener("click", () => { this.sim.apply({ [name]: this.sim.get(name) ^ 1 }); this.after(); this.selectPort(name); }));
-  }
-  private fanIn(net: string): Set<string> {
-    const out = new Set<string>(), stack = [net];
-    while (stack.length) {
-      const n = stack.pop()!, id = this.drivers.get(n);
-      if (!id || out.has(id)) continue;
-      out.add(id);
-      const c = this.byId.get(id)!, L = this.lib[c.type];
-      if (L?.ff) continue; // stop at flip-flops
-      for (const [p, m] of Object.entries(c.pins)) if (L?.pins[p] === "in") stack.push(m);
-    }
-    return out;
-  }
-  private fanOut(net: string): Set<string> {
-    const out = new Set<string>(), stack = [net];
-    while (stack.length) {
-      const n = stack.pop()!;
-      for (const s of this.sinks.get(n) ?? []) {
-        if (out.has(s.id)) continue;
-        out.add(s.id);
-        const c = this.byId.get(s.id)!, L = this.lib[c.type];
-        if (L?.ff) continue;
-        for (const [p, m] of Object.entries(c.pins)) if (L?.pins[p] === "out") stack.push(m);
-      }
-    }
-    return out;
   }
   private showPhys(p: Design["phys"][number]) {
     this.selected = null; this.view?.select(null); this.view?.setHighlight(null);
     this.head("Physical cell");
-    $("#stInsp", this.el).innerHTML = `<div class="insp-title"><div><b class="mono">${esc(p.type)}</b><small>${esc(fullName(p.type))}</small></div><span class="pill">No logic</span></div>
-      <p class="insp-role">${esc(describe(p.type, this.lib[p.type]))}</p>
-      <dl class="kv"><dt>Position</dt><dd>${p.x.toFixed(2)}, ${p.y.toFixed(2)} µm</dd><dt>Width</dt><dd>${p.w.toFixed(2)} µm</dd></dl>`;
+    $("#stInsp", this.el).innerHTML = physHtml(p, this.lib);
   }
 
   // ---------- rendering ----------
-  private cellLinks(ids: string[]) {
-    if (!ids.length) return "";
-    return `<div class="group"><span class="eyebrow">Cells</span><div class="chips">${ids.slice(0, 80).map((id) => `<button type="button" class="linkbtn" data-cell="${esc(id)}">${esc(id)}</button>`).join("")}${ids.length > 80 ? `<span class="muted">and ${ids.length - 80} more</span>` : ""}</div></div>`;
-  }
   private bindLinks() {
     const root = $("#stInsp", this.el);
     $$<HTMLElement>("[data-cell]", root).forEach((b) => b.addEventListener("click", () => this.selectCell(b.dataset.cell!)));
     $$<HTMLElement>("[data-net]", root).forEach((b) => b.addEventListener("click", () => this.selectNet(b.dataset.net!)));
     $$<HTMLElement>("[data-ln]", root).forEach((b) => b.addEventListener("click", () => this.selectLine(+b.dataset.ln!)));
     $$<HTMLElement>("[data-cone]", root).forEach((b) => b.addEventListener("click", () => {
-      const ids = b.dataset.cone === "in" ? this.fanIn(b.dataset.net!) : this.fanOut(b.dataset.net!);
+      const ids = b.dataset.cone === "in" ? this.net.fanIn(b.dataset.net!) : this.net.fanOut(b.dataset.net!);
       this.view?.setHighlight(ids); this.view?.flyTo([...ids]);
     }));
     $$<HTMLElement>("[data-ask]", root).forEach((b) => b.addEventListener("click", () => app.askGuide?.(b.dataset.ask!)));
@@ -509,81 +435,14 @@ export class StagePage {
     const el = $("#stInsp", this.el), id = this.selected;
     if (!id) {
       this.head(null);
-      const d = this.design;
-      el.innerHTML = `
-        <div class="insp-title"><div><b>${esc(d.title ?? d.name)}</b><small>${d.author ? `By ${esc(d.author)}. ` : ""}Tiny Tapeout 8, SkyWater 130 nm</small></div></div>
-        ${d.how ? `<div class="group"><span class="eyebrow">How it works</span><p class="insp-role" style="color:var(--fg)">${esc(d.how)}</p></div>`
-          : `<p class="insp-role">${esc(d.intro ?? "A real chip: the warm-up design, placed and routed for SkyWater's 130 nm process. Every coloured block is a standard cell, a tiny pre-made circuit.")}</p>`}
-        ${d.try ? `<div class="callout"><b>Try it</b><span>${esc(d.try)}</span></div>` : ""}
-        <div class="statgrid">
-          <div class="stat"><b>${this.logicCount}</b><span>Logic cells</span></div>
-          <div class="stat"><b>${this.sim.flops.length}</b><span>Flip-flops</span></div>
-          <div class="stat"><b>${this.design.counts?.nets ?? this.design.counts?.nets_on_wires ?? "?"}</b><span>Wires</span></div>
-          <div class="stat"><b class="area">${this.usedSize}<small>µm</small></b><span>Logic area</span></div>
-        </div>
-        <dl class="kv">
-          <dt>Process</dt><dd>${esc(d.pdk)}</dd>
-          <dt>Cell types</dt><dd>${new Set(d.cells.map((c) => c.type)).size}</dd>
-          <dt>Tile</dt><dd>${d.die.w} × ${d.die.h} µm</dd>
-          <dt>Filler and taps</dt><dd>${d.phys.length} cells</dd>
-          <dt>Routing</dt><dd>${d.counts?.route_segments ?? "?"} segments, ${d.counts?.vias ?? "?"} vias</dd>
-        </dl>
-        <p class="fine">${d.how ? "Every coloured block in the view is a standard cell, a tiny pre-made circuit, and the metal above it is the real wiring. Select a cell, wire or pin to inspect it." : d.hint ? esc(d.hint) : "Select a cell, wire or pin to inspect it. Press Run to clock the chip; wires carrying a 1 glow."}</p>
-        <p class="fine mono">${esc(d.name)}</p>
-        ${d.credit ? `<p class="fine">${esc(d.credit)}</p>` : ""}`;
+      el.innerHTML = chipHtml(this.design, { logic: this.logicCount, flops: this.sim.flops.length, usedSize: this.usedSize });
       return;
     }
-    const c = this.byId.get(id)!, L = this.lib[c.type];
-    const cat = category(c.type, L);
-    this.head(cap(CATEGORY_LABEL[cat].replace(/ \(.*\)$/, "")));
-    const pinRows = Object.entries(c.pins).map(([p, n]) => {
-      const dir = L?.pins[p] ?? "?";
-      const v = this.sim.get(n);
-      return `<tr><td>${esc(p)}${dir === "out" ? `<span class="dir">out</span>` : ""}</td><td><button type="button" class="linkbtn" data-net="${esc(n)}">${esc(n)}</button></td><td><span class="bit${v ? " on" : ""}">${v}</span></td></tr>`;
-    }).join("");
-    const fns = L ? Object.entries(L.function) : [];
-    const modInfo = c.module ? this.design.source.modules[c.module] : null;
-    const srcLine = c.src ? this.srcLines[c.src - 1]?.trim() : null;
-    const out = Object.entries(c.pins).find(([p]) => L?.pins[p] === "out");
-    el.innerHTML = `
-      <div class="insp-title"><div><b class="mono">${esc(c.id)}</b><small>${esc(fullName(c.type))}</small></div><span class="pill" style="color:var(${CATEGORY_VAR[cat]})"><i class="sw" style="width:6px;height:6px;border-radius:50%;background:currentColor"></i>${esc(cap(CATEGORY_LABEL[cat]))}</span></div>
-      <p class="insp-role">${esc(describe(c.type, L))}</p>
-      ${fns.length ? `<div class="fnbox">${fns.map(([o, f]) => L?.ff && /^IQ(_N)?$/.test(f) ? `<div>${esc(o)} = ${f === "IQ" ? "stored bit" : "NOT stored bit"}</div>` : `<div>${esc(o)} = ${esc(f)}</div><span>${esc(toWordsSafe(f))}</span>`).join("")}</div>` : ""}
-      <dl class="kv">
-        ${L?.ff ? `<dt>Stores</dt><dd>${this.sim.flopState(c.id)}<span class="muted">Next ${esc(L.ff.next_state)} on ${esc(L.ff.clocked_on)} rising${L.ff.clear ? `, cleared by ${esc(L.ff.clear)}` : ""}</span></dd>` : ""}
-        <dt>Module</dt><dd>${c.module ? `${esc(c.module)}${c.inst ? `<span class="muted">Instance ${esc(c.inst)}</span>` : ""}` : "None"}</dd>
-        <dt>Source</dt><dd>${c.src ? `<button type="button" class="linkbtn" data-ln="${c.src}">Line ${c.src}</button><span class="muted mono">${esc(srcLine ?? "")}</span>` : modInfo ? `<span class="muted">Added by the layout tools (clock tree)</span>` : "None"}</dd>
-        <dt>Size</dt><dd>${c.w.toFixed(2)} × ${this.design.rowHeight} µm${L?.area ? `<span class="muted">${L.area.toFixed(2)} µm²</span>` : ""}</dd>
-        <dt>Position</dt><dd>${c.x.toFixed(2)}, ${c.y.toFixed(2)} µm<span class="muted">${esc(c.orient)}</span></dd>
-      </dl>
-      <div class="group"><span class="eyebrow">Pins</span><table class="pins"><tr><th>Pin</th><th>Wire</th><th>Now</th></tr>${pinRows}</table></div>
-      ${this.truthTable(c)}
-      <div class="acts">
-        ${out ? `<button type="button" class="btn sm" data-cone="in" data-net="${esc(out[1])}" title="Every cell that can change this one">${icon.arrowIn}Fan-in</button><button type="button" class="btn sm" data-cone="out" data-net="${esc(out[1])}" title="Every cell this one can reach">Fan-out${icon.arrowOut}</button>` : ""}
-        <button type="button" class="btn sm" data-agent-cell="${esc(c.id)}" title="The Witness agent explains the block this cell belongs to; Yosys checks it">${icon.cube}Explain block</button>
-        <button type="button" class="btn sm" data-ask="Explain cell ${esc(c.id)} (${esc(c.type)}) in simple terms: what it does and why this chip needs it.">${icon.sparkle}Ask</button>
-      </div>`;
+    const c = this.byId.get(id)!;
+    this.head(categoryTitle(c.type, this.lib));
+    el.innerHTML = cellHtml(c, this.design, this.lib, (n) => this.sim.get(n), {
+      flopState: this.lib[c.type]?.ff ? String(this.sim.flopState(c.id)) : "", srcLine: c.src ? this.srcLines[c.src - 1]?.trim() ?? null : null });
     this.bindLinks();
-  }
-
-  private truthTable(c: DesignCell): string {
-    const L = this.lib[c.type];
-    if (!L || L.ff) return "";
-    const outs = Object.entries(L.function);
-    if (outs.length !== 1) return "";
-    const [o, f] = outs[0];
-    let e; try { e = parse(f); } catch { return ""; }
-    const ins = [...vars(e)].sort();
-    if (!ins.length || ins.length > 4) return "";
-    const now = ins.map((p) => this.sim.get(c.pins[p] ?? ""));
-    const rows: string[] = [];
-    for (let s = 0; s < 1 << ins.length; s++) {
-      const b = ins.map((_, i) => (s >> (ins.length - 1 - i)) & 1);
-      const env = Object.fromEntries(ins.map((p, i) => [p, b[i]]));
-      const cur = b.every((x, i) => x === now[i]);
-      rows.push(`<tr class="${cur ? "now" : ""}">${b.map((x) => `<td>${x}</td>`).join("")}<td class="out">${evalExpr(e, env)}</td></tr>`);
-    }
-    return `<div class="group"><span class="eyebrow">Truth table <span style="font-weight:400;color:var(--faint)">Highlighted row is live</span></span><table class="tt"><tr>${ins.map((p) => `<th>${esc(p)}</th>`).join("")}<th>${esc(o)}</th></tr>${rows.join("")}</table></div>`;
   }
 
   private get logicCount() { return Number(this.design.counts?.logic_cells ?? this.design.cells.length); }
@@ -657,59 +516,7 @@ export class StagePage {
   /** Logic analyser: one lane per named number (a bus with its value written in) or per single wire (a square wave). */
   private drawWave() {
     const cv = this.el.querySelector<HTMLCanvasElement>("#stWave");
-    if (!cv) return;
-    const dpr = Math.min(devicePixelRatio, 2), w = cv.clientWidth, h = cv.clientHeight;
-    if (!w || !h) return;
-    cv.width = w * dpr; cv.height = h * dpr;
-    const g = cv.getContext("2d")!;
-    g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
-    const lanes = this.lanes, n = 40;
-    if (!lanes.length) return;
-    const font = css("--font-body") || "system-ui";
-    g.font = `500 10.5px ${font}`;
-    const lw = Math.min(110, Math.max(36, ...lanes.map((l) => g.measureText(l.label).width + 12)));
-    const rowH = h / lanes.length, step = (w - lw) / n;
-    const hist = this.history, first = n - hist.length;
-    const inCol = css("--muted"), outCol = css("--high"), fg = css("--fg"), grid = css("--hover");
-    // faint clock grid
-    g.strokeStyle = grid; g.lineWidth = 1; g.beginPath();
-    for (let i = 0; i <= n; i += 5) { const x = Math.round(lw + i * step) + 0.5; g.moveTo(x, 0); g.lineTo(x, h); }
-    g.stroke();
-    lanes.forEach((lane, r) => {
-      const y0 = r * rowH, pad = Math.min(4, rowH * 0.18), hi = y0 + pad, lo = y0 + rowH - pad, mid = (hi + lo) / 2;
-      const col = lane.out ? outCol : inCol;
-      g.fillStyle = lane.out ? fg : inCol;
-      g.font = `500 10.5px ${font}`; g.textBaseline = "middle";
-      g.fillText(lane.label, 0, mid, lw - 8);
-      if (!hist.length) return;
-      g.strokeStyle = col; g.lineWidth = 1.3;
-      if (lane.bits.length === 1) {
-        g.beginPath();
-        let prevY: number | null = null;
-        hist.forEach((snap, i) => {
-          const x = lw + (first + i) * step, y = snap[lane.bits[0]] ? hi : lo;
-          if (prevY === null) g.moveTo(x, y); else { g.lineTo(x, prevY); g.lineTo(x, y); }
-          g.lineTo(x + step, y); prevY = y;
-        });
-        g.stroke();
-        return;
-      }
-      // bus: runs of equal value, drawn as a lane with crossings at each change and the value written inside
-      const vals = hist.map((s) => lane.bits.reduce((acc, b, k) => acc + ((s[b] ?? 0) << k), 0));
-      const runs: { v: number; a: number; b: number }[] = [];
-      vals.forEach((v, i) => { const last = runs[runs.length - 1]; if (last && last.v === v) last.b = i + 1; else runs.push({ v, a: i, b: i + 1 }); });
-      const k = Math.min(3, step / 2);
-      g.font = `11px ${css("--font-mono") || "monospace"}`; g.textAlign = "center";
-      for (const run of runs) {
-        const xa = lw + (first + run.a) * step, xb = lw + (first + run.b) * step;
-        g.beginPath();
-        g.moveTo(xa, mid); g.lineTo(xa + k, hi); g.lineTo(xb - k, hi); g.lineTo(xb, mid); g.lineTo(xb - k, lo); g.lineTo(xa + k, lo); g.closePath();
-        g.fillStyle = col; g.globalAlpha = lane.out ? 0.12 : 0.08; g.fill(); g.globalAlpha = 1; g.stroke();
-        const label = String(run.v);
-        if (xb - xa - 2 * k > g.measureText(label).width + 4) { g.fillStyle = lane.out ? outCol : fg; g.fillText(label, (xa + xb) / 2, mid + 0.5); }
-      }
-      g.textAlign = "start";
-    });
+    if (cv) drawWave(cv, this.lanes, this.history);
   }
 
   /** Demo helper: the first cell whose type matches. */
