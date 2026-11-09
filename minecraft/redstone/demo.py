@@ -1,27 +1,25 @@
 """The showroom: a separate server you can join and play in (ticks run normally; check.py freezes only its own server).
 
-    python demo.py start          # server-demo/ on localhost:25565 (Minecraft Java 1.21.11 -> Multiplayer -> localhost)
-    python demo.py prims          # build the verified primitives with levers and lamps
-    python demo.py chip <name>    # build a routed chip (out/<name>/layout.json), with goto + clock functions
-    python demo.py op             # make everyone online an operator (for /tick sprint and the clock functions)
-    python demo.py stop
+    python -m minecraft.redstone.demo start          # minecraft/server/demo/ on localhost:25565 (Java 1.21.11)
+    python -m minecraft.redstone.demo prims          # build the verified primitives with levers and lamps
+    python -m minecraft.redstone.demo chip <name>    # build a routed chip (out/<name>/layout.json), with goto + clock
+    python -m minecraft.redstone.demo op             # make everyone online an operator (for /tick sprint and clocks)
+    python -m minecraft.redstone.demo stop
 """
 from __future__ import annotations
 
-import os
 import sys
 
-os.environ.setdefault("REDSTONE_SERVER_DIR", "server-demo")
-os.environ.setdefault("REDSTONE_RCON_PORT", "25577")
-os.environ.setdefault("REDSTONE_GAME_PORT", "25565")
-
-import mc as mcmod  # noqa: E402  (reads the environment above)
-import prims  # noqa: E402
-from mc import MC, FLOOR_Y  # noqa: E402
+from . import place, prims
+from ..common.datapack import sign as sign_state
+from ..common.datapack import write_meta
+from ..common.server import Server
+from .mc import DEMO, FLOOR_Y, MC
 
 Y = FLOOR_Y + 1
 SPAWN = (0, Y, 196)
 SHOW_Z = 330                       # primitive showroom, south of the chip
+PACK = "redstone_chip"             # datapack for the goto / clock functions
 
 
 def prep(mc: MC) -> None:
@@ -33,9 +31,7 @@ def prep(mc: MC) -> None:
 
 
 def sign(x, y, z, lines, facing="south"):
-    msgs = ",".join('"' + s.replace('"', "'") + '"' for s in (lines + ["", "", "", ""])[:4])
-    return (x, y, z, f'oak_sign[rotation={ {"south": 0, "west": 4, "north": 8, "east": 12}[facing] }]'
-                     f'{{front_text:{{messages:[{msgs}]}}}}')
+    return (x, y, z, sign_state(lines, {"south": 0, "west": 4, "north": 8, "east": 12}[facing]))
 
 
 def showroom(mc: MC) -> None:
@@ -59,12 +55,14 @@ def showroom(mc: MC) -> None:
     mc.cmd(f'tellraw @a {{"text":"Redstone primitives built: flip the levers","color":"gold"}}')
 
 
-def goto_function(lay: dict) -> None:
+def goto_function(lay: dict, srv: Server = DEMO) -> None:
     """/function redstone:goto/<chip> teleports you just south of the chip's levers and lamps, looking south over
     the build (in 2-D the levers and lamps are the northmost row, so they're right behind you)."""
     xs = [p[0] for p in lay["inputs"].values()]
     x, z = (min(xs) + max(xs)) // 2, max(p[2] for p in lay["inputs"].values()) + 5   # just south of the levers
-    fn = mcmod.SRV / "world" / "datapacks" / "redstone_chip" / "data" / "redstone" / "function" / "goto"
+    pack = srv.datapacks / PACK
+    write_meta(pack, "redstone chip clock")
+    fn = pack / "data" / "redstone" / "function" / "goto"
     fn.mkdir(parents=True, exist_ok=True)
     (fn / f"{lay['chip'].lower()}.mcfunction").write_text(
         f"tp @s {x} {Y} {z} facing {x} {Y - 8} {z + 30}\n"
@@ -75,22 +73,20 @@ def goto_function(lay: dict) -> None:
                                            'tellraw @a {"text":"fast-forwarded until the outputs settle","color":"yellow"}\n')
 
 
-def clock_button(mc: MC, lay: dict) -> None:
+def clock_button(mc: MC, lay: dict, srv: Server = DEMO) -> None:
     """A datapack function that plays one rising clock edge (HOLD_M up, HOLD_S down, HOLD_S up, HOLD_M down,
     each after the settle time), and a button on a command block next to the input levers that runs it.
     The logic itself stays pure redstone: this only stands in for the board's clock source."""
-    import json
-    import world
+    YB = place.YB
     wait = 2 * lay["settle_rt"] + 20
-    lev = lambda b, on: (f"setblock {lay['inputs'][b][0]} {world.YB + lay['inputs'][b][1]} {lay['inputs'][b][2]} "
+    lev = lambda b, on: (f"setblock {lay['inputs'][b][0]} {YB + lay['inputs'][b][1]} {lay['inputs'][b][2]} "
                          f"lever[face=floor,facing=north,powered={'true' if on else 'false'}]")
     steps = [lev("HOLD_M", 1), lev("HOLD_S", 0), lev("HOLD_S", 1), lev("HOLD_M", 0)]
-    pack = mcmod.SRV / "world" / "datapacks" / "redstone_chip"
+    pack = srv.datapacks / PACK
     slug = lay["chip"].lower()
     fn = pack / "data" / "redstone" / "function" / slug
     fn.mkdir(parents=True, exist_ok=True)
-    (pack / "pack.mcmeta").write_text(json.dumps({"pack": {"description": "redstone chip clock",
-                                                           "min_format": [94, 0], "max_format": [94, 1]}}))
+    write_meta(pack, "redstone chip clock")
     # first let the current inputs settle through the logic, then play the edge
     (fn / "clock.mcfunction").write_text(
         'tellraw @a {"text":"clock: settling inputs, then one rising edge ...","color":"yellow"}\n'
@@ -106,48 +102,52 @@ def clock_button(mc: MC, lay: dict) -> None:
     print(mc.cmd("reload"))
     x, y, z = lay["inputs"]["HOLD_S"]
     cx, cz = x + 6, z + 6
-    mc.cmd(f'setblock {cx} {world.YB} {cz} command_block{{Command:"function redstone:{slug}/clock"}}')
-    mc.cmd(f"setblock {cx} {world.YB + 1} {cz} stone_button[face=floor,facing=north]")
-    mc.cmd(f'setblock {cx} {world.YB} {cz + 1} oak_sign[rotation=0]{{front_text:{{messages:["CLOCK","press the button","= one rising","edge of clk"]}}}}')
+    mc.cmd(f'setblock {cx} {YB} {cz} command_block{{Command:"function redstone:{slug}/clock"}}')
+    mc.cmd(f"setblock {cx} {YB + 1} {cz} stone_button[face=floor,facing=north]")
+    mc.cmd(f"setblock {cx} {YB} {cz + 1} {sign_state(['CLOCK', 'press the button', '= one rising', 'edge of clk'])}")
+
+
+def build_chip(chip: str, srv: Server = DEMO) -> None:
+    """Build out/<chip>/layout.json in a running server, with its goto (and clock) functions; spawn moves there."""
+    lay = place.load(chip)
+    with MC(srv) as mc:
+        prep(mc)
+        mc.cmd("tick freeze")
+        place.build(mc, lay)
+        drv = place.Driver(mc, lay)
+        drv.set({b: 0 for b in lay["inputs"]}, settle=False)
+        if "HOLD_M" in lay["inputs"]:
+            drv.set({"HOLD_M": 0, "HOLD_S": 1}, settle=False)
+        goto_function(lay, srv)
+        if "HOLD_M" in lay["inputs"]:
+            clock_button(mc, lay, srv)
+        else:
+            mc.cmd("reload")
+        mc.cmd("tick unfreeze")
+        xs = [p[0] for p in lay["inputs"].values()]
+        sx, sy, sz = (min(xs) + max(xs)) // 2, Y, max(p[2] for p in lay["inputs"].values()) + 5
+        mc.cmd(f"setworldspawn {sx} {sy} {sz}")
+        mc.cmd(f'tellraw @a {{"text":"{chip} built in redstone: flip the levers (inputs), watch the lamps (outputs)","color":"gold"}}')
+        print(f"built {chip}; spawn at {sx} {sy} {sz}; stats {lay['stats']}")
 
 
 def main() -> None:
     a = sys.argv[1:] or ["help"]
     if a[0] == "start":
-        mcmod.start()
+        DEMO.start()
     elif a[0] == "stop":
-        with MC() as mc:
+        with MC(DEMO) as mc:
             print(mc.cmd("stop"))
     elif a[0] == "chip":
-        import world
-        lay = world.load(a[1])
-        with MC() as mc:
-            prep(mc)
-            mc.cmd("tick freeze")
-            world.build(mc, lay)
-            drv = world.Driver(mc, lay)
-            drv.set({b: 0 for b in lay["inputs"]}, settle=False)
-            if "HOLD_M" in lay["inputs"]:
-                drv.set({"HOLD_M": 0, "HOLD_S": 1}, settle=False)
-            goto_function(lay)
-            if "HOLD_M" in lay["inputs"]:
-                clock_button(mc, lay)
-            else:
-                mc.cmd("reload")
-            mc.cmd("tick unfreeze")
-            xs = [p[0] for p in lay["inputs"].values()]
-            sx, sy, sz = (min(xs) + max(xs)) // 2, Y, max(p[2] for p in lay["inputs"].values()) + 5
-            mc.cmd(f"setworldspawn {sx} {sy} {sz}")
-            mc.cmd(f'tellraw @a {{"text":"{a[1]} built in redstone: flip the levers (inputs), watch the lamps (outputs)","color":"gold"}}')
-            print(f"built {a[1]}; spawn at {sx} {sy} {sz}; stats {lay['stats']}")
+        build_chip(a[1])
     elif a[0] == "op":
-        with MC() as mc:
+        with MC(DEMO) as mc:
             online = mc.cmd("list").split(":", 1)[-1].strip()
             for name in [n.strip() for n in online.split(",") if n.strip()]:
                 print(mc.cmd(f"op {name}"))
             print("online:", online or "nobody")
     elif a[0] == "prims":
-        with MC() as mc:
+        with MC(DEMO) as mc:
             showroom(mc)
             print("built")
     else:

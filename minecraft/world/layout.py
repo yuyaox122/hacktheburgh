@@ -97,7 +97,6 @@ def extract_nets(ly: db.Layout, top: db.Cell) -> dict[str, dict[str, list]]:
     for inst in top.each_inst():
         d = inst.dcplx_trans.disp
         inst_name[(inst.cell.name, round(d.x, 3), round(d.y, 3))] = inst.property(61)
-    from netlist import _net   # noqa: F401 (same escaping rules)
     pin_net: dict[int, set] = {}
     for sc in circ.each_subcircuit():
         d = sc.trans.disp
@@ -122,7 +121,7 @@ def extract_nets(ly: db.Layout, top: db.Cell) -> dict[str, dict[str, list]]:
     return out
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # python -m minecraft.world.layout <file.gds> [out.json]
     import sys
     d = read(sys.argv[1])
     print(d["name"], d["die"], len(d["cells"]), {k: len(v) for k, v in d["layers"].items()})

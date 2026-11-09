@@ -1,16 +1,20 @@
-"""Check redstone tiles in a real vanilla 1.21.11 server (start it with `python mc.py start`).
+"""Check redstone builds in a real vanilla 1.21.11 server (start it with `python -m minecraft.redstone.mc start`).
 
-    python check.py prims            # every primitive, every rotation, every input sequence
+    python -m minecraft.redstone.check prims                    # every primitive, every rotation, every input sequence
+    python -m minecraft.redstone.check chip <chip> [n]          # out/<chip>/layout.json vs the netlist (sim.CellSim)
+    python -m minecraft.redstone.check vchip <file.v> [n]       # a Verilog build vs iverilog on the source
 """
 from __future__ import annotations
 
 import itertools
-import time
+import json
 import random
 import sys
+import time
+from pathlib import Path
 
-import prims
-from mc import MC, FLOOR_Y
+from . import OUT, place, prims, sim, verilog
+from .mc import FLOOR_Y, MC
 
 Y = FLOOR_Y + 1
 ORIGIN = (8, 208)          # test area x 0..127, z 192..319 (force-loaded by `setup_area`)
@@ -88,13 +92,11 @@ def check_latch(mc: MC, flows=("east", "south", "west", "north"), base=prims.LAT
 
 
 def check_chip(mc: MC, chip: str, n: int) -> int:
-    import sim
-    import world
-    lay = world.load(chip)
+    lay = place.load(chip)
     print(f"{chip}: {lay['stats']}")
-    world.build(mc, lay)
+    place.build(mc, lay)
     mc.cmd("tick rate 1000")                      # steps run as fast as the server can
-    drv = world.Driver(mc, lay)
+    drv = place.Driver(mc, lay)
     drv.set({b: 0 for b in lay["inputs"]})
     drv.wait(2 * drv.settle)
     ref = sim.CellSim(chip)
@@ -123,17 +125,13 @@ def check_chip(mc: MC, chip: str, n: int) -> int:
 
 
 def check_verilog(mc: MC, src: str, n: int) -> int:
-    import json as _json
-    from pathlib import Path as _P
-    import verilog
-    import world
-    m = verilog.synth(_P(src))
-    meta = _json.loads((world.ROOT / "out" / m["name"] / "verilog.json").read_text())
-    lay = world.load(meta["top"])
+    m = verilog.synth(Path(src))
+    meta = json.loads((OUT / m["name"] / "verilog.json").read_text())
+    lay = place.load(meta["top"])
     print(f"{meta['top']}: {lay['stats']}")
-    world.build(mc, lay)
+    place.build(mc, lay)
     mc.cmd("tick rate 1000")
-    drv = world.Driver(mc, lay)
+    drv = place.Driver(mc, lay)
     drv.set({b: 0 for b in lay["inputs"]})
     seq = meta["clock"] is not None
     if seq:

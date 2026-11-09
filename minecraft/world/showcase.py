@@ -1,45 +1,44 @@
-"""One world, three exhibits: the real layout (this folder) next to Yuyao's real-redstone builds (redstone/, PR #33).
+"""One world, three exhibits: the real layout (this folder) next to two real-redstone builds (minecraft.redstone).
 
-    python build.py tt_um_Electom_cla_4bits --plant 137
-    python server.py setup tt_um_Electom_cla_4bits && python server.py run     # (run in the background)
-    python showcase.py                                                          # builds everything into that server
+    python -m minecraft.world.build tt_um_Electom_cla_4bits --plant 137
+    python -m minecraft.world.server setup tt_um_Electom_cla_4bits
+    python -m minecraft.world.server run              # (in the background)
+    python -m minecraft.world.showcase                # builds everything into that server
 
 Layout (x east, z south), all on a grass field:
     z  -40 ..   76   real layout of the CLA (GDS as blocks, logic as a datapack), with its lever panel on the north edge
-    z  200 ..  340   the same CLA in real redstone (redstone/, its default z)
-    z  400 ..  553   tt_um_sign_addsub in real redstone (placed with --z 400 so it does not overlap)
+    z  200 ..  340   the same CLA in real redstone (the redstone router's default z)
+    z  400 ..  553   tt_um_sign_addsub in real redstone (routed at z 400 so it does not overlap)
 Teleports: /function decap:view, decap:overview, decap:tour/<n>, redstone:goto/<chip>.
-Nothing in redstone/ is edited: its builder is driven through its own demo.py over this server's RCON.
+The redstone builds go in through minecraft.redstone.demo, pointed at this server.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import random
-import subprocess
-import sys
 import time
-from pathlib import Path
 
-import server
-from build import Y0, fill
+from . import OUT, server
+from .build import Y0, fill
+from ..common.datapack import text_display
+from ..redstone import OUT as REDSTONE_OUT
+from ..redstone import chipdata, demo, pnr
 
-ROOT = Path(__file__).resolve().parent
 FLOOR = Y0 - 1
 REDSTONE_CHIPS = {"tt_um_Electom_cla_4bits": 200, "tt_um_sign_addsub": 400}   # chip -> z of its north edge
 TIME = 18000                    # midnight: stars, glowing wires; decap:tick gives everyone night vision
 
 
-def redstone_layouts(rs: Path) -> dict[str, dict]:
-    """Route each redstone chip at its z (cached in redstone/out/<chip>/layout.json, which pnr.py writes)."""
+def redstone_layouts() -> dict[str, dict]:
+    """Route each redstone chip at its z (cached in minecraft/redstone/out/<chip>/layout.json)."""
     lays = {}
     for chip, z in REDSTONE_CHIPS.items():
-        lj = rs / "out" / chip / "layout.json"
+        lj = REDSTONE_OUT / chip / "layout.json"
         lay = json.loads(lj.read_text()) if lj.exists() else None
         if not lay or min(b[2] for b in lay["blocks"]) < z:
-            subprocess.run([sys.executable, "chipdata.py", "fetch", chip], cwd=rs, check=True)
-            subprocess.run([sys.executable, "pnr.py", chip, "--z", str(z)], cwd=rs, check=True)
+            print(chipdata.fetch(chip))
+            pnr.route_chip(chip, z)
             lay = json.loads(lj.read_text())
         lays[chip] = lay
     return lays
@@ -59,9 +58,7 @@ def bbox(lay: dict) -> tuple[int, int, int, int]:
 
 
 def tdisp(x, y, z, text, color, s, bold=False) -> str:
-    return (f"summon text_display {x} {y} {z} {{Tags:[\"showcase\"],billboard:\"center\",background:0,view_range:2.5f,"
-            f"transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],"
-            f"scale:[{s}f,{s}f,{s}f]}},text:{json.dumps({'text': text, 'color': color, 'bold': bold})}}}")
+    return text_display(x, y, z, text, color, s, bold, tag="showcase")
 
 
 def pad(x0, z0, x1, z1, inner: str, rim: str, m: int = 4) -> list[str]:
@@ -101,11 +98,10 @@ def trees(keep_out: list[tuple[int, int, int, int]], area: tuple[int, int, int, 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--chip", default="tt_um_Electom_cla_4bits", help="the real-layout chip (built by build.py)")
-    ap.add_argument("--redstone", type=Path, default=ROOT.parent / "redstone", help="Yuyao's redstone/ folder")
     a = ap.parse_args()
-    meta = json.loads((ROOT / "out" / a.chip / "meta.json").read_text())
+    meta = json.loads((OUT / a.chip / "meta.json").read_text())
     sx, sz = meta["size"]
-    r = server.Rcon()
+    r = server.connect()
 
     # 1. the field: always midnight, no weather or mobs, nothing grows or decays
     for c in [f"time set {TIME}", "weather clear", "gamerule advance_time false", "gamerule advance_weather false",
@@ -129,34 +125,28 @@ def main() -> None:
     r(f"time set {TIME}")
     boxes = [(-6, -30, sx + 5, sz + 5)]
 
-    # 3. Yuyao's redstone builds, through redstone/demo.py, pointed at this server
-    rs = a.redstone.resolve()
-    if not (rs / "demo.py").exists():
-        print(f"no redstone/ at {rs}: built the real layout only (merge PR #33 or pass --redstone)")
-    else:
-        lays = redstone_layouts(rs)
-        for chip, lay in lays.items():
-            x0, z0, x1, z1 = bbox(lay)
-            for c in forceload(x0 - 8, z0 - 8, x1 + 8, z1 + 8):
-                r(c)
-            for c in pad(x0, z0, x1, z1, "smooth_stone", "polished_andesite", 5) + lamps(x0, z0, x1, z1, 4):
-                r(c)
-            boxes.append((x0 - 6, z0 - 6, x1 + 6, z1 + 6))
-        r.close()
-        env = dict(os.environ, REDSTONE_SERVER_DIR=str(server.SRV), REDSTONE_RCON_PORT=str(server.PORT))
-        shim = "import sys, mc; mc.PASSWORD = sys.argv.pop(1); import demo; demo.main()"
-        for chip in lays:
-            subprocess.run([sys.executable, "-c", shim, server.PASSWORD, "chip", chip], cwd=rs, env=env, check=True)
-        r = server.Rcon()
-        for chip, lay in lays.items():
-            x0, z0, x1, z1 = bbox(lay)
-            cx = (x0 + x1) // 2
-            st = lay["stats"]
-            name = "the same CLA" if chip == a.chip else chip
-            r(tdisp(cx, Y0 + 24, z0 - 6, f"{name}, in real redstone", "red", 8, True))
-            r(tdisp(cx, Y0 + 20, z0 - 6, f"{chip}  ·  {st['size'][0]} × {st['size'][1]} blocks  ·  "
-                    f"{st['blocks']:,} redstone parts  ·  {st['repeaters_in_wires']} repeaters", "white", 3))
-            r(tdisp(cx, Y0 + 17.5, z0 - 6, "no command blocks: verified against the netlist in vanilla", "gray", 2.2))
+    # 3. the redstone builds, through minecraft.redstone.demo, pointed at this server
+    lays = redstone_layouts()
+    for chip, lay in lays.items():
+        x0, z0, x1, z1 = bbox(lay)
+        for c in forceload(x0 - 8, z0 - 8, x1 + 8, z1 + 8):
+            r(c)
+        for c in pad(x0, z0, x1, z1, "smooth_stone", "polished_andesite", 5) + lamps(x0, z0, x1, z1, 4):
+            r(c)
+        boxes.append((x0 - 6, z0 - 6, x1 + 6, z1 + 6))
+    r.close()
+    for chip in lays:
+        demo.build_chip(chip, server.SERVER)
+    r = server.connect()
+    for chip, lay in lays.items():
+        x0, z0, x1, z1 = bbox(lay)
+        cx = (x0 + x1) // 2
+        st = lay["stats"]
+        name = "the same CLA" if chip == a.chip else chip
+        r(tdisp(cx, Y0 + 24, z0 - 6, f"{name}, in real redstone", "red", 8, True))
+        r(tdisp(cx, Y0 + 20, z0 - 6, f"{chip}  ·  {st['size'][0]} × {st['size'][1]} blocks  ·  "
+                f"{st['blocks']:,} redstone parts  ·  {st['repeaters_in_wires']} repeaters", "white", 3))
+        r(tdisp(cx, Y0 + 17.5, z0 - 6, "no command blocks: verified against the netlist in vanilla", "gray", 2.2))
 
     # 4. backdrop: trees and flowers around the exhibits, a daylight sky, and a tour
     xs = [b[0] for b in boxes] + [b[2] for b in boxes]
@@ -167,7 +157,7 @@ def main() -> None:
     for b in boxes:   # re-add: removing a tree's chunk may have dropped part of an exhibit (its logic must keep running)
         for c in forceload(*b):
             r(c)
-    tour = server.SRV / "world" / "datapacks" / "decap_chip" / "data" / "decap" / "function" / "tour"
+    tour = server.SERVER.datapacks / "decap_chip" / "data" / "decap" / "function" / "tour"
     tour.mkdir(parents=True, exist_ok=True)
     # each stop looks down at about 35 degrees from just outside the exhibit, close enough to stay inside render distance
     stops = [(sx // 2, Y0 + 75, -110, sx // 2, Y0, sz // 2)]                        # 1: real layout from the north

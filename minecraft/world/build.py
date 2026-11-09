@@ -1,7 +1,9 @@
 """Compile a Tiny Tapeout chip (netlist + GDS) into a vanilla Minecraft 1.21.11 datapack.
 
-    python build.py tt_um_Electom_cla_4bits            # -> out/<chip>/decap_chip (datapack folder)
-    python build.py <chip> --scale 4 --full             # whole tile instead of the logic region
+    python -m minecraft.world.build tt_um_Electom_cla_4bits      # -> out/<chip>/decap_chip (datapack folder)
+    python -m minecraft.world.build <chip> --scale 4 --full       # whole tile instead of the logic region
+    python -m minecraft.world.build <chip> --plant 137            # with a planted trigger (if ui_in == 137)
+The chip's netlist, GDS and info.yaml are fetched into decap/data/ if missing (needs `gh`); KLayout reads the GDS.
 
 In game: /function decap:build  (draws the chip),  /function decap:view  (teleports you to the panel).
 The chip then runs every tick: levers drive the inputs, lamps show the outputs, every gate and every wire
@@ -14,16 +16,16 @@ import json
 import math
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
-import cells as lib
-import layout as lay
-import logic
-import netlist as nlmod
-import plant as plantmod
+from . import OUT, logic
+from . import layout as lay
+from . import plant as plantmod
+from ..common import cells as lib
+from ..common.datapack import install, text_display, write_functions, write_meta
+from ..common.fetch import fetch_chip, gds_path, info_path, netlist_path
+from ..common.netlist import parse
 
-ROOT = Path(__file__).resolve().parent
 OBJ = logic.OBJ
 Y0 = -60                      # top of the superflat ground is -61
 
@@ -57,6 +59,24 @@ PANEL_Z = -8                  # panel row, north of the die edge (the TT pins ar
 
 def mc(b: str) -> str:
     return b if ":" in b else "minecraft:" + b
+
+
+def category(t: str) -> str:
+    """Visual family of a cell type."""
+    b = t.rsplit("_", 1)[0]
+    if b.startswith(("df", "dl", "sdf", "edf")):
+        return "flop"
+    if b.startswith(("clkbuf", "clkinv", "buf", "inv", "dlygate", "dlymetal", "clkdly")):
+        return "buf"
+    if b.startswith(("xor", "xnor", "fa", "ha", "maj")):
+        return "arith"
+    if b.startswith("mux"):
+        return "mux"
+    if b.startswith("conb"):
+        return "const"
+    if re.match(r"(fill|decap|tapvpwrvgnd|tap|diode)", b):
+        return "phys"
+    return "logic"
 
 
 class Grid:
@@ -123,39 +143,23 @@ def groups(bits: list[str], pins: dict[str, str]) -> dict[str, list[tuple[str, i
     return g
 
 
-def fetch_chip(chip: str) -> Path:
-    """Download the chip's netlist, GDS and info.yaml from the public TT08 repo (Apache-2.0) into data/<chip>/."""
-    d = ROOT / "data" / chip
-    d.mkdir(parents=True, exist_ok=True)
-    for f in (f"{chip}.v", f"{chip}.gds", "info.yaml"):
-        if (d / f).exists():
-            continue
-        print("fetching", f)
-        r = subprocess.run(["gh", "api", f"repos/TinyTapeout/tinytapeout-08/contents/projects/{chip}/{f}",
-                            "-H", "Accept: application/vnd.github.raw"], capture_output=True)
-        if r.returncode:
-            raise SystemExit(f"could not fetch {chip}/{f} (is `gh` logged in?): {r.stderr.decode()[-300:]}")
-        (d / f).write_bytes(r.stdout)
-    return d
-
-
 def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: int | None = None,
                  target: str | None = None) -> dict:
-    d = fetch_chip(chip)
-    nl = nlmod.parse(d / f"{chip}.v")
-    lib.fetch({c.type for c in nl.logic} | {"inv_1", "and2_1", "and4_1", "or2_1"})  # plant() simulates first
+    fetch_chip(chip)
+    nl = parse(netlist_path(chip))
+    lib.fetch_types({c.type for c in nl.logic} | {"inv_1", "and2_1", "and4_1", "or2_1"})  # plant() simulates first
     trojan = None
     if plant_n is not None:
         target, tnames = plantmod.plant(nl, plant_n, target)
         trojan = {"n": plant_n, "target": target, "cells": tnames}
-    missing = lib.fetch({c.type for c in nl.logic})
+    missing = lib.fetch_types({c.type for c in nl.logic})
     if missing:
         raise SystemExit(f"no Liberty data for {missing}")
     prog = logic.build(nl)
-    lj = d / "layout.json"
-    L = json.loads(lj.read_text()) if lj.exists() else lay.read(d / f"{chip}.gds")
+    lj = out_dir / "gds.json"                      # KLayout's reading of the GDS, cached
+    L = json.loads(lj.read_text()) if lj.exists() else lay.read(gds_path(chip))
     lj.write_text(json.dumps(L))
-    info = d / "info.yaml"
+    info = info_path(chip)
     pins = pinout(info)
     title = _yaml(info, "title") or chip
     author = _yaml(info, "author")
@@ -199,7 +203,7 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
         if not b:
             continue
         x1, z1, x2, z2 = b
-        cat = "trojan" if c["name"] and c["name"].startswith(plantmod.PREFIX) else lib.category(c["type"])
+        cat = "trojan" if c["name"] and c["name"].startswith(plantmod.PREFIX) else category(c["type"])
         if cat == "phys":
             base = c["type"].rsplit("_", 1)[0]
             blk = next((v for k, v in PHYS.items() if base.startswith(k)), None)
@@ -358,11 +362,7 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
     view = [f"tp @s {pmid} {Y0 + 9} {PANEL_Z - 16} facing {pmid} {Y0 + 1} {PANEL_Z + 6}"]
     overview = [f"tp @s {cx} {Y0 + 70} {cz + 40} facing {cx} {Y0} {cz - 4}"]
     lab = ["kill @e[type=text_display,tag=decap]"]
-
-    def tdisp(x, y, z, text, color, s, bold=False):
-        return (f"summon text_display {x} {y} {z} {{Tags:[\"decap\"],billboard:\"center\",background:0,view_range:2.5f,"
-                f"transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],"
-                f"scale:[{s}f,{s}f,{s}f]}},text:{json.dumps({'text': text, 'color': color, 'bold': bold})}}}")
+    tdisp = text_display
 
     if trojan:
         tx, yb, tz = trojan["xyz"]
@@ -386,16 +386,13 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
         shutil.rmtree(pack)
     fdir = pack / "data" / "decap" / "function"
     (fdir / "net").mkdir(parents=True)
-    (pack / "pack.mcmeta").write_text(json.dumps({"pack": {"description": f"Decap: {title} compiled to Minecraft",
-                                                           "min_format": [94, 0], "max_format": [94, 1]}}, indent=1))
+    write_meta(pack, f"Decap: {title} compiled to Minecraft", indent=1)
     tags = pack / "data" / "minecraft" / "tags" / "function"
     tags.mkdir(parents=True)
     (tags / "load.json").write_text(json.dumps({"values": ["decap:load"]}))
     (tags / "tick.json").write_text(json.dumps({"values": ["decap:tick"]}))
-    fns = {"load": load, "build": build_fn, "build_blocks": blocks_fn, "tick": tick, "clock": clock,
-           "view": view, "overview": overview, "labels": lab, "env": env} | netfns
-    for name, lines in fns.items():
-        (fdir / f"{name}.mcfunction").write_text("\n".join(lines) + "\n")
+    write_functions(fdir, {"load": load, "build": build_fn, "build_blocks": blocks_fn, "tick": tick, "clock": clock,
+                           "view": view, "overview": overview, "labels": lab, "env": env} | netfns)
     meta = {"chip": chip, "title": title, "scale": scale, "size": [SX, SZ], "y0": Y0, "panel_z": PANEL_Z,
             "panel": [{"kind": k, "bit": b, "x": x, "label": label_for(b, pins)} for k, b, x in panel],
             "auto_x": auto_x, "nets": nets, "inputs": prog.inputs, "outputs": prog.outputs, "sidebar": side,
@@ -414,16 +411,12 @@ def main():
     ap.add_argument("--plant", type=int, help="plant a trojan that fires when ui_in == N")
     ap.add_argument("--target", help="output bit the trojan flips (default: one that is 0 at N)")
     a = ap.parse_args()
-    out = ROOT / "out" / a.chip
+    out = OUT / a.chip
     out.mkdir(parents=True, exist_ok=True)
     m = compile_chip(a.chip, a.scale, a.full, out, a.plant, a.target)
     print(json.dumps({k: m[k] for k in ("title", "size", "counts", "sidebar", "plant")}))
     if a.install:
-        dst = a.install / "datapacks" / "decap_chip"
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(out / "decap_chip", dst)
-        print("installed", dst)
+        print("installed", install(out / "decap_chip", a.install))
 
 
 if __name__ == "__main__":

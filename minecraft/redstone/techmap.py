@@ -1,5 +1,7 @@
 """Map a SKY130 gate-level netlist onto redstone primitives (NOT, INH = a&!b, OR, LATCH).
 
+    python -m minecraft.redstone.techmap <chip>              # print the primitive counts
+
 Per cell, keeping the chip's own cell boundaries:
   * buffers, clock buffers, delay cells, diodes  -> wires (net aliases)
   * conb (tie cell)                              -> constants, propagated away
@@ -13,16 +15,18 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-import chipdata as cd
+from . import chipdata as cd
+from ..common.cells import celldef
 
 WIRE = re.compile(r"^(buf|clkbuf|dlygate|dlymetal|dlyb|bufbuf|probe_p|lpflow_.*buf)\w*_\d+$")
 FLOP = re.compile(r"^df(xtp|rtp|stp|rtn|bbp|sbp|xbp|rbp|stp)_\d+$")
-CONST0, CONST1 = "1'b0", "1'b1"
+CONST0, CONST1 = cd.CONST0, cd.CONST1   # constant nets: "1'b0", "1'b1"
 HOLD_M, HOLD_S = "HOLD_M", "HOLD_S"
 ROW_H = 2.72                        # sky130_fd_sc_hd standard-cell row height (um)
 
@@ -56,7 +60,7 @@ class PrimNetlist:
 def map_type(t: str) -> tuple[tuple, ...]:
     """Primitive network for one output of a combinational cell type.
     Returns ((out_pin, [(kind, {port: net}, out_net)...]),...) with nets named by cell pins or local _n<k>."""
-    d = cd.celldef(t)
+    d = celldef(t)
     v = f"module c({', '.join(['input ' + i for i in d.inputs] + ['output ' + o for o in d.outputs])});\n"
     for o, fn in d.outputs.items():
         v += f"  assign {o} = {fn.replace('!', '~')};\n"
@@ -113,15 +117,15 @@ def build(chip: str) -> PrimNetlist:
                 raise RuntimeError("alias loop")
         return n
 
-    for a, b in nl.assigns.items():
+    for a, b in nl.aliases.items():
         alias[a] = b
     logic = [c for c in nl.cells if not c.physical]
     comb, flops = [], []
     for c in logic:
         base = c.type
         if WIRE.match(base):
-            ins = [p for p in c.pins if cd.celldef(base).inputs and p in cd.celldef(base).inputs]
-            outs = [p for p in c.pins if p in cd.celldef(base).outputs]
+            ins = [p for p in c.pins if celldef(base).inputs and p in celldef(base).inputs]
+            outs = [p for p in c.pins if p in celldef(base).outputs]
             alias[c.pins[outs[0]]] = c.pins[ins[0]]
         elif base.startswith("conb"):
             if "HI" in c.pins:
@@ -148,7 +152,7 @@ def build(chip: str) -> PrimNetlist:
     ys = {c.name: round(g["cells"][c.name][1] - (ROW_H if c.name in g["flipped"] else 0.0), 2)
           for c in logic if c.name in g["cells"]}
     for c in comb:
-        d = cd.celldef(c.type)
+        d = celldef(c.type)
         for out_pin, plist, out_alias in map_type(c.type):
             if out_pin not in c.pins:
                 continue                                   # unconnected output
@@ -171,7 +175,7 @@ def build(chip: str) -> PrimNetlist:
     # flip-flops: check the clock comes straight from the clk pin (through buffers only, no inverters)
     seq = bool(flops)
     for c in flops:
-        d = cd.celldef(c.type)
+        d = celldef(c.type)
         clk = root(c.pins["CLK"])
         if clk != "clk":
             raise SystemExit(f"{c.name}: clock net {c.pins['CLK']} -> {clk} is not the clk pin "
@@ -292,7 +296,6 @@ def prune(pn: PrimNetlist) -> None:
 
 
 if __name__ == "__main__":
-    import sys
     pn = build(sys.argv[1])
     prune(pn)
     print(pn.stats)

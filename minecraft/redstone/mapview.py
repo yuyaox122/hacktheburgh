@@ -1,6 +1,6 @@
 """Top-down picture of a routed build, no Minecraft needed: out/<chip>/map.png (standard library only).
 
-    python3 mapview.py <chip> [pixels per block, default 3]
+    python -m minecraft.redstone.mapview <chip> [pixels per block, default 3]
 
 Each (x, z) shows its highest block. Tiles are dark grey, wires are coloured by layer:
 ground runs (y=0) brown, trunks (y=1..3) orange, spines (y=4..6) blue. Inputs (levers) are green and
@@ -14,7 +14,8 @@ import sys
 import zlib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from . import OUT
+
 BG = (238, 234, 224)
 
 
@@ -30,7 +31,7 @@ def colour(state: str) -> tuple[int, int, int] | None:
 
 
 def render(chip: str, px: int = 3) -> Path:
-    lay = json.loads((ROOT / "out" / chip / "layout.json").read_text())
+    lay = json.loads((OUT / chip / "layout.json").read_text())
     top: dict = {}
     for x, y, z, s in lay["blocks"] + [list(b) for b in lay["last"]]:
         if y < 0 or s.endswith("_concrete"):
@@ -61,7 +62,7 @@ def render(chip: str, px: int = 3) -> Path:
         return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
     png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w * px, h * px, 8, 2, 0, 0, 0))
            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
-    out = ROOT / "out" / chip / "map.png"
+    out = OUT / chip / "map.png"
     out.write_bytes(png)
     return out
 

@@ -1,7 +1,8 @@
 """Verilog -> redstone: synthesise any (small) Verilog design straight to the redstone primitives.
 
-    python verilog.py examples/counter.v [--top counter] [--z 600] [--out DIR]   # -> out/<top>/layout.json
-    python check.py vchip examples/counter.v 30                         # build in vanilla, compare with iverilog
+    python -m minecraft.redstone.verilog minecraft/redstone/examples/counter.v [--top counter] [--z 600] [--out DIR]
+                                                              # -> out/<top>/layout.json
+    python -m minecraft.redstone.check vchip minecraft/redstone/examples/counter.v 30   # vanilla vs iverilog
 
 Yosys: synth -flatten, flip-flops legalised to rising-edge D flops with optional active-high async reset or set,
 then `abc -g OR,ANDNOT` (NOT is implicit). Each flop becomes the same two-phase LATCH pair as the chip path.
@@ -18,9 +19,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-import techmap as tm
+from . import OUT, pnr
+from . import techmap as tm
 
-ROOT = Path(__file__).resolve().parent
 CLOCK_NAMES = ("clk", "clock", "CLK")
 
 
@@ -246,7 +247,6 @@ def vectors(in_bits, n, seed=7):
 
 
 if __name__ == "__main__":
-    import pnr
     src = sys.argv[1]
     top = sys.argv[sys.argv.index("--top") + 1] if "--top" in sys.argv else None
     z = int(sys.argv[sys.argv.index("--z") + 1]) if "--z" in sys.argv else 200
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     print(lay.stats)
     # --out <dir>: Decap's decompiled modules keep the chip's name, so the default out/<module>/ would overwrite
     # that chip's 2-D layout; refuse that unless --out says where to go.
-    out = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else ROOT / "out" / pn.chip
+    out = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else OUT / pn.chip
     if "--out" not in sys.argv and (out / "layout.json").exists() and not (out / "verilog.json").exists():
         raise SystemExit(f"{out} holds a chip layout (not from Verilog); pass --out <dir> to write somewhere else")
     pnr.save(lay, out)

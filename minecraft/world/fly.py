@@ -1,6 +1,6 @@
 """Record a scripted fly-through of the built chip: camera path over RCON (tp every tick) + ffmpeg window capture.
 
-    python fly.py tt_um_Electom_cla_4bits out/flythrough.mp4      # needs the server and client.py running
+    python -m minecraft.world.fly tt_um_Electom_cla_4bits out.mp4   # Windows; needs the server and client running
 """
 from __future__ import annotations
 
@@ -11,9 +11,10 @@ import sys
 import time
 from pathlib import Path
 
-from server import Rcon
+from . import OUT
+from .server import connect
 
-ROOT = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent
 TITLE = "Minecraft 1.21.11 - Multiplayer (3rd-party Server)"
 
 
@@ -32,7 +33,7 @@ def cr(p0, p1, p2, p3, u):
 
 def main():
     chip, out = sys.argv[1], Path(sys.argv[2])
-    m = json.loads((ROOT / "out" / chip / "meta.json").read_text())
+    m = json.loads((OUT / chip / "meta.json").read_text())
     Y, PZ, SX, SZ = m["y0"], m["panel_z"], m["size"][0], m["size"][1]
     lv = {p["bit"]: p["x"] for p in m["panel"] if p["kind"] == "in"}
     ins = [p["x"] for p in m["panel"] if p["kind"] == "in"]
@@ -55,7 +56,7 @@ def main():
     def lever(bit, on):
         return f"setblock {lv[bit]} {Y + 1} {PZ} minecraft:lever[face=floor,facing=south,powered={'true' if on else 'false'}]"
 
-    r = Rcon()
+    r = connect()
     r("gamemode spectator Decap")
     r(f"setblock {m['auto_x']} {Y + 1} {PZ} minecraft:lever[face=floor,facing=south,powered=true]")
     start = {f"ui_in[{k}]": (5 >> k) & 1 for k in range(4)} | {f"ui_in[{k + 4}]": (3 >> k) & 1 for k in range(4)}
@@ -66,8 +67,8 @@ def main():
     target = {f"ui_in[{k}]": (n >> k) & 1 for k in range(8)} | {"uio_in[0]": 0}
     flips = [(19 + 0.6 * i, b, v) for i, (b, v) in enumerate(sorted(target.items())) if b in lv]
     r("tp Decap {} {} {} {} {}".format(*keys[0][1], *look(keys[0][1], keys[0][2])))
-    so = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "shot.ps1"),
-                         str(ROOT / "out" / "_front.png")], capture_output=True, text=True).stdout.split()
+    so = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(HERE / "shot.ps1"),
+                         str(OUT / "_front.png")], capture_output=True, text=True).stdout.split()
     w, h = map(int, so[1].split("x"))          # window brought to the front; record that part of the desktop
     L, T = int(so[2]), int(so[3])
     w, h = w - 16, h - 68                       # skip the borders and the title bar

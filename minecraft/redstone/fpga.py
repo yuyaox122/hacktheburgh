@@ -1,18 +1,21 @@
 """Bitstreams for examples/fpga.v (tiny_fpga, N=2) and checks of programmed behaviour in vanilla.
 
-    python3 verilog.py examples/fpga.v --z 1200          # compile the FPGA itself to redstone (once)
-    python3 fpga.py bits <program>                       # print the 30-bit bitstream
-    python3 fpga.py check <program> [n] [--nobuild]      # check server: load the bitstream into the levers,
-                                                         # compare with a plain Python model of the program
-    python3 fpga.py demo                                 # demo server: one function per program loads it
+    python -m minecraft.redstone.verilog minecraft/redstone/examples/fpga.v --z 1200   # the FPGA itself (once)
+    python -m minecraft.redstone.fpga bits <program>                   # print the 30-bit bitstream
+    python -m minecraft.redstone.fpga check <program> [n] [--nobuild]  # check server: load the bitstream into the
+                                                                       # levers, compare with a Python model
+    python -m minecraft.redstone.fpga demo                             # demo server: one function per program
 
 A program is two CLBs. Each CLB: three input selections (0 = pin[i], 1 = own flop, 2 = neighbour's flop,
 3 = pin[i+1 mod 3]), a LUT3 given as a Python function of (x0, x1, x2), and whether out[j] is the flop.
 """
 from __future__ import annotations
 
-import os
+import random
 import sys
+
+from . import place
+from .mc import DEMO, MC
 
 N = 2
 CHIP = "tiny_fpga"
@@ -69,18 +72,15 @@ def _step(name, st, p):
 
 
 def check(name: str, n: int, build: bool) -> int:
-    import random
-    import world
-    from mc import MC
-    lay = world.load(CHIP)
+    lay = place.load(CHIP)
     seq = PROGRAMS[name]["model"] is None
     rng = random.Random(3)
     bad = 0
     with MC() as mc:
         if build:
-            world.build(mc, lay)
+            place.build(mc, lay)
         mc.cmd("tick rate 1000")
-        drv = world.Driver(mc, lay)
+        drv = place.Driver(mc, lay)
         drv.set({b: 0 for b in lay["inputs"]} | {"HOLD_M": 0, "HOLD_S": 1})
         drv.set(bitstream(name) | {"rst_n": 0})           # program, and reset the flops
         drv.set({"rst_n": 1})
@@ -104,23 +104,18 @@ def check(name: str, n: int, build: bool) -> int:
 
 def demo() -> None:
     """Demo server: redstone:tiny_fpga/load_<program> sets the bitstream levers, and a sign per program."""
-    os.environ.setdefault("REDSTONE_SERVER_DIR", "server-demo")
-    os.environ.setdefault("REDSTONE_RCON_PORT", "25577")
-    import mc as mcmod
-    import world
-    from mc import MC
-    lay = world.load(CHIP)
-    fn = mcmod.SRV / "world" / "datapacks" / "redstone_chip" / "data" / "redstone" / "function" / CHIP.lower()
+    lay = place.load(CHIP)
+    fn = DEMO.datapacks / "redstone_chip" / "data" / "redstone" / "function" / CHIP.lower()
     fn.mkdir(parents=True, exist_ok=True)
     for name, prog in PROGRAMS.items():
         lines = []
         for b, v in bitstream(name).items():
             x, y, z = lay["inputs"][b]
-            lines.append(f"setblock {x} {world.YB + y} {z} lever[face=floor,facing=north,powered={'true' if v else 'false'}]")
+            lines.append(f"setblock {x} {place.YB + y} {z} lever[face=floor,facing=north,powered={'true' if v else 'false'}]")
         about = " / ".join(prog["about"])
         lines.append(f'tellraw @a {{"text":"tiny_fpga programmed: {about}","color":"gold"}}')
         (fn / f"load_{name}.mcfunction").write_text("\n".join(lines) + "\n")
-    with MC() as mc:
+    with MC(DEMO) as mc:
         print(mc.cmd("reload"))
     print("functions:", ", ".join(f"redstone:{CHIP.lower()}/load_{n}" for n in PROGRAMS))
 
