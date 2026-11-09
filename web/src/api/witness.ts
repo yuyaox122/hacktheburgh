@@ -1,4 +1,4 @@
-// Client for the Witness agent API (agent/: `decap serve`, proxied at /witness by vite.config.ts), plus the core's
+// Client for the Witness agent API (agent/: `basic serve`, proxied at /witness by vite.config.ts), plus the core's
 // review-edit route the agent features use. The agent proposes; only the core's Yosys checker decides what is proven.
 
 import { ApiError, DOWN, postJson, reachable, request, stream } from "./http";
@@ -24,7 +24,7 @@ export interface Attempt {
 
 export interface ToolStep { tool: string; args?: Record<string, unknown>; cells?: string[]; lines?: number[]; wall_s?: number; is_error?: boolean }
 
-/** The plain-English reading written after Yosys decided (decap_agent/plain.py). The formal claim stays the source. */
+/** The plain-English reading written after Yosys decided (basic_agent/plain.py). The formal claim stays the source. */
 export interface Plain {
   headline: string; explanation: string; example?: string; verdict: string;
   source?: "claim" | "code";   // claim: reading of a checked claim; code: read from the (proven) decompiled lines

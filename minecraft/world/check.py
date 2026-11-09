@@ -1,6 +1,6 @@
 """Drive the in-game chip over RCON and compare it with the Python reference simulator (and an optional intent).
 
-    python -m minecraft.world.check tt_um_Electom_cla_4bits -n 40    # server running, decap:build done
+    python -m minecraft.world.check tt_um_Electom_cla_4bits -n 40    # server running, basic:build done
 """
 from __future__ import annotations
 

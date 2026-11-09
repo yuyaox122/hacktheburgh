@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "decap": {
-      "command": ".venv/bin/decap",
+    "basic": {
+      "command": ".venv/bin/basic",
       "args": ["mcp"],
       "env": {
-        "DECAP_CORE_APP": "decap.api.main:app"
+        "BASIC_CORE_APP": "basic.api.main:app"
       }
     }
   }

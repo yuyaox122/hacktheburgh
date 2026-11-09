@@ -93,7 +93,7 @@ export interface Comment {
 }
 
 interface Saved { runs: Run[]; edits: Edit[]; comments: Comment[]; ideas: IdeaThread[] }
-const KEY = "decap.agent.v1";
+const KEY = "basic.agent.v1";
 
 function load(): Saved {
   try {

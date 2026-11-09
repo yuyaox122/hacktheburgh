@@ -247,7 +247,7 @@ export class StagePage {
   }
   /** Drag the code pane's right edge to resize it (remembered per browser; double-click resets). */
   private bindResizer() {
-    const KEY = "decap.codeW", bar = $("#stResize", this.el);
+    const KEY = "basic.codeW", bar = $("#stResize", this.el);
     const apply = (w: number | null) => {
       if (w == null) this.el.style.removeProperty("--code-w");
       else this.el.style.setProperty("--code-w", `${Math.round(Math.max(220, Math.min(w, innerWidth * 0.55)))}px`);

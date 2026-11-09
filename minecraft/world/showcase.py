@@ -9,7 +9,7 @@ Layout (x east, z south), all on a grass field:
     z  -40 ..   76   real layout of the CLA (GDS as blocks, logic as a datapack), with its lever panel on the north edge
     z  200 ..  340   the same CLA in real redstone (the redstone router's default z)
     z  400 ..  553   tt_um_sign_addsub in real redstone (routed at z 400 so it does not overlap)
-Teleports: /function decap:view, decap:overview, decap:tour/<n>, redstone:goto/<chip>.
+Teleports: /function basic:view, basic:overview, basic:tour/<n>, redstone:goto/<chip>.
 The redstone builds go in through minecraft.redstone.demo, pointed at this server.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from ..redstone import chipdata, demo, pnr
 
 FLOOR = Y0 - 1
 REDSTONE_CHIPS = {"tt_um_Electom_cla_4bits": 200, "tt_um_sign_addsub": 400}   # chip -> z of its north edge
-TIME = 18000                    # midnight: stars, glowing wires; decap:tick gives everyone night vision
+TIME = 18000                    # midnight: stars, glowing wires; basic:tick gives everyone night vision
 
 
 def redstone_layouts() -> dict[str, dict]:
@@ -114,14 +114,14 @@ def main() -> None:
         r(c)
     for c in pad(0, -24, sx - 1, sz - 1, "black_concrete", "polished_deepslate", 6) + lamps(0, -24, sx - 1, sz - 1, 5):
         r(c)
-    r("function decap:build")
+    r("function basic:build")
     for _ in range(300):
         if "has 1" in r(f"scoreboard players get #built chip"):
             break
         time.sleep(1)
     else:
-        raise SystemExit("decap:build did not finish")
-    r("function decap:env")
+        raise SystemExit("basic:build did not finish")
+    r("function basic:env")
     r(f"time set {TIME}")
     boxes = [(-6, -30, sx + 5, sz + 5)]
 
@@ -157,7 +157,7 @@ def main() -> None:
     for b in boxes:   # re-add: removing a tree's chunk may have dropped part of an exhibit (its logic must keep running)
         for c in forceload(*b):
             r(c)
-    tour = server.SERVER.datapacks / "decap_chip" / "data" / "decap" / "function" / "tour"
+    tour = server.SERVER.datapacks / "basic_chip" / "data" / "basic" / "function" / "tour"
     tour.mkdir(parents=True, exist_ok=True)
     # each stop looks down at about 35 degrees from just outside the exhibit, close enough to stay inside render distance
     stops = [(sx // 2, Y0 + 75, -110, sx // 2, Y0, sz // 2)]                        # 1: real layout from the north
@@ -172,7 +172,7 @@ def main() -> None:
     r("reload")
     r(f"time set {TIME}")
     r(f"setworldspawn {stops[0][0]} {Y0} {stops[0][2] + 30}")
-    r('tellraw @a {"text":"Showcase ready: /function decap:tour/1 .. /' + str(len(stops)) + '","color":"gold"}')
+    r('tellraw @a {"text":"Showcase ready: /function basic:tour/1 .. /' + str(len(stops)) + '","color":"gold"}')
     print("showcase built; tour stops:", len(stops))
 
 

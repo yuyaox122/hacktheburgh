@@ -35,7 +35,7 @@ def sign(lines: list[str], rotation: int = 0) -> str:
     return f"oak_sign[rotation={rotation}]{{front_text:{{messages:[{msgs}]}}}}"
 
 
-def text_display(x, y, z, text: str, color: str, scale, bold: bool = False, tag: str = "decap") -> str:
+def text_display(x, y, z, text: str, color: str, scale, bold: bool = False, tag: str = "basic") -> str:
     """summon a floating, always-facing label."""
     return (f"summon text_display {x} {y} {z} {{Tags:[\"{tag}\"],billboard:\"center\",background:0,view_range:2.5f,"
             f"transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],"

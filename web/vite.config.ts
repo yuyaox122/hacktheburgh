@@ -5,8 +5,8 @@ import { defineConfig } from "vite";
 // Static-first: /data/* is served from public/data (generated, gitignored); /api/* goes to the FastAPI backend;
 // /redstone/* goes to minecraft/redstone/bridge.py (Minecraft).
 // /witness/* goes to the Witness agent API (agent/).
-// DECAP_API overrides the backend (e.g. a second checkout running the API on another port); REDSTONE_API the bridge; WITNESS_API the agent.
-const api = process.env.DECAP_API ?? "http://127.0.0.1:8000";
+// BASIC_API overrides the backend (e.g. a second checkout running the API on another port); REDSTONE_API the bridge; WITNESS_API the agent.
+const api = process.env.BASIC_API ?? "http://127.0.0.1:8000";
 const redstone = process.env.REDSTONE_API ?? "http://127.0.0.1:8002";
 const witness = process.env.WITNESS_API ?? "http://127.0.0.1:8791";   // agent/ witness_api (SSE runs)
 export default defineConfig({

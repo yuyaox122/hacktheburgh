@@ -11,10 +11,10 @@ from fastmcp import Client
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 
-from decap_agent.server import build_server
-from decap_agent.stub_core import create_stub_app
-from decap_agent.transcript import result_payload
-from decap_agent.witness_api import create_witness_app
+from basic_agent.server import build_server
+from basic_agent.stub_core import create_stub_app
+from basic_agent.transcript import result_payload
+from basic_agent.witness_api import create_witness_app
 
 VERILOG = """module tt_um_demo (
     input  wire [7:0] ui_in,
@@ -107,8 +107,8 @@ def test_ideas_bad_requests_are_clear_errors(tmp_path):
 
 
 # ------------------------------------------------------------------------------------------------ real core
-REAL = os.environ.get("DECAP_REAL_CORE_ROOT")
-real = pytest.mark.skipif(not REAL, reason="set DECAP_REAL_CORE_ROOT to a checkout of main with decap/data fetched")
+REAL = os.environ.get("BASIC_REAL_CORE_ROOT")
+real = pytest.mark.skipif(not REAL, reason="set BASIC_REAL_CORE_ROOT to a checkout of main with basic/data fetched")
 CLA = "tt_um_Electom_cla_4bits"
 
 
@@ -116,7 +116,7 @@ CLA = "tt_um_Electom_cla_4bits"
 def core(monkeypatch):
     monkeypatch.syspath_prepend(REAL)
     monkeypatch.chdir(REAL)
-    from decap.api.main import app
+    from basic.api.main import app
     return app
 
 
@@ -208,9 +208,9 @@ def test_ideas_block_comment_mentioning_module_is_kept_and_drops_are_counted(tmp
 
 
 def test_cli_model_from_the_default(monkeypatch):
-    from decap_agent.cli_model import resolve
-    monkeypatch.delenv("DECAP_LLM", raising=False)
-    m = resolve(None, "cli:sonnet")       # DECAP_WITNESS_MODEL=cli:sonnet arrives as the default
+    from basic_agent.cli_model import resolve
+    monkeypatch.delenv("BASIC_LLM", raising=False)
+    m = resolve(None, "cli:sonnet")       # BASIC_WITNESS_MODEL=cli:sonnet arrives as the default
     assert isinstance(m, FunctionModel) and m.model_name == "claude-cli:sonnet"
     assert resolve(None, "anthropic:x") == "anthropic:x"
 
@@ -224,7 +224,7 @@ def _never_same(out):
 
 @real
 def test_review_edit_sees_clocking_changes(core):
-    """equiv/sat ignore which clock (and which edge) drives a flip-flop: Decap checks that separately."""
+    """equiv/sat ignore which clock (and which edge) drives a flip-flop: bASIC checks that separately."""
     for chip in (CLA, "tt_um_mac", f"{CLA}+t137"):
         src = _decompiled(core, chip)
         assert A in src
@@ -309,8 +309,8 @@ def test_review_edit_with_a_baseline_judges_this_edit_alone(core):
 def test_review_budget_and_kept_counterexample(core, monkeypatch):
     import subprocess
     import time
-    from decap.core import chip as C
-    from decap.core import service as S
+    from basic.core import chip as C
+    from basic.core import service as S
     v = S.get(CLA)
     flipped = v.result["decompiled"]["verilog"].replace("ui_in[3:0] + ui_in[7:4]", "ui_in[3:0] - ui_in[7:4]")
     # a deadline already spent: no Yosys run at all, and it says so

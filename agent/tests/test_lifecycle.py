@@ -1,5 +1,5 @@
-from decap_agent import lifecycle
-from decap_agent.transcript import Transcript
+from basic_agent import lifecycle
+from basic_agent.transcript import Transcript
 
 
 def test_lifecycle_registers_and_lists_running_first(tmp_path):

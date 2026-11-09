@@ -1,5 +1,5 @@
 """Chip inputs for the redstone techmap: a Tiny Tapeout 08 project's netlist and GDS, and the SKY130 HD Liberty
-JSON its cells need (all cached in decap/data/, see minecraft/common/fetch.py), read as ports, cells, pins, cell
+JSON its cells need (all cached in basic/data/, see minecraft/common/fetch.py), read as ports, cells, pins, cell
 positions by instance name and pin label positions.
 
     python -m minecraft.redstone.chipdata fetch tt_um_sign_addsub

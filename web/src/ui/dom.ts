@@ -42,7 +42,7 @@ export function codeText(line: string): string {
   return `<span class="t" style="--i:${ind}">${hiVerilog(body) || "\u00a0"}</span>`;
 }
 
-const WRAP_KEY = "decap.wrap";
+const WRAP_KEY = "basic.wrap";
 /** Soft wrap for every code view (on by default, remembered per browser). */
 export function wrapOn(): boolean { try { return localStorage.getItem(WRAP_KEY) !== "0"; } catch { return true; } }
 export function setWrap(on: boolean) {

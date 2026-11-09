@@ -1,11 +1,11 @@
 """Compile a Tiny Tapeout chip (netlist + GDS) into a vanilla Minecraft 1.21.11 datapack.
 
-    python -m minecraft.world.build tt_um_Electom_cla_4bits      # -> out/<chip>/decap_chip (datapack folder)
+    python -m minecraft.world.build tt_um_Electom_cla_4bits      # -> out/<chip>/basic_chip (datapack folder)
     python -m minecraft.world.build <chip> --scale 4 --full       # whole tile instead of the logic region
     python -m minecraft.world.build <chip> --plant 137            # with a planted trigger (if ui_in == 137)
-The chip's netlist, GDS and info.yaml are fetched into decap/data/ if missing (needs `gh`); KLayout reads the GDS.
+The chip's netlist, GDS and info.yaml are fetched into basic/data/ if missing (needs `gh`); KLayout reads the GDS.
 
-In game: /function decap:build  (draws the chip),  /function decap:view  (teleports you to the panel).
+In game: /function basic:build  (draws the chip),  /function basic:view  (teleports you to the panel).
 The chip then runs every tick: levers drive the inputs, lamps show the outputs, every gate and every wire
 lights up while its signal is 1.
 """
@@ -323,7 +323,7 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
             tick.append(f"execute store success score {nets[b]} {OBJ} if block {x} {Y0 + 1} {PANEL_Z} minecraft:lever[powered=true]")
     if has_clk:
         tick.append(f"execute store success score #auto {OBJ} if block {auto_x} {Y0 + 1} {PANEL_Z} minecraft:lever[powered=true]")
-        tick.append(f"execute if score #auto {OBJ} matches 1 run function decap:clock")
+        tick.append(f"execute if score #auto {OBJ} matches 1 run function basic:clock")
     tick += logic.emit_comb(prog)
     tick += logic.emit_flops(prog)
     tick += logic.emit_comb(prog)
@@ -336,8 +336,8 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
             on_fn += fill(x1, y1, z1, x2, y2, z2, on, f" replace {mc(off)}")
             off_fn += fill(x1, y1, z1, x2, y2, z2, off, f" replace {mc(on)}")
         netfns[f"net/{i}_on"], netfns[f"net/{i}_off"] = on_fn, off_fn
-        tick.append(f"execute if score {h} {OBJ} matches 1 unless score {gflag} {OBJ} matches 1 run function decap:net/{i}_on")
-        tick.append(f"execute if score {h} {OBJ} matches 0 unless score {gflag} {OBJ} matches 0 run function decap:net/{i}_off")
+        tick.append(f"execute if score {h} {OBJ} matches 1 unless score {gflag} {OBJ} matches 1 run function basic:net/{i}_on")
+        tick.append(f"execute if score {h} {OBJ} matches 0 unless score {gflag} {OBJ} matches 0 run function basic:net/{i}_off")
     side = []
     for name, bits in list(groups(prog.inputs, pins).items()) + list(groups(prog.outputs, pins).items()):
         if name in ("clk", "rst_n", "ena"):
@@ -361,7 +361,7 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
     pmid = (min(xs) + max(xs)) // 2
     view = [f"tp @s {pmid} {Y0 + 9} {PANEL_Z - 16} facing {pmid} {Y0 + 1} {PANEL_Z + 6}"]
     overview = [f"tp @s {cx} {Y0 + 70} {cz + 40} facing {cx} {Y0} {cz - 4}"]
-    lab = ["kill @e[type=text_display,tag=decap]"]
+    lab = ["kill @e[type=text_display,tag=basic]"]
     tdisp = text_display
 
     if trojan:
@@ -372,25 +372,25 @@ def compile_chip(chip: str, scale: float, full: bool, out_dir: Path, plant_n: in
         lab.append(tdisp(x + 0.5, Y0 + 2.3, PANEL_Z + 0.5, text, {"in": "aqua", "out": "gold", "auto": "gray"}[kind], 1.6, True))
     lab.append(tdisp(pmid, Y0 + 16, PANEL_Z - 2, title, "gold", 8, True))
     lab.append(tdisp(pmid, Y0 + 13, PANEL_Z - 2, f"{author}  ·  Tiny Tapeout 08  ·  {len(nl.logic) - len(trojan['cells'] if trojan else [])} gates", "white", 3))
-    lab.append(tdisp(pmid, Y0 + 11.2, PANEL_Z - 2, "compiled from the real netlist + GDS by Decap", "gray", 2))
+    lab.append(tdisp(pmid, Y0 + 11.2, PANEL_Z - 2, "compiled from the real netlist + GDS by bASIC", "gray", 2))
     env = ["time set midnight", "weather clear", "gamerule advance_time false", "gamerule advance_weather false",
            "gamerule spawn_mobs false", f"setworldspawn {pmid} {Y0 + 1} {PANEL_Z - 16}"]   # 1.21.11 rule names
-    build_fn = build + ["schedule function decap:build_blocks 40t"]
+    build_fn = build + ["schedule function basic:build_blocks 40t"]
     blocks_fn = [f"scoreboard players set #built {OBJ} 0"] + blocks + \
-                [f"scoreboard players reset * {OBJ}", f"function decap:load",
-                 f"scoreboard players set #built {OBJ} 1", "function decap:labels", "function decap:env",
-                 "say Chip built. /function decap:view for the panel, /function decap:overview for the whole chip"]
+                [f"scoreboard players reset * {OBJ}", f"function basic:load",
+                 f"scoreboard players set #built {OBJ} 1", "function basic:labels", "function basic:env",
+                 "say Chip built. /function basic:view for the panel, /function basic:overview for the whole chip"]
 
-    pack = out_dir / "decap_chip"
+    pack = out_dir / "basic_chip"
     if pack.exists():
         shutil.rmtree(pack)
-    fdir = pack / "data" / "decap" / "function"
+    fdir = pack / "data" / "basic" / "function"
     (fdir / "net").mkdir(parents=True)
-    write_meta(pack, f"Decap: {title} compiled to Minecraft", indent=1)
+    write_meta(pack, f"bASIC: {title} compiled to Minecraft", indent=1)
     tags = pack / "data" / "minecraft" / "tags" / "function"
     tags.mkdir(parents=True)
-    (tags / "load.json").write_text(json.dumps({"values": ["decap:load"]}))
-    (tags / "tick.json").write_text(json.dumps({"values": ["decap:tick"]}))
+    (tags / "load.json").write_text(json.dumps({"values": ["basic:load"]}))
+    (tags / "tick.json").write_text(json.dumps({"values": ["basic:tick"]}))
     write_functions(fdir, {"load": load, "build": build_fn, "build_blocks": blocks_fn, "tick": tick, "clock": clock,
                            "view": view, "overview": overview, "labels": lab, "env": env} | netfns)
     meta = {"chip": chip, "title": title, "scale": scale, "size": [SX, SZ], "y0": Y0, "panel_z": PANEL_Z,
@@ -416,7 +416,7 @@ def main():
     m = compile_chip(a.chip, a.scale, a.full, out, a.plant, a.target)
     print(json.dumps({k: m[k] for k in ("title", "size", "counts", "sidebar", "plant")}))
     if a.install:
-        print("installed", install(out / "decap_chip", a.install))
+        print("installed", install(out / "basic_chip", a.install))
 
 
 if __name__ == "__main__":

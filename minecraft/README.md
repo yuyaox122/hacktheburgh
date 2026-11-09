@@ -13,7 +13,7 @@ It is one Python package. Run everything from the repository root as `python -m 
 ## Setup
 
 - **The repo's Python environment** (see the root README): `uv venv -p 3.12 .venv && uv pip install -e '.[world]'` at the repo root. The `world` extra adds KLayout, which only `world/` needs. Activate it (`source .venv/bin/activate`) so `python` below is that environment.
-- **`gh`, logged in.** Chip netlists, GDS and the SKY130 Liberty JSON are fetched from GitHub on first use into `decap/data/`, the same cache the decompiler uses. Set `MINECRAFT_DATA_DIR` to use another folder.
+- **`gh`, logged in.** Chip netlists, GDS and the SKY130 Liberty JSON are fetched from GitHub on first use into `basic/data/`, the same cache the decompiler uses. Set `MINECRAFT_DATA_DIR` to use another folder.
 - **Yosys** for `redstone/` (`brew install yosys`, or `pip install yowasp-yosys` plus a `yosys` shim). **iverilog** is optional: the bridge and `check.py vchip` use it to compare against the Verilog source.
 - **Java 21.** Found in this order: a JDK unpacked as `minecraft/tools/jdk-21*/` (Windows), Homebrew's `openjdk@21`, then `java` on `PATH`.
 - **The server jar.** Put Mojang's vanilla 1.21.11 `server.jar` at `minecraft/tools/server-1.21.11.jar`. It is not committed; running it means accepting the [Minecraft EULA](https://aka.ms/MinecraftEULA).
@@ -31,7 +31,7 @@ Servers keep their worlds in `minecraft/server/<name>/`. Builds go to `minecraft
 ## Run it: redstone
 
 ```sh
-python -m minecraft.redstone.chipdata fetch tt_um_sign_addsub   # netlist, GDS, Liberty into decap/data/
+python -m minecraft.redstone.chipdata fetch tt_um_sign_addsub   # netlist, GDS, Liberty into basic/data/
 python -m minecraft.redstone.sim tt_um_sign_addsub              # techmap check, no Minecraft needed
 python -m minecraft.redstone.pnr tt_um_sign_addsub              # -> minecraft/redstone/out/<chip>/layout.json
 python -m minecraft.redstone.mc start                           # headless check server
@@ -45,14 +45,14 @@ Then `cd web && npm run dev` and open `#/minecraft`. Vite proxies `/redstone` to
 ## Run it: world
 
 ```sh
-python -m minecraft.world.build tt_um_Electom_cla_4bits --plant 137   # -> minecraft/world/out/<chip>/decap_chip
+python -m minecraft.world.build tt_um_Electom_cla_4bits --plant 137   # -> minecraft/world/out/<chip>/basic_chip
 python -m minecraft.world.server setup tt_um_Electom_cla_4bits        # minecraft/server/world/, datapack installed
 python -m minecraft.world.server run                                  # blocks; use a second terminal for the rest
-python -m minecraft.world.server rcon "function decap:build"          # draw the chip (or run it in game)
+python -m minecraft.world.server rcon "function basic:build"          # draw the chip (or run it in game)
 python -m minecraft.world.check tt_um_Electom_cla_4bits -n 40         # in-game chip vs the Python reference
 python -m minecraft.world.showcase                                    # add two redstone builds next to it
 ```
 
-In game: Multiplayer → `localhost`, then `/function decap:view` (the lever panel) or `/function decap:overview`. `python -m minecraft.world.build <chip> --install <world folder>` copies the datapack into any world.
+In game: Multiplayer → `localhost`, then `/function basic:view` (the lever panel) or `/function basic:overview`. `python -m minecraft.world.build <chip> --install <world folder>` copies the datapack into any world.
 
 `world/client.py`, `world/fly.py` and `world/shot.ps1` are Windows tools: they launch the game client, then record a fly-through of the chip with ffmpeg.

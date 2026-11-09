@@ -11,7 +11,7 @@ Built at HackTheBurgh 2026 (7–8 Nov) by Yuyao Xie, Ian Zhang and Alex. Live si
 
 ## Results
 
-Measured on Tiny Tapeout 08 chips. The dev/test split was frozen before any tuning. Details and caveats: [decap/README.md](decap/README.md).
+Measured on Tiny Tapeout 08 chips. The dev/test split was frozen before any tuning. Details and caveats: [basic/README.md](basic/README.md).
 
 | | Held-out test (18 chips) | Dev (9 chips) |
 |---|---|---|
@@ -22,8 +22,8 @@ Measured on Tiny Tapeout 08 chips. The dev/test split was frozen before any tuni
 ## What's where
 
 ```
-decap/        The core (Python): ingest, decompiler, Yosys proofs, find/fix triggers, benchmark, FastAPI
-agent/        Witness: AI agents whose claims count only once proven; the `decap` CLI and MCP server
+basic/        The core (Python): ingest, decompiler, Yosys proofs, find/fix triggers, benchmark, FastAPI
+agent/        Witness: AI agents whose claims count only once proven; the `basic` CLI and MCP server
 web/          The web app (Vite + TypeScript + three.js): 3D chip, results, decompile, compare, Minecraft
 minecraft/    Chips in Minecraft: real redstone builds (redstone/) and the chip as a world (world/)
 docs/         How chips work, plus the hackathon archive (pitches, plans, prototype)
@@ -33,8 +33,8 @@ tools/board   The team's agent message board (a pinned GitHub issue)
 | Start here | For |
 |---|---|
 | [docs/how-chips-work.md](docs/how-chips-work.md) | New to chips? A plain-English guide from Verilog to silicon. |
-| [decap/README.md](decap/README.md) | How the decompiler and proofs work, and the full results. |
-| [decap/CONTRACTS.md](decap/CONTRACTS.md) | The JSON shapes and API routes every part shares. |
+| [basic/README.md](basic/README.md) | How the decompiler and proofs work, and the full results. |
+| [basic/CONTRACTS.md](basic/CONTRACTS.md) | The JSON shapes and API routes every part shares. |
 | [agent/README.md](agent/README.md) | Witness, the CLI and connecting an IDE agent over MCP. |
 | [web/README.md](web/README.md) | The web app's pages, scripts and code map. |
 | [minecraft/README.md](minecraft/README.md) | Building chips in Minecraft. |
@@ -45,8 +45,8 @@ You need `gh` (logged in), `yosys`, `iverilog`, [`uv`](https://docs.astral.sh/uv
 
 ```bash
 uv venv -p 3.12 .venv && uv pip install -e '.[dev]'
-.venv/bin/python -m decap.ingest.fetch        # chips, their authors' sources and the SKY130 cells → decap/data/
-.venv/bin/python -m decap.bench.run           # decompile and prove every chip → decap/out/ (about 2 min)
+.venv/bin/python -m basic.ingest.fetch        # chips, their authors' sources and the SKY130 cells → basic/data/
+.venv/bin/python -m basic.bench.run           # decompile and prove every chip → basic/out/ (about 2 min)
 
 cd web && npm install && npm run stage-data && npm run sync-data
 npm run dev:all                               # API on :8000 and the app on http://localhost:5173
@@ -54,11 +54,11 @@ npm run dev:all                               # API on :8000 and the app on http
 
 Optional extras:
 
-- **Guide chat:** set `ANTHROPIC_API_KEY` in `decap/.env` (see `decap/.env.example`). Without a key the chat says it's offline, and everything else works.
-- **Witness agent:** `.venv/bin/decap serve --port 8791`, then press `A` in the app. Model keys and options: [agent/README.md](agent/README.md).
+- **Guide chat:** set `ANTHROPIC_API_KEY` in `basic/.env` (see `basic/.env.example`). Without a key the chat says it's offline, and everything else works.
+- **Witness agent:** `.venv/bin/basic serve --port 8791`, then press `A` in the app. Model keys and options: [agent/README.md](agent/README.md).
 - **Minecraft:** see [minecraft/README.md](minecraft/README.md).
 
-Checks: `.venv/bin/pytest -q` (agent tests; set `DECAP_REAL_CORE_ROOT=$PWD` to include the real-core ones), `.venv/bin/python -m decap.bench.claims_check`, `cd web && npm run build && npm run check-data`.
+Checks: `.venv/bin/pytest -q` (agent tests; set `BASIC_REAL_CORE_ROOT=$PWD` to include the real-core ones), `.venv/bin/python -m basic.bench.claims_check`, `cd web && npm run build && npm run check-data`.
 
 ## Working on this repo
 

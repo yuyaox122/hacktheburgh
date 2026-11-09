@@ -5,22 +5,22 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# Secrets: keys live in ~/.config/decap/secrets.env or decap/.env, never in git
+# Secrets: keys live in ~/.config/basic/secrets.env or basic/.env, never in git
 .env
 .env.*
 !.env.example
 secrets*
 
 # Generated data (fetched or built locally; the Jane Street warm-up has no licence, so never commit it)
-decap/data
-decap/out
+basic/data
+basic/out
 web/node_modules/
 web/dist/
 web/public/data/
 web/public/mc/
 agent/runs/
 
-# Minecraft: server jar and JDK, server worlds, build outputs (chip data lives in decap/data)
+# Minecraft: server jar and JDK, server worlds, build outputs (chip data lives in basic/data)
 minecraft/tools/
 minecraft/server/
 minecraft/*/out/

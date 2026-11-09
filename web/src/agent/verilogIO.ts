@@ -1,6 +1,6 @@
 // Download and upload Verilog on the two code panes: Decompile (the decompiled Verilog, with any agent edits you
 // accepted) and Explore (the chip's source file). Upload takes your own .v file and asks Yosys whether this chip
-// really implements it (decap_agent/source_check.py, streamed into the Agent drawer).
+// really implements it (basic_agent/source_check.py, streamed into the Agent drawer).
 //
 // Self-contained: it decorates the panes when they appear (MutationObserver), so the page files stay untouched.
 

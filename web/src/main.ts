@@ -265,7 +265,7 @@ health().then((h) => {
 });
 
 // Test hook (used by the headless browser check; harmless in production).
-(window as unknown as { __decap: unknown }).__decap = { get stage() { return stage; }, get chip() { return chip; }, app, agent: { store, panel: agentPanel } };
+(window as unknown as { __basic: unknown }).__basic = { get stage() { return stage; }, get chip() { return chip; }, app, agent: { store, panel: agentPanel } };
 
 setWrap(wrapOn());
 // Wrap toggles live in page templates; one delegated listener serves them all.

@@ -16,14 +16,14 @@ Compiles a Tiny Tapeout 08 chip's gate-level netlist into **actual redstone**: c
 
 ## How it works
 
-1. **`chipdata.py`** fetches the TT08 netlist and GDS (Apache-2.0), plus the SKY130 Liberty JSON, into `decap/data/` (via `../common/fetch.py`). It reads ports, cells, instance positions (GDS property 61) and pin labels.
+1. **`chipdata.py`** fetches the TT08 netlist and GDS (Apache-2.0), plus the SKY130 Liberty JSON, into `basic/data/` (via `../common/fetch.py`). It reads ports, cells, instance positions (GDS property 61) and pin labels.
 2. **`techmap.py`** maps each cell, keeping the chip's cell boundaries:
    - buffers become wires, and tie cells become constants;
    - combinational cells go through Yosys `abc -g OR,ANDNOT` and become NOT / INH (a&!b) / OR;
    - each flip-flop becomes a master/slave LATCH pair, held by two global phase nets (`HOLD_M`, `HOLD_S`), with a local asynchronous reset or set.
 3. **`pnr.py`** places the chip in 2-D and routes it with a "bus" fabric that is correct by construction:
    - **Rows:** one tile row per real standard-cell row of the chip, in real order. Mirrored (FS) cells have their GDS origin at their top edge, so their row is origin y − 2.72 µm; without that correction two physical rows merge into one (north = higher GDS y, matching ../world/, where GDS y maps to −z). The IO pads get their own row along the north edge, at the pins' real x, because the real pins are all on the north edge. Constant outputs (tied pins, no wire) are packed as unlit lamps west of the first real pad.
-   - **x is to scale, approximately:** one 8-block tile slot per µm of real x (so 8 blocks/µm), legalised with minimum displacement so tiles don't overlap. A cell with k primitives needs k slots but is only 1.4–3.7 µm wide, so legalising moves tiles up to 3 µm (sign_addsub) or 6.5 µm (cla_4bits) from their real x; `pnr.py` prints this as `max_x_shift_um`. A cell's primitives stay together, and a sign under each group names the instance and cell type (`_41_` / `a21oi_1`, the same names as the GDS and Decap).
+   - **x is to scale, approximately:** one 8-block tile slot per µm of real x (so 8 blocks/µm), legalised with minimum displacement so tiles don't overlap. A cell with k primitives needs k slots but is only 1.4–3.7 µm wide, so legalising moves tiles up to 3 µm (sign_addsub) or 6.5 µm (cla_4bits) from their real x; `pnr.py` prints this as `max_x_shift_um`. A cell's primitives stay together, and a sign under each group names the instance and cell type (`_41_` / `a21oi_1`, the same names as the GDS and bASIC).
    - **z is stretched:** a real row is 2.72 µm, but a tile row plus its routing channel needs 15–55 blocks, so rows keep their order but not their spacing.
    - **Channels:** north of every tile row, one east–west trunk per net on y=3. Nets whose spans don't overlap share a track (left-edge channel routing). Each port owns a north–south column at floor level, with a solid staircase up to its trunk.
    - **Spines:** a net with pins in several rows gets a north–south spine on y=6, in a column no port uses (offset 6 of every 8-block slot). In each channel it serves, the spine dips down to that channel's trunk by a 3-step staircase and climbs back up. y=6 runs 2 blocks of air above trunks and 5 above tiles, so it crosses them without touching.
@@ -91,7 +91,7 @@ The web app has a **Minecraft** page (`#/minecraft`) that drives the demo server
 - The **3-D view** draws every block the bridge places, from the same block list, so it works with no Minecraft client.
 
 Checked live, through the page's own HTTP calls:
-- Decap's decompiled `cla_4bits` with trigger 77 planted: random vectors with clock edges 6/6; the `uo_out[0]` lamp lights on 77 and not on 76 or 78. The clean copy stays dark on 77.
+- bASIC's decompiled `cla_4bits` with trigger 77 planted: random vectors with clock edges 6/6; the `uo_out[0]` lamp lights on 77 and not on 76 or 78. The clean copy stays dark on 77.
 - The example MAC: `acc` goes 6, 12, 13 over three clock edges.
 
 ```sh
@@ -108,14 +108,14 @@ cd web && npm run dev                      # Vite proxies /redstone to the bridg
 5. In Minecraft: Multiplayer → Direct Connect → `localhost`, then `python -m minecraft.redstone.demo op`.
 6. On the page: **Ready-made → 4-bit CLA adder, trigger 77 planted**. It builds in about 3 s. Click **Levers** to teleport, then **Type 77 into ui_in**: the `uo_out[0]` lamp lights. Build the clean copy too: on 77 its lamp stays dark.
 
-The Decompile page's *Build in Minecraft* button needs the decompiler's generated results (`decap/out/chips/`, not in git). The ready-made designs don't.
+The Decompile page's *Build in Minecraft* button needs the decompiler's generated results (`basic/out/chips/`, not in git). The ready-made designs don't.
 
 **Playing on another laptop:** the server listens on every interface. The Minecraft page shows the address to join (Multiplayer → Direct Connect → `<LAN IP>:25565`). Then run `python -m minecraft.redstone.demo op` so that player can use `/tick`. If the venue Wi-Fi blocks laptop-to-laptop traffic, use a phone hotspot.
 
 ## Run it
 
 ```sh
-python -m minecraft.redstone.chipdata fetch tt_um_sign_addsub   # into decap/data/ (gitignored)
+python -m minecraft.redstone.chipdata fetch tt_um_sign_addsub   # into basic/data/ (gitignored)
 python -m minecraft.redstone.sim tt_um_sign_addsub              # techmap check, no Minecraft needed
 python -m minecraft.redstone.pnr tt_um_sign_addsub              # out/<chip>/layout.json
 python -m minecraft.redstone.mapview tt_um_sign_addsub          # out/<chip>/map.png, a top-down picture (no Minecraft needed)
@@ -152,7 +152,7 @@ The server jar is Mojang's vanilla `server.jar` for 1.21.11 (SHA-1 `64bb6d76…`
 | check | `minecraft/server/check/` | 25566 | 25576 | `check.py`; ticks are **frozen** and stepped. Start/stop: `python -m minecraft.redstone.mc start` / `stop` |
 | demo | `minecraft/server/demo/` | **25565** | 25577 | the playable world; ticks run normally. Start/stop: `python -m minecraft.redstone.demo start` / `stop` |
 
-Both are defined in `mc.py` (`CHECK`, `DEMO`); `MC()` talks to check, `MC(DEMO)` to demo. For ad-hoc RCON to the demo server: `REDSTONE_RCON_PORT=25577 python -m minecraft.redstone.mc cmd "<command>"`. Chip data (`decap/data/`), outputs (`minecraft/redstone/out/`), servers and `minecraft/tools/` are all gitignored.
+Both are defined in `mc.py` (`CHECK`, `DEMO`); `MC()` talks to check, `MC(DEMO)` to demo. For ad-hoc RCON to the demo server: `REDSTONE_RCON_PORT=25577 python -m minecraft.redstone.mc cmd "<command>"`. Chip data (`basic/data/`), outputs (`minecraft/redstone/out/`), servers and `minecraft/tools/` are all gitignored.
 
 ### Demo world
 

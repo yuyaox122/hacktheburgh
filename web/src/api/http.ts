@@ -7,8 +7,8 @@ export class ApiError extends Error {
 
 /** What to tell people when a service is down, and how to start it. */
 export const DOWN = {
-  core: "bASIC's core API isn't reachable. Start it from the repo root with: uvicorn decap.api.main:app (port 8000).",
-  witness: "The agent service isn't reachable. Start it with: decap serve --port 8791",
+  core: "bASIC's core API isn't reachable. Start it from the repo root with: uvicorn basic.api.main:app (port 8000).",
+  witness: "The agent service isn't reachable. Start it with: basic serve --port 8791",
   redstone: "The redstone bridge is not running. Start it from the repo root with: .venv/bin/python -m minecraft.redstone.bridge",
 };
 

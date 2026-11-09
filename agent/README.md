@@ -1,6 +1,6 @@
-# Decap agent layer (`agent/`)
+# bASIC agent layer (`agent/`)
 
-Owner: **@izhangfly** (AGENTS.md section 4). The rest of `decap/` is Yuyao's core.
+Owner: **@izhangfly** (AGENTS.md section 4). The core (`basic/`) is Yuyao's.
 
 The core reads a chip. This layer puts an AI agent on top of it and makes the agent's work checkable. The agent
 is called **Witness**. It can look at any part of a chip and say what it does, but it can't decide whether it is
@@ -15,56 +15,56 @@ What's in here:
   and if it's wrong the agent gets the counterexample and tries again.
 - **The Witness terminal.** Type what you want in plain English. Simple asks run a fixed flow. Bigger ones go to
   an investigator that plans its own steps.
-- **`decap` CLI.** The same things from a shell, plus a no-LLM version of the demo.
+- **`basic` CLI.** The same things from a shell, plus a no-LLM version of the demo.
 - **Transcript.** Every tool call and answer becomes one JSONL line, whichever client made it. The UI streams it,
   replay re-runs it, and the bench scores it.
 
 ## Quick start
 
-The agent layer is the `decap_agent` package of the repo's one Python project (`pyproject.toml` at the root), so
+The agent layer is the `basic_agent` package of the repo's one Python project (`pyproject.toml` at the root), so
 install it from the repo root:
 
 ```bash
 uv venv -p 3.12 .venv && uv pip install -e '.[dev]'
-.venv/bin/decap tools                 # the tools an agent sees
-.venv/bin/decap demo --n 137          # plant 137, find it, prove it. No LLM.
-.venv/bin/decap agent-send "audit this chip" --chip tt_um_kapilan_alarm   # needs a model key, see below
+.venv/bin/basic tools                 # the tools an agent sees
+.venv/bin/basic demo --n 137          # plant 137, find it, prove it. No LLM.
+.venv/bin/basic agent-send "audit this chip" --chip tt_um_kapilan_alarm   # needs a model key, see below
 .venv/bin/pytest -q                   # agent/tests
 ```
 
-Without a real core you get a stub (`decap_agent/stub_core.py`): a made-up 8-bit counter, with every result
-marked `"source": "stub"`. To use the real core, fetch `decap/data/` (`.venv/bin/python -m decap.ingest.fetch`)
+Without a real core you get a stub (`basic_agent/stub_core.py`): a made-up 8-bit counter, with every result
+marked `"source": "stub"`. To use the real core, fetch `basic/data/` (`.venv/bin/python -m basic.ingest.fetch`)
 with `brew install yosys` done:
 
 ```bash
-export DECAP_CORE_APP=decap.api.main:app
-.venv/bin/decap demo --n 137          # first dev chip, or --chip tt_um_mac
-DECAP_REAL_CORE_ROOT=$PWD .venv/bin/pytest -q
+export BASIC_CORE_APP=basic.api.main:app
+.venv/bin/basic demo --n 137          # first dev chip, or --chip tt_um_mac
+BASIC_REAL_CORE_ROOT=$PWD .venv/bin/pytest -q
 ```
 
 On `tt_um_Electom_cla_4bits` the demo takes about 3 s. It plants a trigger for 137 (9 cells, proven), finds
 `ui_in == 8'd137` in `assign uo_out[0] = state0[2] | (ui_in == 8'd137);`, proves the netlist against the
 author's source (failed, counterexample `ui_in = 137`), then removes the trigger (proven).
 
-**Models.** Keys live in `~/.config/decap/secrets.env` (or `$DECAP_SECRETS`), never in the repo. DeepSeek
+**Models.** Keys live in `~/.config/basic/secrets.env` (or `$BASIC_SECRETS`), never in the repo. DeepSeek
 (`--model deepseek:deepseek-chat`) is the fast default for the terminal. `--model cli:sonnet` runs each request
-through your local `claude` login (`decap_agent/cli_model.py`). Use it when the API key is capped. It can't
+through your local `claude` login (`basic_agent/cli_model.py`). Use it when the API key is capped. It can't
 call tools, so it works for the bench and region claims but not for the investigator. **Gemini:** put `GOOGLE_API_KEY` (from AI Studio)
 in the same secrets file and use `--model google-gla:gemini-flash-latest` (the `google` extra is in pyproject).
 
-**Connect an IDE agent.** Claude Code: `claude mcp add decap -- .venv/bin/decap mcp`. JetBrains
+**Connect an IDE agent.** Claude Code: `claude mcp add basic -- .venv/bin/basic mcp`. JetBrains
 Air picks up the repo's `.mcp.json` (the root `.venv`, started from the repo root). Anything
-else: command `.venv/bin/decap`, args `mcp`.
+else: command `.venv/bin/basic`, args `mcp`.
 
 ## The Witness terminal
 
 ```bash
-decap serve --port 8791 --model deepseek:deepseek-chat   # the web app's Agent drawer talks to this
-decap agent-send "is anything hidden?" --chip tt_um_kapilan_alarm
-decap status · decap log -f <session> · decap stop <session>
+basic serve --port 8791 --model deepseek:deepseek-chat   # the web app's Agent drawer talks to this
+basic agent-send "is anything hidden?" --chip tt_um_kapilan_alarm
+basic status · basic log -f <session> · basic stop <session>
 ```
 
-You type a command and the terminal routes it (`decap_agent/terminal.py`). The routing is plain keyword
+You type a command and the terminal routes it (`basic_agent/terminal.py`). The routing is plain keyword
 matching, and it doesn't pretend to be more:
 
 | You say | What runs | Typical time |
@@ -84,7 +84,7 @@ terminal said `clean` here. That was an overclaim, and it's fixed.
 only get the planted chip's id and the new cells are renamed. The drill passes only if the counterexample's
 `ui_in` is exactly `N`. On `tt_um_kapilan_alarm`: secret 192, counterexample `ui_in = 192`, 9.5 s.
 
-### The investigator (`decap_agent/investigate.py`)
+### The investigator (`basic_agent/investigate.py`)
 
 This is the open-ended mode. The fixed flows run one script. The investigator picks its steps from what it
 sees:
@@ -101,11 +101,11 @@ sees:
 Two guards stop it overclaiming. A `yosys` finding about a block that wasn't explained in this run is relabelled
 `unverified`. If the hunt was inconclusive and the summary still says "no hidden logic", a correction is added.
 
-## Witness: the region loop (`decap_agent/witness.py`, plan in docs/archive/research/witness-plan.md)
+## Witness: the region loop (`basic_agent/witness.py`, plan in docs/archive/research/witness-plan.md)
 
 ```
-decap explain CHIP --cone-of 'uo_out[0]'      # look, claim, check, refine (max 2)
-decap claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the checker; --dry = parse + English only
+basic explain CHIP --cone-of 'uo_out[0]'      # look, claim, check, refine (max 2)
+basic claim CHIP "expr" --cone-of X [--dry]    # one claim straight to the checker; --dry = parse + English only
 ```
 
 The LLM sees only the look tools: `get_region`, `probe_truth`, `simulate`, `resolve_scope`. It returns one
@@ -146,10 +146,10 @@ Now it costs about 3k.
 ## The bench and the Monte Carlo ablation
 
 ```
-decap bench --split dev [--max-regions 4] [--model cli:sonnet]   # tune on dev chips only
-decap bench --freeze-hash                                        # post this before scoring the held-out split
-decap bench --split test --frozen ...                            # refuses to run without --frozen
-decap bench --ablate runs/<bench>.jsonl                          # re-check every claim by simulation, no LLM
+basic bench --split dev [--max-regions 4] [--model cli:sonnet]   # tune on dev chips only
+basic bench --freeze-hash                                        # post this before scoring the held-out split
+basic bench --split test --frozen ...                            # refuses to run without --frozen
+basic bench --ablate runs/<bench>.jsonl                          # re-check every claim by simulation, no LLM
 ```
 
 - **Which regions.** The rule was set before any test chip was seen: every block the templates couldn't name
@@ -170,7 +170,7 @@ decap bench --ablate runs/<bench>.jsonl                          # re-check ever
 ## The formaliser
 
 ```
-decap formalise "LED 3 lights when switches 1 and 2 are on" [CHIP --cone-of X] [--check]
+basic formalise "LED 3 lights when switches 1 and 2 are on" [CHIP --cone-of X] [--check]
 ```
 
 One LLM call turns a person's sentence into a formal line. It also lists the reading choices it made and, if the
@@ -224,7 +224,7 @@ One JSON object per line. Kinds: `tool`, `claim`, `agent`, `note`, plus `plan`, 
  "result": {"flagged": [...], "source": "stub"}, "is_error": false, "wall_s": 0.004}
 ```
 
-Stream one: `decap stream runs/<file>.jsonl --port 8790`, then `EventSource("http://127.0.0.1:8790/events")`.
+Stream one: `basic stream runs/<file>.jsonl --port 8790`, then `EventSource("http://127.0.0.1:8790/events")`.
 
 ## Built on
 
@@ -246,8 +246,8 @@ POST /api/chips/{chip}/review-edit  {verilog, baseline?}      (core; MCP tool re
   -> {verdict: same|tested_same|changed|broken, headline, detail, counterexample, seconds, this_edit?}
 ```
 
-- `decap_agent/ideas.py`: one LLM call (pydantic-ai, output `IdeasOut`), same model resolution as Witness
-  (`create_witness_app(model=...)`, else `DECAP_WITNESS_MODEL`, else `witness.DEFAULT_MODEL`; `cli:sonnet` works). The
+- `basic_agent/ideas.py`: one LLM call (pydantic-ai, output `IdeasOut`), same model resolution as Witness
+  (`create_witness_app(model=...)`, else `BASIC_WITNESS_MODEL`, else `witness.DEFAULT_MODEL`; `cli:sonnet` works). The
   prompt is small: the region with line numbers, the whole module (a window around the region above 400 lines), the
   ask and the last 10 turns.
 - **Validation in code**, not trusted to the model: an idea is dropped if its lines are outside the file, touch the
@@ -259,7 +259,7 @@ POST /api/chips/{chip}/review-edit  {verilog, baseline?}      (core; MCP tool re
   a behaviour change (`changed`, with the first clock step and inputs where the outputs differ, or a changed clock)
   or can't be kept (`broken`: doesn't compile, ports changed, a wiring problem, x/z, simulation-only code, or Yosys
   couldn't finish). Pass `baseline` (the text before this edit) to also get `this_edit`, what this edit alone does.
-  See decap/CONTRACTS.md section 4.
+  See basic/CONTRACTS.md section 4.
 - Live check (`tt_um_Electom_cla_4bits`, line 15, no ask, `cli:sonnet`, 5.8 s): "Name the adder inputs" (same) and
   "Widen sum explicitly" (same) were both proven the same circuit; "Gate update with ena" (change) was reported as
   changed at clock cycle 3. Each review took 0.1-0.3 s.

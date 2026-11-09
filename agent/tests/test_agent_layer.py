@@ -9,13 +9,13 @@ from fastmcp import Client
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 
-from decap_agent import cli
-from decap_agent.events import create_events_app
-from decap_agent.guide import ask
-from decap_agent.replay import replay
-from decap_agent.server import build_server
-from decap_agent.stub_core import create_stub_app
-from decap_agent.transcript import Transcript, load, result_payload
+from basic_agent import cli
+from basic_agent.events import create_events_app
+from basic_agent.guide import ask
+from basic_agent.replay import replay
+from basic_agent.server import build_server
+from basic_agent.stub_core import create_stub_app
+from basic_agent.transcript import Transcript, load, result_payload
 
 EXPECTED_TOOLS = {"list_chips", "resolve_scope", "strip_names", "recover_blocks", "decompile", "prove_equiv",
                   "simulate", "find_rare_triggers", "plant_trigger", "cone_of_influence", "critical_path",
@@ -105,13 +105,13 @@ def test_unknown_arguments_are_rejected_not_silently_dropped(tmp_path):
     assert load(tmp_path / "t.jsonl")[-1]["is_error"] is True
 
 
-REAL_CORE = os.environ.get("DECAP_REAL_CORE_ROOT")
+REAL_CORE = os.environ.get("BASIC_REAL_CORE_ROOT")
 
 
-@pytest.mark.skipif(not REAL_CORE, reason="set DECAP_REAL_CORE_ROOT to a 4-decap-build checkout with decap/data fetched")
+@pytest.mark.skipif(not REAL_CORE, reason="set BASIC_REAL_CORE_ROOT to a checkout with basic/data fetched")
 def test_real_core_judge_moment(monkeypatch, capsys):
     monkeypatch.syspath_prepend(REAL_CORE)
-    monkeypatch.setenv("DECAP_CORE_APP", "decap.api.main:app")
+    monkeypatch.setenv("BASIC_CORE_APP", "basic.api.main:app")
     assert cli.main(["--no-transcript", "demo", "--n", "137"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["condition"] == "ui_in == 8'd137" and out["netlist_vs_author_source"] == "failed"

@@ -10,11 +10,11 @@ from fastmcp import Client
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from decap.core.claim_expr import ClaimSyntaxError, Evaluator, literals, parse
-from decap_agent.server import build_server
-from decap_agent.stub_core import create_stub_app
-from decap_agent.transcript import Transcript, load, result_payload
-from decap_agent.witness import LOOK_TOOLS, explain_region
+from basic.core.claim_expr import ClaimSyntaxError, Evaluator, literals, parse
+from basic_agent.server import build_server
+from basic_agent.stub_core import create_stub_app
+from basic_agent.transcript import Transcript, load, result_payload
+from basic_agent.witness import LOOK_TOOLS, explain_region
 
 CHIP = "stub_counter8"
 NEXT = {"cone_of": "next(count)"}
@@ -145,7 +145,7 @@ def test_probe_fix_holds_inputs():
 
 
 def test_formaliser_validates_and_renders(tmp_path):
-    from decap_agent.formalise import equivalent, formalise
+    from basic_agent.formalise import equivalent, formalise
     outputs = iter([{"claim": "uo_out[1] == (count == 8'd200", "assumptions": []},          # broken: retried once
                     {"claim": "uo_out[1] == (count == 8'd200)", "assumptions": ["'the compare LED' = uo_out[1]"]}])
 
@@ -160,14 +160,14 @@ def test_formaliser_validates_and_renders(tmp_path):
     assert not equivalent("uo_out == ui_in + 1", "uo_out == ui_in + 8'd1")     # widths matter
 
 
-REAL = os.environ.get("DECAP_REAL_CORE_ROOT")
+REAL = os.environ.get("BASIC_REAL_CORE_ROOT")
 
 
-@pytest.mark.skipif(not REAL, reason="set DECAP_REAL_CORE_ROOT to a checkout of main with decap/data fetched")
+@pytest.mark.skipif(not REAL, reason="set BASIC_REAL_CORE_ROOT to a checkout of main with basic/data fetched")
 def test_real_chip_checker_catches_a_planted_bug(monkeypatch):
     monkeypatch.syspath_prepend(REAL)
     monkeypatch.chdir(REAL)
-    from decap_agent.core_witness import app
+    from basic_agent.core_witness import app
     server = build_server(app)
     alarm = {"cone_of": "uio_out[7]"}
 
@@ -185,20 +185,20 @@ def test_real_chip_checker_catches_a_planted_bug(monkeypatch):
 
 def test_cli_backend_is_opt_in(monkeypatch):
     import shutil
-    from decap_agent.cli_model import resolve
-    monkeypatch.delenv("DECAP_LLM", raising=False)
+    from basic_agent.cli_model import resolve
+    monkeypatch.delenv("BASIC_LLM", raising=False)
     assert resolve(None, "anthropic:x") == "anthropic:x"            # never switches on by itself
     if shutil.which("claude"):
         assert resolve("cli:haiku", "anthropic:x").model_name == "claude-cli:haiku"
-        monkeypatch.setenv("DECAP_LLM", "cli")
+        monkeypatch.setenv("BASIC_LLM", "cli")
         assert resolve(None, "anthropic:x").model_name.startswith("claude-cli:")
 
 
-@pytest.mark.skipif(not REAL, reason="set DECAP_REAL_CORE_ROOT to a checkout of main with decap/data fetched")
+@pytest.mark.skipif(not REAL, reason="set BASIC_REAL_CORE_ROOT to a checkout of main with basic/data fetched")
 def test_real_chip_claim_must_cover_every_region_output(monkeypatch):
     monkeypatch.syspath_prepend(REAL)
     monkeypatch.chdir(REAL)
-    from decap_agent.core_witness import ClaimIn, check_claim
+    from basic_agent.core_witness import ClaimIn, check_claim
     alarm = {"cone_of": "uio_out[7]"}
     easy = check_claim("tt_um_kapilan_alarm", ClaimIn(claim="uio_out[7] == bit0", scope=alarm))
     assert easy["verdict"] == "partial" and "next(bit0)" in easy["credit"]["reason"]   # skipped the alarm logic
@@ -208,7 +208,7 @@ def test_real_chip_claim_must_cover_every_region_output(monkeypatch):
 
 
 def test_bench_scores_first_drafts_with_a_clustered_ci(tmp_path):
-    from decap_agent.bench import run_bench
+    from basic_agent.bench import run_bench
 
     def fn(messages, info):   # right on the counter region at once; wrong first on the compare region
         text = " ".join(str(p) for m in messages for p in getattr(m, "parts", []))
@@ -230,7 +230,7 @@ def test_bench_scores_first_drafts_with_a_clustered_ci(tmp_path):
 
 
 def test_bench_refuses_held_out_split_without_freeze():
-    from decap_agent import cli
+    from basic_agent import cli
     assert cli.main(["--no-transcript", "bench", "--split", "test"]) == 2
 
 
@@ -247,7 +247,7 @@ def test_transcript_lifts_touched_lines(tmp_path):
 
 
 def test_timeline_renders_only_checked_runs(tmp_path):
-    from decap_agent.timeline import render, runs_from
+    from basic_agent.timeline import render, runs_from
     ev = [
         {"kind": "claim", "chip": "tt_um_x", "scope": {"cone_of": "b3"}, "attempt": 0, "first_draft": True, "source": "yosys",
          "claim": "uo_out[0] == ui_in[0]", "verdict": "refuted", "truth": "refuted", "refute_kind": "semantic",
@@ -267,7 +267,7 @@ def test_timeline_renders_only_checked_runs(tmp_path):
 
 def test_witness_api_streams_a_region_run(tmp_path):
     from fastapi.testclient import TestClient
-    from decap_agent.witness_api import create_witness_app
+    from basic_agent.witness_api import create_witness_app
     app = create_witness_app(create_stub_app(), model=scripted([WRONG, RIGHT], {}), runs=tmp_path, readings=False)
     client = TestClient(app)
     with client.stream("POST", "/witness/explain", json={"chip": CHIP, "scope": NEXT}) as r:
@@ -281,7 +281,7 @@ def test_witness_api_streams_a_region_run(tmp_path):
 
 def test_witness_api_formalise_confirm_step(tmp_path):
     from fastapi.testclient import TestClient
-    from decap_agent.witness_api import create_witness_app
+    from basic_agent.witness_api import create_witness_app
 
     def fn(messages, info):
         return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"claim": "uo_out[1] == (count == 8'd200)"})])
@@ -292,7 +292,7 @@ def test_witness_api_formalise_confirm_step(tmp_path):
 
 
 def test_claim_parser_is_tolerant_of_loose_model_output():
-    from decap.core.claim_expr import Evaluator, parse, unparse
+    from basic.core.claim_expr import Evaluator, parse, unparse
     # comma -> &&, bit-select after a sub-expression, trailing prose stripped
     assert unparse(parse("next(a) == 1, next(b) == 0")) == "(next(a) == 1) && (next(b) == 0)"
     assert unparse(parse("uo_out == (ui_in + uio_in)[7:1]")) == "uo_out == ((ui_in + uio_in)[7:1])"
@@ -306,13 +306,13 @@ def test_claim_parser_is_tolerant_of_loose_model_output():
 
 
 def test_load_secrets_strips_inline_comments_and_quotes(tmp_path, monkeypatch):
-    from decap_agent.cli import load_secrets
+    from basic_agent.cli import load_secrets
     f = tmp_path / "s.env"
-    f.write_text('DEEPSEEK_API_KEY=sk-abc123\nDECAP_GUIDE_CLI=1  # keep the claude CLI on\nQUOTED="val"  # trailing\n#FULL=comment\n')
+    f.write_text('DEEPSEEK_API_KEY=sk-abc123\nBASIC_GUIDE_CLI=1  # keep the claude CLI on\nQUOTED="val"  # trailing\n#FULL=comment\n')
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.delenv("DECAP_GUIDE_CLI", raising=False)
+    monkeypatch.delenv("BASIC_GUIDE_CLI", raising=False)
     monkeypatch.delenv("QUOTED", raising=False)
     loaded = load_secrets(str(f))
     assert "DEEPSEEK_API_KEY" in loaded and os.environ["DEEPSEEK_API_KEY"] == "sk-abc123"
-    assert os.environ["DECAP_GUIDE_CLI"] == "1" and os.environ["QUOTED"] == "val"
+    assert os.environ["BASIC_GUIDE_CLI"] == "1" and os.environ["QUOTED"] == "val"
     assert "FULL" not in os.environ and "FULL" not in loaded

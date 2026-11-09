@@ -166,7 +166,7 @@ ol.code li.ag-edit.ag-review.reviewed { border-left-color: var(--line-2); }
 .ag-clamp:hover { -webkit-line-clamp: unset; }
 .ag-suggest { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
 
-/* plain-English explanation (decap_agent/plain.py): what people read first; the formal claim folds below */
+/* plain-English explanation (basic_agent/plain.py): what people read first; the formal claim folds below */
 .ag-plain { display: grid; gap: 4px; padding: 9px 11px; border-radius: var(--r-sm); margin: 6px 0;
   background: color-mix(in srgb, var(--add) 7%, transparent); border: 1px solid color-mix(in srgb, var(--add) 22%, transparent); }
 .ag-plain-h { font-weight: 600; color: var(--fg); }
