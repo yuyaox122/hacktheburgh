@@ -1,4 +1,4 @@
-"""The formaliser (witness-plan section 3, the judge's moment): a person's sentence -> one checkable claim.
+"""The formaliser (docs/archive/research/witness-plan.md section 3, the judge's moment): a person's sentence -> one checkable claim.
 
     "LED 3 lights when switches 1 and 2 are on"  ->  (ui_in[1] & ui_in[2]) -> uo_out[3]
 

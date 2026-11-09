@@ -1,6 +1,6 @@
 # Decap: View Source for silicon
 
-Decap turns a chip's gate-level netlist, with every internal name stripped, back into short Verilog a person can read. It then proves with Yosys that the Verilog is exactly the same circuit. Pitch, claims and demo script: [`docs/decap/PITCH.md`](../docs/decap/PITCH.md). Data shapes and API: [`CONTRACTS.md`](CONTRACTS.md).
+Decap turns a chip's gate-level netlist, with every internal name stripped, back into short Verilog a person can read. It then proves with Yosys that the Verilog is exactly the same circuit. Pitch, claims and demo script: [`docs/archive/pitch/PITCH.md`](../docs/archive/pitch/PITCH.md). Data shapes and API: [`CONTRACTS.md`](CONTRACTS.md).
 
 ## Results (frozen held-out test set, decompiler `5dc6bfd`)
 
@@ -49,12 +49,13 @@ Two limits:
 
 Needs `gh` (logged in), `yosys`, `iverilog`, Python 3.12+ and Node 22.
 
+From the repo root (one Python project for the core, the agent layer and minecraft: `pyproject.toml`):
+
 ```bash
-cd decap
-python3 -m venv .venv && .venv/bin/pip install fastapi uvicorn httpx anthropic
-.venv/bin/python -m ingest.fetch          # TT08 netlists + authors' sources, SKY130 cells, warm-up → data/ (gitignored)
-.venv/bin/python -m bench.run             # decompile + prove every chip, author check, trojan test → out/ (~2 min)
-.venv/bin/uvicorn api.main:app --port 8000
+uv venv -p 3.12 .venv && uv pip install -e '.[dev]'
+.venv/bin/python -m decap.ingest.fetch     # TT08 netlists + authors' sources, SKY130 cells, warm-up → decap/data/ (gitignored)
+.venv/bin/python -m decap.bench.run        # decompile + prove every chip, author check, trojan test → decap/out/ (~2 min)
+.venv/bin/uvicorn decap.api.main:app --port 8000
 cd web && npm install && npm run stage-data && npm run sync-data && npm run dev   # http://localhost:5173
 ```
 
@@ -85,11 +86,12 @@ cd web && npm install && npm run stage-data && npm run sync-data && npm run dev 
 
 | Folder | What |
 |---|---|
-| `ingest/` | `fetch.py` (data), `liberty.py` → `lib.json`, `ingest_def.py` → `design.json` (warm-up 3D) |
-| `core/` | netlist, simulator, decompiler, proof, find, chip, compare, guide, service |
-| `bench/` | frozen split, candidates, runner |
+| `ingest/` | `fetch.py` (data), `liberty.py` → `lib.json`, `ingest_gds.py` → `designs/<chip>.json`, `ingest_def.py` → `design.json` (warm-up 3D) |
+| `core/` | netlist, simulator, decompiler, proof, find, chip, compare, claim checker (`claims.py`, `claim_expr.py`), guide, service |
+| `bench/` | frozen split, candidates, runner, claim-checker self-test |
 | `api/` | FastAPI: web routes + agent tools |
-| `web/` | Vite + TypeScript + three.js app (see `web/README.md`) |
-| `agent/` | Ian's MCP / CLI agent layer |
+| `paths.py` | every data and output location |
+| `../web/` | Vite + TypeScript + three.js app (see `web/README.md`) |
+| `../agent/` | Ian's MCP / CLI agent layer |
 
 Data rules: the Jane Street warm-up has no licence. It's fetched at setup and never committed, and the page credits it. Never feed their `puzzle.gds` to an AI tool.

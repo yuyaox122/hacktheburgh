@@ -1,11 +1,11 @@
 # For coding agents: how to drive Decap
 
 Decap turns a chip's gate-level netlist (every name stripped) back into readable Verilog, and proves the result with Yosys.
-You reach it through MCP tools (`decap mcp`) or the CLI (`decap/agent/.venv/bin/decap`).
+You reach it through MCP tools (`decap mcp`) or the CLI (`.venv/bin/decap` at the repo root).
 
 ## Connect
-- Claude Code: `claude mcp add decap -- decap/agent/.venv/bin/decap mcp`
-- Any MCP client: command `decap/agent/.venv/bin/decap`, args `["mcp"]` (stdio). Or `decap mcp --http 8791` for HTTP.
+- Claude Code: `claude mcp add decap -- .venv/bin/decap mcp`
+- Any MCP client: command `.venv/bin/decap`, args `["mcp"]` (stdio). Or `decap mcp --http 8791` for HTTP.
 - No MCP? Use `decap call <tool> -a key=value` and read the JSON.
 
 ## Rules (non-negotiable)

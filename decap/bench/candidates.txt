@@ -1,4 +1,4 @@
-# TT08 candidates: Verilog/SystemVerilog chips with 20-300 logic cells, plus Wokwi chips (docs/decap/PITCH.md §5). One per line.
+# TT08 candidates: Verilog/SystemVerilog chips with 20-300 logic cells, plus Wokwi chips (docs/archive/pitch/PITCH.md §5). One per line.
 tt_um_Electom_cla_4bits
 tt_um_JAC_EE_segdecode
 tt_um_Richard28277

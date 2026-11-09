@@ -1,12 +1,10 @@
 {
   "mcpServers": {
     "decap": {
-      "command": "/Users/ianzhang/hacktheburgh/hacktheburgh/decap/agent/.venv/bin/python",
-      "args": ["-m", "decap_agent.cli", "mcp"],
+      "command": ".venv/bin/decap",
+      "args": ["mcp"],
       "env": {
-        "DECAP_CORE_APP": "decap.api.main:app",
-        "PYTHONPATH": "/Users/ianzhang/hacktheburgh/hacktheburgh",
-        "DECAP_SECRETS": "/Users/ianzhang/.config/decap/secrets.env"
+        "DECAP_CORE_APP": "decap.api.main:app"
       }
     }
   }

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Held-out Witness bench, after the freeze (witness-plan sections 4 and 6). Never retunes; restarts reuse the cache.
 #
-#   FREEZE_SHA=<sha256 posted on the board> decap/agent/scripts/overnight_bench.sh
+#   FREEZE_SHA=<sha256 posted on the board> agent/scripts/overnight_bench.sh
 #
 # 1. waits until the tag 'bench-freeze' exists on origin, then checks out that tag in the core checkout
 # 2. recomputes the freeze hash and ABORTS if it differs from FREEZE_SHA (code, prompts, model, split, decompiler)
@@ -13,8 +13,8 @@ set -u
 CORE=${DECAP_CORE_ROOT:-$HOME/hacktheburgh/hacktheburgh}
 AGENT=$(cd "$(dirname "$0")/.." && pwd)
 MODEL=${DECAP_WITNESS_MODEL:-cli:sonnet}
-PY="$AGENT/.venv/bin/python"
-DECAP="$AGENT/.venv/bin/decap"
+PY="$AGENT/../.venv/bin/python"     # the repo's one venv (uv pip install -e . at the root)
+DECAP="$AGENT/../.venv/bin/decap"
 
 until git -C "$CORE" ls-remote --tags origin bench-freeze | grep -q bench-freeze; do
   echo "[overnight] waiting for tag bench-freeze ($(date +%H:%M))"; sleep 60
