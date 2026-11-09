@@ -12,7 +12,7 @@ It is one Python package. Run everything from the repository root as `python -m 
 
 ## Setup
 
-- **Python 3.10+.** No packages needed, except KLayout for `world/` (`pip install klayout`).
+- **The repo's Python environment** (see the root README): `uv venv -p 3.12 .venv && uv pip install -e '.[world]'` at the repo root. The `world` extra adds KLayout, which only `world/` needs. Activate it (`source .venv/bin/activate`) so `python` below is that environment.
 - **`gh`, logged in.** Chip netlists, GDS and the SKY130 Liberty JSON are fetched from GitHub on first use into `decap/data/`, the same cache the decompiler uses. Set `MINECRAFT_DATA_DIR` to use another folder.
 - **Yosys** for `redstone/` (`brew install yosys`, or `pip install yowasp-yosys` plus a `yosys` shim). **iverilog** is optional: the bridge and `check.py vchip` use it to compare against the Verilog source.
 - **Java 21.** Found in this order: a JDK unpacked as `minecraft/tools/jdk-21*/` (Windows), Homebrew's `openjdk@21`, then `java` on `PATH`.
