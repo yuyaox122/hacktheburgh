@@ -1,7 +1,8 @@
-"""Website <-> Minecraft bridge: the Decap web app compiles Verilog to redstone, builds it in the demo server,
+"""Website <-> Minecraft bridge: the web app compiles Verilog to redstone, builds it in the demo server,
 flips its levers and reads its lamps through this small HTTP server (stdlib only, port 8002).
 
-    python3 bridge.py                 # serves http://127.0.0.1:8002/redstone/*  (the Vite dev server proxies /redstone)
+    python -m minecraft.redstone.bridge     # serves http://127.0.0.1:8002/redstone/*  (Vite proxies /redstone)
+REDSTONE_BRIDGE_HOST / REDSTONE_BRIDGE_PORT change the address; the demo server is mc.DEMO (see mc.py).
 
 Routes (JSON in and out):
     GET  /redstone/health                      server reachable? LAN address for the Minecraft client
@@ -34,21 +35,14 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-os.environ.setdefault("REDSTONE_SERVER_DIR", "server-demo")
-os.environ.setdefault("REDSTONE_RCON_PORT", "25577")
-os.environ.setdefault("REDSTONE_GAME_PORT", "25565")
+from . import OUT, demo, place, pnr, sim, verilog
+from . import techmap as tm
+from ..common.datapack import sign, write_meta
+from .mc import DEMO, FLOOR_Y, MC
 
-import demo  # noqa: E402  (sets nothing new; reuses prep / goto / clock helpers)
-import mc as mcmod  # noqa: E402
-import pnr  # noqa: E402
-import sim  # noqa: E402
-import techmap as tm  # noqa: E402
-import verilog  # noqa: E402
-import world  # noqa: E402
-
-ROOT = Path(__file__).resolve().parent
-WEB = ROOT / "out" / "web"
-DECAP_CHIPS = ROOT.parents[1] / "decap" / "out" / "chips"
+HERE = Path(__file__).resolve().parent
+WEB = OUT / "web"
+DECAP_CHIPS = HERE.parents[1] / "decap" / "out" / "chips"
 PORT = int(os.environ.get("REDSTONE_BRIDGE_PORT", "8002"))
 LANE_Z = 3000
 GAP = 40
@@ -75,7 +69,7 @@ PRESETS = {
 }
 
 LOCK = threading.RLock()          # one RCON connection and one registry, shared by the handler threads
-_mc: mcmod.MC | None = None
+_mc: MC | None = None
 _sims: dict[str, dict] = {}       # id -> {"sim": PrimSim, "ins": {bit: 0/1}}
 _nets: dict[str, tm.PrimNetlist] = {}
 
@@ -88,15 +82,15 @@ class Fail(Exception):
 
 # ---------------------------------------------------------------- RCON
 
-def rcon() -> mcmod.MC:
+def rcon() -> MC:
     global _mc
     if _mc is None:
         try:
-            _mc = mcmod.MC().__enter__()
+            _mc = MC(DEMO).connect()
         except (OSError, SystemExit) as e:
             _mc = None
-            raise Fail(f"Minecraft demo server not reachable on RCON {mcmod.PORT} ({e}). "
-                       "Start it with: python3 demo.py start", 503)
+            raise Fail(f"Minecraft demo server not reachable on RCON {DEMO.port} ({e}). "
+                       "Start it with: python -m minecraft.redstone.demo start", 503)
     return _mc
 
 
@@ -124,9 +118,9 @@ def registry() -> dict:
     except (OSError, ValueError):
         reg = {}
     for name, (title, kind) in PREBUILT.items():
-        if name not in reg and (ROOT / "out" / name / "layout.json").exists():
+        if name not in reg and (OUT / name / "layout.json").exists():
             reg[name] = {"id": name, "title": title, "kind": kind, "prebuilt": True, "built": True,
-                         "dir": str(ROOT / "out" / name)}
+                         "dir": str(OUT / name)}
     return reg
 
 
@@ -171,7 +165,7 @@ def netlist(e: dict) -> tm.PrimNetlist:
             pn = tm.build(bid)
             tm.prune(pn)
         else:
-            src = e.get("source") or json.loads((ROOT / "out" / bid / "verilog.json").read_text())["source"]
+            src = e.get("source") or json.loads((OUT / bid / "verilog.json").read_text())["source"]
             pn = verilog.build(src)
         _nets[bid] = pn
     return _nets[bid]
@@ -245,7 +239,7 @@ def compile_design(body: dict) -> dict:
         if body["preset"] not in PRESETS:
             raise Fail(f"no preset '{body['preset']}'", 404)
         path, title, origin = PRESETS[body["preset"]]
-        body = {"verilog": (ROOT / path).read_text(), "id": body["preset"], "title": title, "origin": origin}
+        body = {"verilog": (HERE / path).read_text(), "id": body["preset"], "title": title, "origin": origin}
     if body.get("chip"):
         variant = body.get("variant", "clean")
         if variant not in ("clean", "planted"):
@@ -319,7 +313,7 @@ def build(bid: str) -> dict:
         t0 = time.time()
         rcon()
         x0, y0, z0, x1, y1, z1 = lay["bbox"]
-        YB = world.YB
+        YB = place.YB
         cmd("gamerule max_command_sequence_length 10000000")
         cmd("gamerule max_block_modifications 10000000")
         cmd("tick freeze")
@@ -330,21 +324,19 @@ def build(bid: str) -> dict:
             for zz in range(z0 - 1, z1 + 6, 32):
                 xe, ze = min(x + 31, x1 + 1), min(zz + 31, z1 + 5)
                 lines.append(f"fill {x} {YB} {zz} {xe} {YB + max(5, y1 + 2)} {ze} air strict")
-                lines.append(f"fill {x} {mcmod.FLOOR_Y} {zz} {xe} {mcmod.FLOOR_Y} {ze} stone")
+                lines.append(f"fill {x} {FLOOR_Y} {zz} {xe} {FLOOR_Y} {ze} stone")
         lines += [f"setblock {x} {YB + y} {z} {s}" for x, y, z, s in lay["blocks"]]
         lines += [f"setblock {x} {YB + y} {z} {s}" for x, y, z, s in lay["last"]]
         for x, y, z, text in lay.get("labels", []):
-            ls = (text.split("\n") + ["", "", "", ""])[:4]
-            msgs = ",".join('"' + s.replace("\\", "/").replace('"', "'") + '"' for s in ls)
-            lines.append(f"setblock {x} {YB + y} {z} oak_sign[rotation=0]{{front_text:{{messages:[{msgs}]}}}}")
+            state = sign(text.split("\n"))
+            lines.append(f"setblock {x} {YB + y} {z} {state}")
         for b, (x, y, z) in lay["inputs"].items():
             on = b == tm.HOLD_S                                 # idle clock: master open, slave holding
             lines.append(f"setblock {x} {YB + y} {z} lever[face=floor,facing=north,powered={str(on).lower()}]")
-        pack = mcmod.SRV / "world" / "datapacks" / "redstone_web"
+        pack = DEMO.datapacks / "redstone_web"
         fn = pack / "data" / "redstone" / "function" / "web"
         fn.mkdir(parents=True, exist_ok=True)
-        (pack / "pack.mcmeta").write_text(json.dumps({"pack": {"description": "redstone web builds",
-                                                               "min_format": [94, 0], "max_format": [94, 1]}}))
+        write_meta(pack, "redstone web builds")
         (fn / f"build_{bid}.mcfunction").write_text("\n".join(lines) + "\n")
         lay["chip"] = bid
         demo.goto_function(lay)
@@ -373,7 +365,7 @@ def state(bid: str) -> dict:
     with LOCK:
         e = entry(bid)
         lay = layout(e)
-        YB = world.YB
+        YB = place.YB
         ins = [b for b in lay["inputs"] if b not in (tm.HOLD_M, tm.HOLD_S)]
         levers = {}
         for b in ins:
@@ -403,7 +395,7 @@ def set_bits(bid: str, body: dict) -> dict:
                 if b in lay["inputs"] and b not in (tm.HOLD_M, tm.HOLD_S)}
         for b, on in bits.items():
             x, y, z = lay["inputs"][b]
-            cmd(f"setblock {x} {world.YB + y} {z} lever[face=floor,facing=north,powered={'true' if on else 'false'}]")
+            cmd(f"setblock {x} {place.YB + y} {z} lever[face=floor,facing=north,powered={'true' if on else 'false'}]")
         st_ = sim_state(e)
         st_["ins"].update(bits)
         st_["sim"].set(st_["ins"])
@@ -433,7 +425,7 @@ def camera(bid: str, body: dict) -> dict:
     with LOCK:
         lay = layout(entry(bid))
         x0, y0, z0, x1, y1, z1 = lay["bbox"]
-        Y = world.YB
+        Y = place.YB
         cx, cz = (x0 + x1) // 2, (z0 + z1) // 2
         view = body.get("view", "levers")
         if view == "overview":
@@ -463,7 +455,7 @@ def health() -> dict:
         ok = True
     except Fail as e:
         ok, players = False, str(e)
-    return {"ok": ok, "players": players, "lan_ip": ip, "game_port": mcmod.GAME_PORT, "version": "Java 1.21.11"}
+    return {"ok": ok, "players": players, "lan_ip": ip, "game_port": DEMO.game_port, "version": "Java 1.21.11"}
 
 
 # ---------------------------------------------------------------- HTTP
@@ -550,7 +542,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     host = os.environ.get("REDSTONE_BRIDGE_HOST", "127.0.0.1")
     srv = ThreadingHTTPServer((host, PORT), Handler)
-    print(f"redstone bridge on http://{host}:{PORT}/redstone/  (RCON {mcmod.PORT}, world {mcmod.SRV})", flush=True)
+    print(f"redstone bridge on http://{host}:{PORT}/redstone/  (RCON {DEMO.port}, world {DEMO.dir})", flush=True)
     srv.serve_forever()
 
 

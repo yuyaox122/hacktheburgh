@@ -7,29 +7,30 @@ Protocol: sim.set(inputs: {bit: 0/1}) settles combinationally; sim.clock() appli
 PrimSim the HOLD_M/HOLD_S sequence the redstone clock driver uses); sim.read(bits) -> {bit: 0/1}.
 All flip-flops / latches power on at 0, like redstone.
 
-    python sim.py tt_um_sign_addsub [-n 2000]      # CellSim vs PrimSim on random vectors
+    python -m minecraft.redstone.sim tt_um_sign_addsub [-n 2000]      # CellSim vs PrimSim on random vectors
 """
 from __future__ import annotations
 
 import random
 import sys
 
-import chipdata as cd
-import techmap as tm
+from . import chipdata as cd
+from . import techmap as tm
+from ..common.cells import celldef, ev, parse_fn
 
 
 class CellSim:
     def __init__(self, chip: str):
         self.nl = cd.read_netlist(chip)
-        self.alias = dict(self.nl.assigns)
+        self.alias = dict(self.nl.aliases)
         self.comb, self.flops = [], []
         for c in self.nl.cells:
             if c.physical:
                 continue
-            d = cd.celldef(c.type)
-            fns = {o: cd.parse_fn(f) for o, f in d.outputs.items() if o in c.pins and d.ff is None}
+            d = celldef(c.type)
+            fns = {o: parse_fn(f) for o, f in d.outputs.items() if o in c.pins and d.ff is None}
             if d.ff:
-                ff = {k: cd.parse_fn(v) for k, v in d.ff.items() if k in ("clear", "preset", "next_state")}
+                ff = {k: parse_fn(v) for k, v in d.ff.items() if k in ("clear", "preset", "next_state")}
                 self.flops.append((c, d, ff))
             else:
                 self.comb.append((c, d, fns))
@@ -49,15 +50,15 @@ class CellSim:
             self.v.update(self.ins)
             for c, d, ff in self.flops:
                 env = {p: self._get(n) for p, n in c.pins.items() if p in d.inputs}
-                if "clear" in ff and cd.ev(ff["clear"], env):
+                if "clear" in ff and ev(ff["clear"], env):
                     self.q[c.name] = 0
-                elif "preset" in ff and cd.ev(ff["preset"], env):
+                elif "preset" in ff and ev(ff["preset"], env):
                     self.q[c.name] = 1
                 self.v[c.pins["Q"]] = self.q[c.name]
             for c, d, fns in self.comb:
                 env = {p: self._get(c.pins[p]) if p in c.pins else 0 for p in d.inputs}
                 for o, f in fns.items():
-                    self.v[c.pins[o]] = cd.ev(f, env)
+                    self.v[c.pins[o]] = ev(f, env)
             if self.v == before:
                 return
         raise RuntimeError("CellSim did not settle (combinational loop?)")
@@ -71,10 +72,10 @@ class CellSim:
         d_now = {}
         for c, d, ff in self.flops:
             env = {p: self._get(n) for p, n in c.pins.items() if p in d.inputs}
-            d_now[c.name] = cd.ev(ff["next_state"], env)
+            d_now[c.name] = ev(ff["next_state"], env)
         for c, d, ff in self.flops:
             env = {p: self._get(n) for p, n in c.pins.items() if p in d.inputs}
-            if not (("clear" in ff and cd.ev(ff["clear"], env)) or ("preset" in ff and cd.ev(ff["preset"], env))):
+            if not (("clear" in ff and ev(ff["clear"], env)) or ("preset" in ff and ev(ff["preset"], env))):
                 self.q[c.name] = d_now[c.name]
         self._settle()
 

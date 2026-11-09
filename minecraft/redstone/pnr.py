@@ -1,5 +1,7 @@
 """Place and route a primitive netlist as redstone, deterministically ("bus" fabric, DRC-clean by construction).
 
+    python -m minecraft.redstone.pnr <chip> [--z 200]      # -> out/<chip>/layout.json
+
 Layout (x east, z south, y up; y=0 is the first layer above the floor):
 
       trunk k (y=3) ════════════════════════   z_k = zt - 6 - 4k, one E-W dust line per net on 3-high
@@ -21,8 +23,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import prims as P
-import techmap as tm
+from . import OUT
+from . import prims as P
+from . import techmap as tm
 
 PITCH = 6                      # tile pitch along x, one-row layout (Verilog designs with no real placement)
 PITCH_2D = 8                   # tile pitch along x, 2-D layout: offset 6 of every slot is a free spine column
@@ -502,11 +505,16 @@ def save(lay: Layout, out: Path) -> None:
     (out / "layout.json").write_text(json.dumps(data))
 
 
-if __name__ == "__main__":
-    import sys
-    z = int(sys.argv[sys.argv.index("--z") + 1]) if "--z" in sys.argv else 200
-    pn = tm.build(sys.argv[1])
+def route_chip(chip: str, z: int = 200) -> Layout:
+    """Techmap a fetched chip and route it with its north edge at z; writes out/<chip>/layout.json."""
+    pn = tm.build(chip)
     tm.prune(pn)
     lay = route(pn, z_min=z)
     print(lay.stats)
-    save(lay, Path(__file__).resolve().parent / "out" / sys.argv[1])
+    save(lay, OUT / chip)
+    return lay
+
+
+if __name__ == "__main__":
+    import sys
+    route_chip(sys.argv[1], int(sys.argv[sys.argv.index("--z") + 1]) if "--z" in sys.argv else 200)

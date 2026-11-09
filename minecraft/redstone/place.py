@@ -7,16 +7,16 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 
-from mc import MC, FLOOR_Y
+from . import OUT
+from ..common.datapack import sign
+from .mc import FLOOR_Y, MC
 
-ROOT = Path(__file__).resolve().parent
 YB = FLOOR_Y + 1            # world y of layout y=0
 
 
 def load(chip: str) -> dict:
-    return json.loads((ROOT / "out" / chip / "layout.json").read_text())
+    return json.loads((OUT / chip / "layout.json").read_text())
 
 
 def build(mc: MC, lay: dict, verbose: bool = True) -> None:
@@ -38,9 +38,8 @@ def build(mc: MC, lay: dict, verbose: bool = True) -> None:
     for x, y, z, s in lay["last"]:
         mc.cmd(f"setblock {x} {YB + y} {z} {s}")
     for x, y, z, text in lay.get("labels", []):
-        lines = (text.split("\n") + ["", "", "", ""])[:4]
-        msgs = ",".join('"' + s.replace("\\", "/").replace('"', "'") + '"' for s in lines)
-        mc.cmd(f'setblock {x} {YB + y} {z} oak_sign[rotation=0]{{front_text:{{messages:[{msgs}]}}}}')
+        state = sign(text.split("\n"))
+        mc.cmd(f"setblock {x} {YB + y} {z} {state}")
     if verbose:
         print(f"  built {len(blocks) + len(lay['last'])} blocks in {time.time() - t0:.0f}s", flush=True)
 

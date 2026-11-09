@@ -1,12 +1,17 @@
-"""Headless vanilla 1.21.11 server + RCON + a deterministic tick stepper, for checking redstone builds.
+"""The two redstone servers (flat void worlds) and an RCON client with a deterministic tick stepper.
 
-    python mc.py setup          # server/ with a flat void world, RCON on, then
-    python mc.py start          # start in the background (logs in server/server.log), waits for RCON
-    python mc.py cmd "<command>" ...
-    python mc.py stop
+    python -m minecraft.redstone.mc setup        # minecraft/server/check/: void world, RCON on
+    python -m minecraft.redstone.mc start        # start it in the background (log in server.log), wait for RCON
+    python -m minecraft.redstone.mc cmd "<command>" ...
+    python -m minecraft.redstone.mc stop
+
+    CHECK  minecraft/server/check/  game 25566, RCON 25576: check.py freezes its ticks and steps them
+    DEMO   minecraft/server/demo/   game 25565, RCON 25577: the playable world (demo.py, bridge.py)
+Environment overrides (apply to both): REDSTONE_SERVER_DIR (folder under minecraft/server/, or absolute),
+REDSTONE_RCON_HOST (another machine's server), REDSTONE_RCON_PORT, REDSTONE_GAME_PORT.
 
 Library use (see check.py):
-    with MC() as mc:
+    with MC() as mc:                # MC(DEMO) for the demo server
         mc.place(blocks)            # [(x, y, z, "block[state]")] via /setblock (with block updates)
         mc.step(n)                  # advance exactly n game ticks while the world is frozen
         mc.test(x, y, z, "repeater[powered=true]") -> bool
@@ -14,118 +19,42 @@ Library use (see check.py):
 from __future__ import annotations
 
 import os
-import shutil
-import socket
-import struct
-import subprocess
 import sys
 import time
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-SRV = ROOT / os.environ.get("REDSTONE_SERVER_DIR", "server")
-JAR = ROOT / "tools" / "server-1.21.11.jar"
+from ..common.rcon import Rcon
+from ..common.server import SERVERS, Server
+
 PASSWORD = "redstone"
-PORT = int(os.environ.get("REDSTONE_RCON_PORT", "25576"))
-HOST = os.environ.get("REDSTONE_RCON_HOST", "127.0.0.1")   # another machine's server (bridge.py)
-GAME_PORT = int(os.environ.get("REDSTONE_GAME_PORT", "25566"))
 FLOOR_Y = -61                     # top block of the flat floor; builds start at FLOOR_Y + 1 = -60
 
-PROPS = {
-    "level-type": "minecraft\\:flat",
-    "generator-settings": '{"layers":[{"block":"minecraft:bedrock","height":1},{"block":"minecraft:stone","height":3}],'
-                          '"biome":"minecraft:the_void"}',
-    "gamemode": "creative", "difficulty": "peaceful", "spawn-monsters": "false", "online-mode": "false",
-    "enable-rcon": "true", "rcon.port": str(PORT), "rcon.password": PASSWORD, "spawn-protection": "0",
-    "server-port": str(GAME_PORT), "generate-structures": "false", "max-tick-time": "-1", "view-distance": "10",
-    "simulation-distance": "10", "level-name": "world", "motd": "redstone chip", "enable-command-block": "true",
-    "pause-when-empty-seconds": "0", "function-permission-level": "4", "sync-chunk-writes": "false",
-}
+
+def _server(folder: str, rcon_port: int, game_port: int) -> Server:
+    port = int(os.environ.get("REDSTONE_RCON_PORT", rcon_port))
+    game = int(os.environ.get("REDSTONE_GAME_PORT", game_port))
+    props = {
+        "level-type": "minecraft\\:flat",
+        "generator-settings": '{"layers":[{"block":"minecraft:bedrock","height":1},{"block":"minecraft:stone","height":3}],'
+                              '"biome":"minecraft:the_void"}',
+        "gamemode": "creative", "difficulty": "peaceful", "spawn-monsters": "false", "online-mode": "false",
+        "enable-rcon": "true", "rcon.port": str(port), "rcon.password": PASSWORD, "spawn-protection": "0",
+        "server-port": str(game), "generate-structures": "false", "max-tick-time": "-1", "view-distance": "10",
+        "simulation-distance": "10", "level-name": "world", "motd": "redstone chip", "enable-command-block": "true",
+        "pause-when-empty-seconds": "0", "function-permission-level": "4", "sync-chunk-writes": "false",
+    }
+    return Server(dir=SERVERS / os.environ.get("REDSTONE_SERVER_DIR", folder), props=props, port=port,
+                  password=PASSWORD, host=os.environ.get("REDSTONE_RCON_HOST", "127.0.0.1"), game_port=game, xmx="4G")
 
 
-def java() -> str:
-    for p in ("/opt/homebrew/opt/openjdk@21/bin/java", "/usr/local/opt/openjdk@21/bin/java"):
-        if Path(p).exists():
-            return p
-    return shutil.which("java") or "java"
+CHECK = _server("check", 25576, 25566)
+DEMO = _server("demo", 25577, 25565)
 
 
-def setup() -> None:
-    SRV.mkdir(exist_ok=True)
-    (SRV / "eula.txt").write_text("eula=true\n")   # Mojang EULA: https://aka.ms/MinecraftEULA
-    (SRV / "server.properties").write_text("".join(f"{k}={v}\n" for k, v in PROPS.items()))
-    print("ready:", SRV)
+class MC(Rcon):
+    """One persistent RCON connection to a redstone server (CHECK by default), with world helpers."""
 
-
-def start(timeout: float = 180) -> None:
-    if _rcon_up():
-        print("already running"); return
-    if not (SRV / "server.properties").exists():
-        setup()
-    log = open(SRV / "server.log", "ab")
-    subprocess.Popen([java(), "-Xmx4G", "-jar", str(JAR), "nogui"], cwd=SRV, stdout=log, stderr=log,
-                     stdin=subprocess.DEVNULL, start_new_session=True)
-    t0 = time.time()
-    while time.time() - t0 < timeout:
-        if _rcon_up():
-            print(f"up after {time.time() - t0:.0f}s"); return
-        time.sleep(1)
-    raise SystemExit("server did not come up; see server/server.log")
-
-
-def _rcon_up() -> bool:
-    try:
-        socket.create_connection((HOST, PORT), timeout=1).close(); return True
-    except OSError:
-        return False
-
-
-def _read(s: socket.socket, n: int) -> bytes:
-    b = b""
-    while len(b) < n:
-        c = s.recv(n - len(b))
-        if not c:
-            raise ConnectionError("rcon closed")
-        b += c
-    return b
-
-
-class MC:
-    """One persistent RCON connection."""
-
-    def __init__(self):
-        self.s = None
-        self.k = 1
-
-    def __enter__(self):
-        self.s = socket.create_connection((HOST, PORT), timeout=60)
-        self._send(3, PASSWORD)
-        if self._recv()[0] == -1:
-            raise SystemExit("rcon auth failed")
-        return self
-
-    def __exit__(self, *a):
-        self.s.close()
-
-    def _send(self, typ: int, body: str) -> int:
-        self.k += 1
-        b = body.encode() + b"\x00\x00"
-        self.s.sendall(struct.pack("<iii", len(b) + 8, self.k, typ) + b)
-        return self.k
-
-    def _recv(self):
-        n = struct.unpack("<i", _read(self.s, 4))[0]
-        d = _read(self.s, n)
-        return struct.unpack("<ii", d[:8])[0], d[8:-2].decode(errors="replace")
-
-    def cmd(self, c: str) -> str:
-        self._send(2, c)
-        return self._recv()[1]
-
-    def cmds(self, cs: list[str]) -> list[str]:
-        """Run many commands in order."""
-        # Vanilla's RCON reads one packet per socket read, so pipelining drops packets: send one at a time.
-        return [self.cmd(c) for c in cs]
+    def __init__(self, server: Server = CHECK):
+        super().__init__(server.host, server.port, server.password, timeout=60)
 
     # ---- world helpers ----
     def prepare(self) -> None:
@@ -193,9 +122,10 @@ def main() -> None:
     if not a:
         print(__doc__); return
     if a[0] == "setup":
-        setup()
+        CHECK.setup()
+        print("ready:", CHECK.dir)
     elif a[0] == "start":
-        start()
+        CHECK.start()
     elif a[0] == "stop":
         with MC() as mc:
             print(mc.cmd("stop"))
