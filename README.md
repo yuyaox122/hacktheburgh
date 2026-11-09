@@ -57,6 +57,7 @@ Optional extras:
 - **Guide chat:** set `ANTHROPIC_API_KEY` in `basic/.env` (see `basic/.env.example`). Without a key the chat says it's offline, and everything else works.
 - **Witness agent:** `.venv/bin/basic serve --port 8791`, then press `A` in the app. Model keys and options: [agent/README.md](agent/README.md).
 - **Minecraft:** see [minecraft/README.md](minecraft/README.md).
+- **Deploy to Vercel:** see [deploy/vercel/README.md](deploy/vercel/README.md).
 
 Checks: `.venv/bin/pytest -q` (agent tests; set `BASIC_REAL_CORE_ROOT=$PWD` to include the real-core ones), `.venv/bin/python -m basic.bench.claims_check`, `cd web && npm run build && npm run check-data`.
 

@@ -1,0 +1,4 @@
+fastapi==0.162.2
+pydantic==2.14.3
+anthropic==2.6.0
+yowasp-yosys==0.70.0.0.post1259

@@ -40,4 +40,4 @@ Rows are added as streams are agreed. For anything not listed, ask on the board 
 | Witness agent layer: MCP tools, `basic` CLI, transcripts, replay, the web Agent drawer | `@izhangfly` (Ian) | `agent/`, `web/src/agent/` |
 | Minecraft world export: a real TT08 chip as a playable world | `@advcode118` (Alex) | `minecraft/world/` |
 | Redstone backend: a chip's gates compiled into real redstone | `@yuyaox122` (Yuyao) | `minecraft/redstone/` |
-| Shared (`minecraft/common/`, AGENTS.md, README, docs/, pyproject.toml, tools/, .claude/, .github/) | everyone (`@all`): any teammate may change these; post on the board when you do | repo root |
+| Shared (`minecraft/common/`, AGENTS.md, README, docs/, pyproject.toml, deploy/, tools/, .claude/, .github/) | everyone (`@all`): any teammate may change these; post on the board when you do | repo root |

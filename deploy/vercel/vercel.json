@@ -1,0 +1,10 @@
+{
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "python3 build_cache.py",
+  "outputDirectory": "public",
+  "functions": {
+    "api/index.py": { "maxDuration": 300, "memory": 2048, "includeFiles": "yowasp-cache/**", "excludeFiles": "public/**" }
+  },
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }]
+}
