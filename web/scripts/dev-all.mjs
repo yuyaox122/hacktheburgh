@@ -6,13 +6,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const web = join(dirname(fileURLToPath(import.meta.url)), "..");
-const decap = join(web, "..");
+const root = join(web, "..");
 const apiPort = process.env.API_PORT ?? "8000", webPort = process.env.WEB_PORT ?? "5173";
-const uvicorn = [join(decap, ".venv", "Scripts", "uvicorn.exe"), join(decap, ".venv", "bin", "uvicorn")].find(existsSync);
-if (!uvicorn) { console.error("No decap/.venv found: create it and pip install the API requirements first."); process.exit(1); }
+const uvicorn = [join(root, ".venv", "Scripts", "uvicorn.exe"), join(root, ".venv", "bin", "uvicorn")].find(existsSync);
+if (!uvicorn) { console.error("No .venv at the repo root: run `uv venv && uv pip install -e .` there first."); process.exit(1); }
 
 const kids = [
-  spawn(uvicorn, ["api.main:app", "--port", apiPort], { cwd: decap, stdio: "inherit" }),
+  spawn(uvicorn, ["decap.api.main:app", "--port", apiPort], { cwd: root, stdio: "inherit" }),
   spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["vite", "--port", webPort, "--strictPort"],
     { cwd: web, stdio: "inherit", shell: process.platform === "win32", env: { ...process.env, DECAP_API: `http://127.0.0.1:${apiPort}` } }),
 ];

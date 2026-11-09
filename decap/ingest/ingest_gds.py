@@ -422,7 +422,7 @@ def build(chip: str) -> dict:
 
 
 DEFAULT = "tt_um_Electom_cla_4bits"
-DATA_OUT = ROOT / "web" / "public" / "data"
+DATA_OUT = ROOT.parent / "web" / "public" / "data"
 
 
 def summary(d: dict) -> str:

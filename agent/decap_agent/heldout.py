@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastmcp.server.middleware import Middleware
 
-SPLIT = Path(__file__).resolve().parents[3] / "decap" / "bench" / "split.json"
+SPLIT = Path(__file__).resolve().parents[2] / "decap" / "bench" / "split.json"
 BLOCKED_TOOLS = {"benchmark"}   # reads or re-runs results across chips, test split included
 
 _cache: set[str] | None = None

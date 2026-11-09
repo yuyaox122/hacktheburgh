@@ -34,7 +34,7 @@ from pathlib import Path
 from . import lib
 from .prove import gate_verilog
 
-_AGENT = Path(__file__).resolve().parents[1] / "agent"   # Ian's package, importable as decap_agent (pure stdlib modules)
+_AGENT = Path(__file__).resolve().parents[2] / "agent"   # Ian's package, importable as decap_agent (pure stdlib modules)
 if str(_AGENT) not in sys.path:
     sys.path.append(str(_AGENT))
 from decap_agent.claim_expr import ClaimSyntaxError, Evaluator, Node, literals, names, output_bits, parse, ref_bits, unparse  # noqa: E402

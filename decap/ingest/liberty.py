@@ -72,7 +72,7 @@ def cell_entry(pdk, t):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--pdk", default=os.path.join(ROOT, "data", "pdk"))
-    ap.add_argument("--out", default=os.path.join(ROOT, "web", "public", "data", "lib.json"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "..", "web", "public", "data", "lib.json"))
     ap.add_argument("netlists", nargs="*")
     a = ap.parse_args()
     netlists = a.netlists or (

@@ -20,13 +20,13 @@ import { Sim } from "../src/sim/sim";
 import { parseNetlist, portBits, type ParsedNetlist } from "../src/sim/verilog";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DECAP = resolve(HERE, "../..");
+const DECAP = resolve(HERE, "../../decap");
 const PDK = join(DECAP, "data/pdk");
 const args = process.argv.slice(2);
 const opt = (k: string, d: number) => { const i = args.indexOf(`--${k}`); return i >= 0 ? +args[i + 1] : d; };
 const CYCLES = opt("cycles", 2000), TT_CYCLES = opt("tt", 500), SEED = opt("seed", 20261107);
 
-const libPath = join(DECAP, "web/public/data/lib.json");
+const libPath = resolve(HERE, "../public/data/lib.json");
 if (!existsSync(libPath)) { console.error("Missing public/data/lib.json: run `npm run stage-data` first."); process.exit(2); }
 const lib: Lib = JSON.parse(readFileSync(libPath, "utf8"));
 

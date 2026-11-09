@@ -48,7 +48,7 @@ import world  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "out" / "web"
-DECAP_CHIPS = ROOT.parent / "decap" / "out" / "chips"
+DECAP_CHIPS = ROOT.parents[1] / "decap" / "out" / "chips"
 PORT = int(os.environ.get("REDSTONE_BRIDGE_PORT", "8002"))
 LANE_Z = 3000
 GAP = 40

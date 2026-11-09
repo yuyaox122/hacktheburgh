@@ -238,7 +238,7 @@ def main():
     ap.add_argument("--netlist", default=os.path.join(WARM, "01_netlist.v"))
     ap.add_argument("--source", default=os.path.join(WARM, "00_source.v"))
     ap.add_argument("--pdk", default=os.path.join(ROOT, "data", "pdk"))
-    ap.add_argument("--out", default=os.path.join(ROOT, "web", "public", "data", "design.json"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "..", "web", "public", "data", "design.json"))
     ap.add_argument("--credit", default="Warm-up chip: Jane Street asic-puzzle-2026")
     a = ap.parse_args()
     for p in (a.def_, a.netlist):
