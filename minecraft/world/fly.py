@@ -57,7 +57,7 @@ def main():
         return f"setblock {lv[bit]} {Y + 1} {PZ} minecraft:lever[face=floor,facing=south,powered={'true' if on else 'false'}]"
 
     r = connect()
-    r("gamemode spectator Decap")
+    r("gamemode spectator bASIC")
     r(f"setblock {m['auto_x']} {Y + 1} {PZ} minecraft:lever[face=floor,facing=south,powered=true]")
     start = {f"ui_in[{k}]": (5 >> k) & 1 for k in range(4)} | {f"ui_in[{k + 4}]": (3 >> k) & 1 for k in range(4)}
     for b in lv:
@@ -66,7 +66,7 @@ def main():
     n = tro["n"] if tro else 137
     target = {f"ui_in[{k}]": (n >> k) & 1 for k in range(8)} | {"uio_in[0]": 0}
     flips = [(19 + 0.6 * i, b, v) for i, (b, v) in enumerate(sorted(target.items())) if b in lv]
-    r("tp Decap {} {} {} {} {}".format(*keys[0][1], *look(keys[0][1], keys[0][2])))
+    r("tp bASIC {} {} {} {} {}".format(*keys[0][1], *look(keys[0][1], keys[0][2])))
     so = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(HERE / "shot.ps1"),
                          str(OUT / "_front.png")], capture_output=True, text=True).stdout.split()
     w, h = map(int, so[1].split("x"))          # window brought to the front; record that part of the desktop
@@ -92,7 +92,7 @@ def main():
         pos = cr(P(i - 1)[1], P(i)[1], P(j)[1], P(j + 1)[1], u)
         tgt = cr(P(i - 1)[2], P(i)[2], P(j)[2], P(j + 1)[2], u)
         yaw, pitch = look(pos, tgt)
-        r(f"tp Decap {pos[0]:.2f} {pos[1]:.2f} {pos[2]:.2f} {yaw:.1f} {pitch:.1f}")
+        r(f"tp bASIC {pos[0]:.2f} {pos[1]:.2f} {pos[2]:.2f} {yaw:.1f} {pitch:.1f}")
         while flips and flips[0][0] <= t:
             _, b, v = flips.pop(0)
             r(lever(b, v))

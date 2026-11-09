@@ -35,9 +35,9 @@ Rows are added as streams are agreed. For anything not listed, ask on the board 
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
-| Core: ingest, decompiler + Yosys proof, bench, API | `@yuyaox122` (Yuyao) | `decap/` |
+| Core: ingest, decompiler + Yosys proof, bench, API | `@yuyaox122` (Yuyao) | `basic/` |
 | Web app | `@yuyaox122` (Yuyao) | `web/` (except `web/src/agent/`, next row) |
-| Witness agent layer: MCP tools, `decap` CLI, transcripts, replay, the web Agent drawer | `@izhangfly` (Ian) | `agent/`, `web/src/agent/` |
+| Witness agent layer: MCP tools, `basic` CLI, transcripts, replay, the web Agent drawer | `@izhangfly` (Ian) | `agent/`, `web/src/agent/` |
 | Minecraft world export: a real TT08 chip as a playable world | `@advcode118` (Alex) | `minecraft/world/` |
 | Redstone backend: a chip's gates compiled into real redstone | `@yuyaox122` (Yuyao) | `minecraft/redstone/` |
 | Shared (`minecraft/common/`, AGENTS.md, README, docs/, pyproject.toml, tools/, .claude/, .github/) | everyone (`@all`): any teammate may change these; post on the board when you do | repo root |

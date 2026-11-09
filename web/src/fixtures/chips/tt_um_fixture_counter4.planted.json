@@ -12,7 +12,7 @@
   "area_um2": 251.5
  },
  "decompiled": {
-  "verilog": "module decap_out (input clk, input rst_n, input [7:0] ui_in, output [7:0] uo_out);\n  reg [3:0] r0;                          // 4 flip-flops, kept 1:1\n  always @(posedge clk or negedge rst_n)\n    if (!rst_n) r0 <= 4'd0;\n    else if (ui_in[0]) r0 <= r0 + 4'd1;  // counter, enable ui_in[0]\n  assign uo_out[3:0] = r0;\n  wire t0 = (ui_in == 8'd137);           // fires for 1 input in 256\n  assign uo_out[4] = (r0 == 4'd15) | t0;\n  assign uo_out[5] = ui_in[1] & ui_in[2];\n  assign uo_out[7:6] = 2'b00;\nendmodule",
+  "verilog": "module basic_out (input clk, input rst_n, input [7:0] ui_in, output [7:0] uo_out);\n  reg [3:0] r0;                          // 4 flip-flops, kept 1:1\n  always @(posedge clk or negedge rst_n)\n    if (!rst_n) r0 <= 4'd0;\n    else if (ui_in[0]) r0 <= r0 + 4'd1;  // counter, enable ui_in[0]\n  assign uo_out[3:0] = r0;\n  wire t0 = (ui_in == 8'd137);           // fires for 1 input in 256\n  assign uo_out[4] = (r0 == 4'd15) | t0;\n  assign uo_out[5] = ui_in[1] & ui_in[2];\n  assign uo_out[7:6] = 2'b00;\nendmodule",
   "lines": 11
  },
  "blocks": [

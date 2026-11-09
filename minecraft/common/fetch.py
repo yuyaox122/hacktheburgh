@@ -1,4 +1,4 @@
-"""Chip inputs, fetched with `gh` (logged in) into the same cache the decompiler uses (decap/data/, gitignored):
+"""Chip inputs, fetched with `gh` (logged in) into the same cache the decompiler uses (basic/data/, gitignored):
 
     tt08/<chip>/netlist.v     gate-level netlist   from TinyTapeout/tinytapeout-08 (Apache-2.0 per project LICENSE)
     tt08/<chip>/info.yaml     title, author, pinout
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-DATA = Path(os.environ.get("MINECRAFT_DATA_DIR") or REPO / "decap" / "data")
+DATA = Path(os.environ.get("MINECRAFT_DATA_DIR") or REPO / "basic" / "data")
 TT_REPO = "TinyTapeout/tinytapeout-08"
 PDK_REPO = "google/skywater-pdk-libs-sky130_fd_sc_hd"
 

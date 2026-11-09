@@ -7,7 +7,7 @@ REDSTONE_BRIDGE_HOST / REDSTONE_BRIDGE_PORT change the address; the demo server 
 Routes (JSON in and out):
     GET  /redstone/health                      server reachable? LAN address for the Minecraft client
     GET  /redstone/builds                      every build the page can drive (prebuilt chips + web builds)
-    GET  /redstone/presets                     ready-made designs in examples/ (Decap's CLA with and without trigger 77, ...)
+    GET  /redstone/presets                     ready-made designs in examples/ (bASIC's CLA with and without trigger 77, ...)
     POST /redstone/compile  {verilog, name}    or {chip, variant: clean|planted} or {preset}: Yosys -> redstone layout, plus a
                                                software check (redstone netlist vs iverilog on the source)
     POST /redstone/build/<id>                  place it in the world (one datapack function, about a second)
@@ -42,7 +42,7 @@ from .mc import DEMO, FLOOR_Y, MC
 
 HERE = Path(__file__).resolve().parent
 WEB = OUT / "web"
-DECAP_CHIPS = HERE.parents[1] / "decap" / "out" / "chips"
+BASIC_CHIPS = HERE.parents[1] / "basic" / "out" / "chips"
 PORT = int(os.environ.get("REDSTONE_BRIDGE_PORT", "8002"))
 LANE_Z = 3000
 GAP = 40
@@ -58,11 +58,11 @@ PREBUILT = {
     "tiny_fpga": ("Tiny FPGA: 2 CLBs, 30-lever bitstream (examples/fpga.v)", "verilog"),
 }
 
-# Ready-made designs in examples/, so the trojan demo works on a laptop without Decap's generated data.
+# Ready-made designs in examples/, so the trojan demo works on a laptop without bASIC's generated data.
 PRESETS = {
-    "cla_trigger77": ("examples/decap_cla_trigger77.v", "4-bit CLA adder, trigger 77 planted (decompiled by Decap)",
+    "cla_trigger77": ("examples/cla_trigger77.v", "4-bit CLA adder, trigger 77 planted (decompiled by bASIC)",
                       {"chip": "tt_um_Electom_cla_4bits", "variant": "planted", "n": 77, "operand": "ui_in"}),
-    "cla_clean": ("examples/decap_cla_clean.v", "4-bit CLA adder, clean (decompiled by Decap)",
+    "cla_clean": ("examples/cla_clean.v", "4-bit CLA adder, clean (decompiled by bASIC)",
                   {"chip": "tt_um_Electom_cla_4bits", "variant": "clean"}),
     "mul2": ("examples/mul2.v", "3x3 multiplier (examples/mul2.v)", {}),
     "counter_web": ("examples/counter.v", "4-bit up/down counter (examples/counter.v)", {}),
@@ -210,11 +210,11 @@ def software_check(pn: tm.PrimNetlist, src: Path) -> dict | None:
 
 # ---------------------------------------------------------------- compile
 
-def decap_verilog(chip: str, variant: str) -> tuple[str, str]:
+def basic_verilog(chip: str, variant: str) -> tuple[str, str]:
     name = chip + ("__planted" if variant == "planted" else "")
-    p = DECAP_CHIPS / f"{name}.json"
+    p = BASIC_CHIPS / f"{name}.json"
     if not p.exists():
-        raise Fail(f"Decap has no result for {name} (looked in decap/out/chips)", 404)
+        raise Fail(f"bASIC has no result for {name} (looked in basic/out/chips)", 404)
     d = json.loads(p.read_text())
     v = (d.get("decompiled") or {}).get("verilog")
     if not v:
@@ -244,9 +244,9 @@ def compile_design(body: dict) -> dict:
         variant = body.get("variant", "clean")
         if variant not in ("clean", "planted"):
             raise Fail("variant must be clean or planted")
-        src_text, name, plant = decap_verilog(body["chip"], variant)
+        src_text, name, plant = basic_verilog(body["chip"], variant)
         origin = {"chip": body["chip"], "variant": variant, "n": plant.get("n"), "operand": plant.get("operand")}
-        title = body.get("title") or f"{body['chip']} ({variant}, decompiled by Decap)"
+        title = body.get("title") or f"{body['chip']} ({variant}, decompiled by bASIC)"
     else:
         src_text = body.get("verilog") or ""
         if not src_text.strip():

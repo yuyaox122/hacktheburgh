@@ -255,7 +255,7 @@ if __name__ == "__main__":
     lay = pnr.route(pn, z_min=z)
     lay.chip = pn.chip
     print(lay.stats)
-    # --out <dir>: Decap's decompiled modules keep the chip's name, so the default out/<module>/ would overwrite
+    # --out <dir>: bASIC's decompiled modules keep the chip's name, so the default out/<module>/ would overwrite
     # that chip's 2-D layout; refuse that unless --out says where to go.
     out = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else OUT / pn.chip
     if "--out" not in sys.argv and (out / "layout.json").exists() and not (out / "verilog.json").exists():

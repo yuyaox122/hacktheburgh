@@ -5,11 +5,11 @@ import asyncio
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from decap_agent import investigate as inv
-from decap_agent.server import build_server
-from decap_agent.stub_core import create_stub_app
-from decap_agent.terminal import _intent
-from decap_agent.transcript import Transcript
+from basic_agent import investigate as inv
+from basic_agent.server import build_server
+from basic_agent.stub_core import create_stub_app
+from basic_agent.terminal import _intent
+from basic_agent.transcript import Transcript
 
 
 def test_intent_routing():
@@ -27,7 +27,7 @@ def test_intent_routing():
 
 
 def test_drill_catches_the_planted_value():
-    from decap_agent.terminal import run_command
+    from basic_agent.terminal import run_command
     res = asyncio.run(run_command(build_server(create_stub_app()), "stub_counter8", "red team drill"))
     assert res["intent"] == "drill" and res["caught"] and str(res["secret"]) in res["flag"]["condition"]
 
@@ -78,7 +78,7 @@ def test_inconclusive_hunt_is_corrected_in_the_report(tmp_path, monkeypatch):
 
     async def fake_hunt(client, chip, transcript):
         return {"verdict": "inconclusive", "proof": "tested", "flags": [], "counterexample": None}
-    monkeypatch.setattr("decap_agent.terminal._hunt", fake_hunt)
+    monkeypatch.setattr("basic_agent.terminal._hunt", fake_hunt)
     model = _scripted([("plan", {"steps": ["hunt"]}), ("hunt", {"why": "check"})])
     res = asyncio.run(inv.investigate(build_server(create_stub_app()), "stub_counter8", "anything hidden?", model=model))
     assert "tested, not proven" in res["summary"]
@@ -87,7 +87,7 @@ def test_inconclusive_hunt_is_corrected_in_the_report(tmp_path, monkeypatch):
 
 
 def test_plain_english_guard_rejects_invented_constants():
-    from decap_agent.plain import Plain, unsupported_numbers
+    from basic_agent.plain import Plain, unsupported_numbers
     material = "count0 <= (count0 == 6'd59) ? 6'd0 : count0 + 1'b1; ui_in == 8'h89"
     ok = Plain(headline="A counter that wraps at 59", explanation="It matches 137 on ui_in.", example="")
     bad = Plain(headline="A counter that wraps at 60", explanation="It fires at 200.", example="")
@@ -96,7 +96,7 @@ def test_plain_english_guard_rejects_invented_constants():
 
 
 def test_uploaded_verilog_top_module_is_lined_up_with_the_chip():
-    from decap_agent.source_check import retop
+    from basic_agent.source_check import retop
     src = "module helper(input a, output b); assign b = a; endmodule\nmodule my_adder(input [7:0] ui_in, output [7:0] uo_out); endmodule"
     text, was = retop(src, "tt_um_x")
     assert was == "my_adder" and "module tt_um_x" in text and "module helper" in text
@@ -104,21 +104,21 @@ def test_uploaded_verilog_top_module_is_lined_up_with_the_chip():
 
 
 def test_upload_check_routes_and_fails_soft_without_the_real_core():
-    from decap_agent.terminal import run_command
+    from basic_agent.terminal import run_command
     res = asyncio.run(run_command(build_server(create_stub_app()), "not_a_chip", "check my file",
                                   verilog="module m(); endmodule", filename="m.v"))
     assert res["intent"] == "check_source" and res["verdict"] == "unavailable" and res["detail"]
 
 
 def test_best_attempt_beats_last_attempt():
-    from decap_agent.scoping import best_attempt
+    from basic_agent.scoping import best_attempt
     tries = [{"verdict": "partial", "attempt": 0}, {"verdict": "unparseable", "attempt": 1}, {"verdict": "refuted", "attempt": 2}]
     assert best_attempt(tries)["attempt"] == 0
     assert best_attempt(tries + [{"verdict": "proven", "attempt": 3}])["attempt"] == 3
 
 
 def test_block_scope_is_narrowed_to_the_blocks_own_register():
-    from decap_agent.scoping import narrow_scope
+    from basic_agent.scoping import narrow_scope
     region = {"outputs": [{"name": "next(data0)", "kind": "register_next", "flops": ["q_c1"]},
                           {"name": "next(shreg0)", "kind": "register_next", "flops": ["q_c7", "q_c8"]},
                           {"name": "next(state0)", "kind": "register_next", "flops": ["q_c9"]}]}
@@ -132,7 +132,7 @@ def test_block_scope_is_narrowed_to_the_blocks_own_register():
 
 
 def test_claims_can_select_bits_of_next_and_use_helper_wires():
-    from decap.core.claim_expr import expand_temps, parse, temp_defs, temps_used, unparse
+    from basic.core.claim_expr import expand_temps, parse, temp_defs, temps_used, unparse
     assert unparse(parse("next(shreg0)[0] == shreg0[1]")) == "next(shreg0[0]) == shreg0[1]"
     assert unparse(parse("next(x[7:4])[1] == 1'b1")) == "next(x[5]) == 1'd1"
     d = temp_defs("wire t4 = a & b;\n wire t5 = (q | t4);")
@@ -141,7 +141,7 @@ def test_claims_can_select_bits_of_next_and_use_helper_wires():
 
 
 def test_mux_claim_precedence_is_fixed_to_what_the_writer_meant():
-    from decap.core.claim_expr import fix_mux_precedence
+    from basic.core.claim_expr import fix_mux_precedence
     assert fix_mux_precedence("next(d) == (u == 1) ? d : s") == "next(d) == ((u == 1) ? d : s)"
     assert fix_mux_precedence("next(a) == b && next(d) == c ? d : s") == "(next(a) == b) && (next(d) == (c ? d : s))"
     assert fix_mux_precedence("next(d) == (c ? d : s)") == "next(d) == (c ? d : s)"   # already right: unchanged
@@ -149,22 +149,22 @@ def test_mux_claim_precedence_is_fixed_to_what_the_writer_meant():
 
 
 def test_heldout_chips_are_refused_to_interactive_agents(monkeypatch):
-    from decap_agent import heldout
+    from basic_agent import heldout
     monkeypatch.setattr(heldout, "_cache", {"tt_um_secret"})
-    monkeypatch.delenv("DECAP_HELDOUT_OK", raising=False)
+    monkeypatch.delenv("BASIC_HELDOUT_OK", raising=False)
     assert "held-out" in heldout.refusal("decompile", {"chip": "tt_um_secret"})
     assert "held-out" in heldout.refusal("prove_equiv", {"chip": "tt_um_secret+t9", "against": "author_source"})
     assert heldout.refusal("benchmark", {})
     assert heldout.refusal("decompile", {"chip": "tt_um_dev"}) is None
-    monkeypatch.setenv("DECAP_HELDOUT_OK", "1")                       # the frozen bench
+    monkeypatch.setenv("BASIC_HELDOUT_OK", "1")                       # the frozen bench
     assert heldout.refusal("decompile", {"chip": "tt_um_secret"}) is None
 
 
 def test_guard_is_live_in_the_mcp_server(monkeypatch):
     from fastmcp import Client
-    from decap_agent import heldout
+    from basic_agent import heldout
     monkeypatch.setattr(heldout, "_cache", {"stub_counter8"})
-    monkeypatch.delenv("DECAP_HELDOUT_OK", raising=False)
+    monkeypatch.delenv("BASIC_HELDOUT_OK", raising=False)
 
     async def go():
         async with Client(build_server(create_stub_app())) as c:
@@ -174,19 +174,19 @@ def test_guard_is_live_in_the_mcp_server(monkeypatch):
 
 
 def test_real_split_file_is_found():
-    from decap_agent.heldout import SPLIT
+    from basic_agent.heldout import SPLIT
     assert SPLIT.exists()
 
 
 def test_number_guard_allows_neighbours_of_constants():
-    from decap_agent.plain import Plain, unsupported_numbers
+    from basic_agent.plain import Plain, unsupported_numbers
     m = "count0 <= (count0 == 6'd59) ? 6'd0 : count0 + 1'b1;"
     assert unsupported_numbers(Plain(headline="", explanation="It goes 0 to 59, so 60 steps; 58 then 59.", example=""), m) == []
     assert unsupported_numbers(Plain(headline="", explanation="It fires at 137.", example=""), m) == [137]
 
 
 def test_hunt_without_author_source_is_unchecked_not_tested(monkeypatch):
-    from decap_agent import terminal
+    from basic_agent import terminal
 
     async def fake_call(client, tool, **args):
         return (False, {"flagged": []}) if tool == "find_rare_triggers" else (False, {"verdict": "unavailable", "detail": "no author source"})
@@ -197,7 +197,7 @@ def test_hunt_without_author_source_is_unchecked_not_tested(monkeypatch):
 
 def test_drill_is_not_fooled_by_a_last_step_counterexample(monkeypatch):
     """Real core: the proof fails, but its counterexample is the last trace step (ui_in=23), not N."""
-    from decap_agent import terminal
+    from basic_agent import terminal
     import secrets
     monkeypatch.setattr(secrets, "randbelow", lambda k: 162)          # N = 163
 
@@ -213,7 +213,7 @@ def test_drill_is_not_fooled_by_a_last_step_counterexample(monkeypatch):
 
 
 def test_lifecycle_keeps_stopped(tmp_path):
-    from decap_agent import lifecycle
+    from basic_agent import lifecycle
     p = tmp_path / "s.json"
     sid = lifecycle.start("c", "hunt", "x", sessions_path=p)
     lifecycle.stop(sid, sessions_path=p)
@@ -228,7 +228,7 @@ endmodule"""
 
 
 def test_fault_drill_routes_and_injects_one_operator():
-    from decap_agent.repair import inject_fault
+    from basic_agent.repair import inject_fault
     assert _intent("fault drill: switch one gate") == "fault"
     f = inject_fault(SRC, seed=3)
     changed = [i for i, (a, b) in enumerate(zip(SRC.split("\n"), f["verilog"].split("\n"))) if a != b]
@@ -236,7 +236,7 @@ def test_fault_drill_routes_and_injects_one_operator():
 
 
 def test_mutation_search_finds_the_fix_that_the_checker_proves():
-    from decap_agent.repair import candidate_fixes, inject_fault, mutation_search
+    from basic_agent.repair import candidate_fixes, inject_fault, mutation_search
     f = inject_fault(SRC, seed=3)
     assert any(c[1].strip() == f["before"] for c in candidate_fixes(f["verilog"], [f["line"]]))
 
@@ -247,7 +247,7 @@ def test_mutation_search_finds_the_fix_that_the_checker_proves():
 
 
 def test_gate_level_candidates_swap_cell_type_only():
-    from decap_agent.repair import candidate_fixes
+    from basic_agent.repair import candidate_fixes
     v = "  sky130_fd_sc_hd__and2_1 c53 (.A(n1), .B(n2), .X(n3));"
     outs = {c[1].strip() for c in candidate_fixes(v, [1])}
     assert "sky130_fd_sc_hd__or2_1 c53 (.A(n1), .B(n2), .X(n3));" in outs and len(outs) == 5

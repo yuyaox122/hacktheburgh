@@ -17,7 +17,7 @@ from ..common.datapack import install
 from ..common.rcon import Rcon
 from ..common.server import SERVERS, Server
 
-PASSWORD = "decap"
+PASSWORD = "decap"            # RCON password; old name kept so existing worlds still connect
 PORT = 25575
 
 PROPS = {
@@ -28,7 +28,7 @@ PROPS = {
     "gamemode": "creative", "difficulty": "peaceful", "spawn-monsters": "false", "online-mode": "false",
     "enable-rcon": "true", "rcon.port": str(PORT), "rcon.password": PASSWORD, "spawn-protection": "0",
     "generate-structures": "false", "max-tick-time": "-1", "view-distance": "16", "level-name": "world",
-    "motd": "Decap chip in Minecraft", "enable-command-block": "true", "pause-when-empty-seconds": "0",
+    "motd": "bASIC chip in Minecraft", "enable-command-block": "true", "pause-when-empty-seconds": "0",
     "function-permission-level": "4",   # functions may use /tick sprint (redstone settle/clock_fast)
 }
 SERVER = Server(dir=SERVERS / "world", props=PROPS, port=PORT, password=PASSWORD, xmx="3G")
@@ -37,7 +37,7 @@ SRV = SERVER.dir
 
 def setup(chip: str) -> None:
     SERVER.setup()
-    print("ready:", install(OUT / chip / "decap_chip", SRV / "world"))
+    print("ready:", install(OUT / chip / "basic_chip", SRV / "world"))
 
 
 def connect() -> Rcon:

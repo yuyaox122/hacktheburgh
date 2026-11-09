@@ -264,7 +264,7 @@ def route(pn: tm.PrimNetlist, x0: int = 0, z_min: int = 200) -> Layout:
     for r, col in const_ports:
         last.append((x0 + col, Y, zt[r] - 1, "redstone_block"))
         owner[(x0 + col, Y, zt[r] - 1)] = f"tile:const@{col},{r}"
-    # a sign under each chip cell's group of tiles: instance name and cell type (as in the GDS and Decap)
+    # a sign under each chip cell's group of tiles: instance name and cell type (as in the GDS and bASIC)
     if R > 1:
         seen = set()
         for u in units:

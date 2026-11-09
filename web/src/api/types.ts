@@ -1,4 +1,4 @@
-// Shapes shared with the Python side. See decap/CONTRACTS.md (§1 chip result, §2 bench, §3 design + lib, §4 API).
+// Shapes shared with the Python side. See basic/CONTRACTS.md (§1 chip result, §2 bench, §3 design + lib, §4 API).
 
 export interface LibFF {
   clocked_on: string;

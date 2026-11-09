@@ -1,4 +1,4 @@
-// npm run dev:all — start the Decap API (uvicorn) and the Vite dev server together, so the demo never shows "API offline".
+// npm run dev:all — start the bASIC API (uvicorn) and the Vite dev server together, so the demo never shows "API offline".
 // Ports: API_PORT (default 8000), WEB_PORT (default 5173). Ctrl+C stops both.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -12,9 +12,9 @@ const uvicorn = [join(root, ".venv", "Scripts", "uvicorn.exe"), join(root, ".ven
 if (!uvicorn) { console.error("No .venv at the repo root: run `uv venv && uv pip install -e .` there first."); process.exit(1); }
 
 const kids = [
-  spawn(uvicorn, ["decap.api.main:app", "--port", apiPort], { cwd: root, stdio: "inherit" }),
+  spawn(uvicorn, ["basic.api.main:app", "--port", apiPort], { cwd: root, stdio: "inherit" }),
   spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["vite", "--port", webPort, "--strictPort"],
-    { cwd: web, stdio: "inherit", shell: process.platform === "win32", env: { ...process.env, DECAP_API: `http://127.0.0.1:${apiPort}` } }),
+    { cwd: web, stdio: "inherit", shell: process.platform === "win32", env: { ...process.env, BASIC_API: `http://127.0.0.1:${apiPort}` } }),
 ];
 const stop = () => { for (const k of kids) k.kill(); process.exit(); };
 process.on("SIGINT", stop); process.on("SIGTERM", stop);

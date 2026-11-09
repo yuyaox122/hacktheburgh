@@ -20,7 +20,7 @@ import { Sim } from "../src/sim/sim";
 import { parseNetlist, portBits, type ParsedNetlist } from "../src/sim/verilog";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DECAP = resolve(HERE, "../../decap");
+const DECAP = resolve(HERE, "../../basic");
 const PDK = join(DECAP, "data/pdk");
 const args = process.argv.slice(2);
 const opt = (k: string, d: number) => { const i = args.indexOf(`--${k}`); return i >= 0 ? +args[i + 1] : d; };
@@ -119,7 +119,7 @@ function runOne(name: string, net: ParsedNetlist, netlistFile: string, cycles: n
   });
   tb.push("    $finish;", "  end", "endmodule");
 
-  const dir = mkdtempSync(join(tmpdir(), "decap-golden-"));
+  const dir = mkdtempSync(join(tmpdir(), "basic-golden-"));
   const types = [...new Set(net.cells.map((c) => c.type))];
   const other = [...new Set([...readFileSync(netlistFile, "utf8").matchAll(/\b(sky130_(?!fd_sc_hd__)\w+__\w+)\s/g)].map((m) => m[1]))];
   const phys = other.map((m) => `module ${m}(input VGND, input VNB, input VPB, input VPWR);\nendmodule\n`);

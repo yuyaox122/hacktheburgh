@@ -1,6 +1,6 @@
 """SKY130 HD standard cells from per-cell Liberty JSON (fetched into the data cache on demand).
 
-    parse_fn / ev    Liberty boolean functions as expression trees (the decompiler's parser, decap/core/lib.py),
+    parse_fn / ev    Liberty boolean functions as expression trees (the decompiler's parser, basic/core/lib.py),
                      and their value for 0/1 inputs
     celldef(t)       pins and raw function strings (the redstone techmap feeds them to Yosys)
     cell(t)          parsed functions, flip-flop model and area (the datapack compiler and its reference sim)
@@ -12,8 +12,8 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-from decap.core import lib as _lib
-from decap.core.lib import parse_fn
+from basic.core import lib as _lib
+from basic.core.lib import parse_fn
 
 from . import fetch
 

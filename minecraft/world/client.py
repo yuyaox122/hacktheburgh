@@ -1,4 +1,4 @@
-"""Launch the installed Minecraft 1.21.11 client straight into the local server (offline name "Decap"), for screenshots.
+"""Launch the installed Minecraft 1.21.11 client straight into the local server (offline name "bASIC"), for screenshots.
 
     python -m minecraft.world.client           # joins 127.0.0.1:25565; needs 1.21.11 installed once (official launcher)
     python -m minecraft.world.client <world>   # or opens a world from saves/ (Windows: uses %APPDATA%/.minecraft)
@@ -42,7 +42,7 @@ def main():
                 cp.append(str(p))
     cp.append(str(MC / "versions" / VER / f"{VER}.jar"))
     args = [java(), "-Xmx4G", "-cp", os.pathsep.join(cp), v["mainClass"],
-            "--username", "Decap", "--version", VER, "--gameDir", str(MC), "--assetsDir", str(MC / "assets"),
+            "--username", "bASIC", "--version", VER, "--gameDir", str(MC), "--assetsDir", str(MC / "assets"),
             "--assetIndex", v["assetIndex"]["id"], "--uuid", "00000000000000000000000000000dec", "--accessToken", "0",
             "--userType", "legacy", "--versionType", "release", "--width", "1600", "--height", "900",
             *(["--quickPlaySingleplayer", sys.argv[1]] if len(sys.argv) > 1   # a world in saves/

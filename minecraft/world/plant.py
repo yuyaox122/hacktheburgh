@@ -1,4 +1,4 @@
-"""Plant a hardware trojan in a netlist: `if (ui_in == N) <target> |= 1`, built from SKY130 cells (like Decap's /plant)."""
+"""Plant a hardware trojan in a netlist: `if (ui_in == N) <target> |= 1`, built from SKY130 cells (like bASIC's /plant)."""
 from __future__ import annotations
 
 from . import logic

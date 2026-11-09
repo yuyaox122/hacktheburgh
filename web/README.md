@@ -9,14 +9,14 @@ cd web
 npm install
 npm run stage-data   # every TT08 chip with a GDS -> public/data/designs/<chip>.json (Stage chip picker); SKY130 Liberty -> lib.json
                      # (npm run stage-data:warmup = the old warm-up DEF, local only: no licence to publish)
-npm run sync-data    # copy ../decap/out/bench.json and ../decap/out/chips/*.json into public/data/ (when the backend has made them)
+npm run sync-data    # copy ../basic/out/bench.json and ../basic/out/chips/*.json into public/data/ (when the backend has made them)
 npm run dev          # http://localhost:5173
 ```
 
 The live features (planting, Fix, Compare, the guide, Yosys reviews of edits) need the core API. From the repo root, with the root `.venv`:
 
 ```sh
-.venv/bin/uvicorn decap.api.main:app --port 8000
+.venv/bin/uvicorn basic.api.main:app --port 8000
 ```
 
 Other scripts:
@@ -24,7 +24,7 @@ Other scripts:
 | Script | What it does |
 |---|---|
 | `npm run build` | type-check (`tsc --noEmit`) and build into `dist/` |
-| `npm run golden` | the P0 golden check: the browser simulator vs `iverilog` on ≥1,000 random cycles of the warm-up (and every TT08 netlist in `../decap/data/tt08`, reported) |
+| `npm run golden` | the P0 golden check: the browser simulator vs `iverilog` on ≥1,000 random cycles of the warm-up (and every TT08 netlist in `../basic/data/tt08`, reported) |
 | `npm run check-data` | headless checks: the warm-up's 79 logic cells inside the die on legal sites, its cell counts, every cell pickable by a raycast, fixtures follow CONTRACTS.md |
 
 `public/data/` and `dist/` are gitignored: they contain data derived from the Jane Street warm-up, which has no licence. Never commit them.
@@ -76,4 +76,4 @@ src/
 
 Colours live only in `styles/tokens.css`. Canvases and the 3D views read them at runtime with `css("--name")`, so a change there reaches everything. There is one button (`.btn`, with `.primary`, `.plain`, `.sm`, `.lg`, `.icon`).
 
-Python ingest lives in `../decap/ingest/` (`liberty.py`, `ingest_gds.py`, and `ingest_def.py` for the warm-up).
+Python ingest lives in `../basic/ingest/` (`liberty.py`, `ingest_gds.py`, and `ingest_def.py` for the warm-up).
