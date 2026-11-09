@@ -1,7 +1,7 @@
 # How a chip is built, and how bASIC reads it back
 
-A plain-English briefing for Ian, so you can explain the whole project to a judge who has never heard of Verilog.
-Read this top to bottom; the last section says which chip to demo and why.
+A plain-English guide for anyone who has never seen Verilog: how a chip goes from code to silicon, and where bASIC
+fits in. Read it top to bottom; the last section says which chip makes the best demo and why.
 
 ---
 
