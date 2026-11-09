@@ -29,10 +29,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from decap.paths import RUNS
+
 from .server import build_server
 from .transcript import Transcript
 
-RUNS = Path(__file__).resolve().parent.parent / "runs"
 CACHE = RUNS / "cache"
 SLIM_DROP = {"result"}   # tool results can be large; the stream carries what the UI draws
 

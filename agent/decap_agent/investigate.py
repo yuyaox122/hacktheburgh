@@ -33,9 +33,11 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.usage import UsageLimits
 
+from decap.paths import RUNS
+
 from .transcript import Transcript, result_payload
 
-MEMORY = Path(__file__).resolve().parent.parent / "runs" / "memory"
+MEMORY = RUNS / "memory"
 DEFAULT_MODEL = "deepseek:deepseek-chat"
 MAX_EXPLAINS = 3          # each explain is its own look->claim->Yosys loop; keep a run under ~2 minutes
 REQUEST_LIMIT = 16

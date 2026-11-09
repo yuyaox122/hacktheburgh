@@ -12,8 +12,8 @@
     "check-data": "tsx scripts/check-data.ts",
     "sync-data": "node scripts/sync-data.mjs",
     "mc-assets": "node scripts/mc-assets.mjs",
-    "stage-data": "../.venv/bin/python -I ../decap/ingest/liberty.py && ../.venv/bin/python -I ../decap/ingest/ingest_gds.py --all",
-    "stage-data:warmup": "../.venv/bin/python -I ../decap/ingest/liberty.py && ../.venv/bin/python -I ../decap/ingest/ingest_def.py"
+    "stage-data": "../.venv/bin/python -m decap.ingest.liberty && ../.venv/bin/python -m decap.ingest.ingest_gds --all",
+    "stage-data:warmup": "../.venv/bin/python -m decap.ingest.liberty && ../.venv/bin/python -m decap.ingest.ingest_def"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

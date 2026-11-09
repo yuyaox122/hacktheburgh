@@ -119,7 +119,7 @@ import re  # noqa: E402
 import subprocess  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-from core.sim import Sim  # noqa: E402
+from ..core.sim import Sim  # noqa: E402
 
 FIXED = {"rst_n": 1, "ena": 1, "clk": 0}   # the claim checker's setup: running, not in reset
 EXHAUSTIVE_BITS = 14

@@ -1,7 +1,7 @@
 """Fetch everything Decap needs into decap/data/ (gitignored). Needs `gh` logged in.
 
-    python -m ingest.fetch            # candidates from bench/candidates.txt, warm-up, PDK cells
-    python -m ingest.fetch --seed DIR # copy already-downloaded netlists/meta from DIR first
+    python -m decap.ingest.fetch            # candidates from decap/bench/candidates.txt, warm-up, PDK cells
+    python -m decap.ingest.fetch --seed DIR # copy already-downloaded netlists/meta from DIR first
 
 Layout written:
     data/tt08/<chip>/netlist.v          gate-level netlist from TinyTapeout/tinytapeout-08
@@ -22,8 +22,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "data"
+from ..paths import CANDIDATES, DATA
 TT_REPO = "TinyTapeout/tinytapeout-08"
 PDK_REPO = "google/skywater-pdk-libs-sky130_fd_sc_hd"
 WARMUP_REPO = "janestreet/asic-puzzle-2026"
@@ -110,7 +109,7 @@ def main() -> None:
     ap.add_argument("--seed-pdk", type=Path, action="append", default=[], help="dir with <cell>.json Liberty files")
     ap.add_argument("--no-warmup", action="store_true")
     a = ap.parse_args()
-    chips = [l.split("#")[0].strip() for l in (ROOT / "bench" / "candidates.txt").read_text().splitlines()]
+    chips = [l.split("#")[0].strip() for l in CANDIDATES.read_text().splitlines()]
     chips = [c for c in chips if c]
     (DATA / "pdk").mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(8) as ex:

@@ -1,6 +1,6 @@
 """Self-test for the Witness claim checker (core/claims.py) on real chips: every verdict, plus controls.
 
-    cd decap && .venv/bin/python -m bench.claims_check      # needs data/ (python -m ingest.fetch) and yosys
+    python -m decap.bench.claims_check      # needs decap/data (python -m decap.ingest.fetch) and yosys
 
 Each near-miss of a proven claim must come back refuted (or at most bounded), never proven: if one is proven,
 the checker is vacuous and this exits non-zero.
@@ -8,12 +8,9 @@ the checker is vacuous and this exits non-zero.
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from core import claims, service  # noqa: E402
+from ..api.scope import Scope, region_of
+from ..core import claims, service
 
 ALARM = "tt_um_kapilan_alarm"
 LATCH = "next(bit0) == (bit0 | ({count0, count1[4:0]} == {uio_in[2:0], ui_in}))"   # Ian's agent, first draft
@@ -58,7 +55,6 @@ def main() -> int:
     print(f"{'ok ' if ok else 'BAD'} credit      {r['credit']}")
     # coverage (Ian's rule): the cone of uio_out[7] also holds bit0's next state, so a claim about the buffered
     # copy alone (uio_out[7] == bit0) must not explain the region; with next(bit0) as well it covers everything.
-    from api.scope import Scope, region_of
     v = service.get(ALARM)
     cone = region_of(v, Scope(cone_of="uio_out[7]"))
     r = claims.check(v, "uio_out[7] == bit0", region=cone)

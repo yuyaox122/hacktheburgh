@@ -8,20 +8,17 @@ import tempfile
 import time
 from pathlib import Path
 
+from ..paths import CHIPS_OUT, TT08, WARMUP
 from . import lib, netlist, pipeline
-
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "data"
-OUT = ROOT / "out"
 
 
 def chip_dir(chip: str) -> Path:
-    return DATA / "tt08" / chip
+    return TT08 / chip
 
 
 def netlist_path(chip: str) -> Path:
     if chip == "warmup":
-        return DATA / "warmup" / "01_netlist.v"
+        return WARMUP / "01_netlist.v"
     return chip_dir(chip) / "netlist.v"
 
 
@@ -47,7 +44,7 @@ def code_lines(text: str) -> int:
 
 def author_source(chip: str) -> dict:
     if chip == "warmup":
-        f = DATA / "warmup" / "00_source.v"
+        f = WARMUP / "00_source.v"
         files = {"00_source.v": f.read_text()} if f.exists() else {}
         return {"repo": "janestreet/asic-puzzle-2026", "commit": "", "url": "https://github.com/janestreet/asic-puzzle-2026/tree/main/warmup",
                 "files": files, "lines": sum(code_lines(t) for t in files.values())}
@@ -334,7 +331,7 @@ def _proof_detail(p: dict) -> str:
 
 
 def save(result: dict, name: str | None = None) -> Path:
-    (OUT / "chips").mkdir(parents=True, exist_ok=True)
-    p = OUT / "chips" / f"{name or result['chip']}.json"
+    CHIPS_OUT.mkdir(parents=True, exist_ok=True)
+    p = CHIPS_OUT / f"{name or result['chip']}.json"
     p.write_text(json.dumps({k: v for k, v in result.items() if not k.startswith("_")}, indent=1))
     return p

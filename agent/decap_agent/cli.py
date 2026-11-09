@@ -54,10 +54,11 @@ def load_secrets(path: str | None = None) -> list[str]:
 
 from fastmcp import Client
 
+from decap.paths import RUNS, SPLIT
+
 from .server import build_server, load_core_app
 from .transcript import Transcript, load, result_payload
 
-RUNS = Path(__file__).resolve().parent.parent / "runs"
 CACHE = RUNS / "cache"
 
 
@@ -216,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
                                                           "biased simulation instead of Yosys (no LLM; real core only)")
     tl = sub.add_parser("timeline", help="render the Witness timeline page from transcripts")
     tl.add_argument("files", nargs="+")
-    tl.add_argument("-o", "--out", default=str(Path(__file__).resolve().parent.parent / "prototypes" / "witness-timeline.html"))
+    tl.add_argument("-o", "--out", default=str(RUNS / "witness-timeline.html"))
     tl.add_argument("--bench", help="bench JSON (for region sizes)")
     tl.add_argument("--ablation", help="ablation JSON from 'decap bench --ablate FILE --out X'")
     tl.add_argument("--include-fallback", action="store_true", help="also show simulation-checked runs")
@@ -341,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
             first = next(r["chip"] for r in rows if r.get("split") == "dev")
             region = asyncio.run(_call(server, "get_region", {"chip": first, "scope": {}}))
             model_name = args.model or os.environ.get("DECAP_WITNESS_MODEL", DEFAULT_MODEL)
-            _print(freeze_hash(model_name, Path("decap/bench/split.json"), region.get("decompiler", "unknown")))
+            _print(freeze_hash(model_name, SPLIT, region.get("decompiler", "unknown")))
             return 0
         if args.ablate:
             from .bench import ablate
@@ -358,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["DECAP_HELDOUT_OK"] = "1"   # the frozen bench is the one thing allowed past heldout.py
         chips = [r["chip"] for r in rows if r.get("split") == args.split]
         if args.split == "test":   # chips an agent already saw before the held-out guard (split.json, hashed by the freeze)
-            seen = set(json.loads(Path("decap/bench/split.json").read_text()).get("witness_exclude", []))
+            seen = set(json.loads(SPLIT.read_text()).get("witness_exclude", []))
             chips = [c for c in chips if c not in seen]
         if args.chips:
             want = args.chips.split(",")

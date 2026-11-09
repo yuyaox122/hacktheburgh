@@ -19,13 +19,14 @@ import hashlib
 import json
 import os
 import re
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-CACHE = Path(__file__).resolve().parent.parent / "runs" / "cache" / "plain"
+from decap.paths import RUNS
+
+CACHE = RUNS / "cache" / "plain"
 VERSION = "plain-v4"
 EXPLAINABLE = {"proven", "inductive", "partial", "bounded", "restated", "tested"}
 

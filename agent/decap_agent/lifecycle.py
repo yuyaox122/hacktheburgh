@@ -23,9 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from decap.paths import RUNS
+
 from .transcript import Transcript
 
-RUNS = Path(__file__).resolve().parent.parent / "runs"
 SESSIONS = RUNS / "sessions.json"
 
 

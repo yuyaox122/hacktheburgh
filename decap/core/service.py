@@ -7,15 +7,13 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 
+from .. import paths
 from . import chip as C
 from . import find, netlist, pipeline, prove
 from .sim import Sim
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "out"
-SPLIT = json.loads((ROOT / "bench" / "split.json").read_text())
+SPLIT = json.loads(paths.SPLIT.read_text())
 
 _lock = threading.RLock()
 
@@ -62,7 +60,7 @@ def get(cid: str) -> Variant:
     if n is None:
         nl = netlist.load(C.netlist_path(base))
         res, proof, dec = pipeline.run(nl, return_decompiler=True)
-        saved = OUT / "chips" / f"{base}.json"
+        saved = paths.CHIPS_OUT / f"{base}.json"
         if saved.exists():
             result = json.loads(saved.read_text())
             # the saved result may predate a decompiler change: keep its author check, refresh the rest

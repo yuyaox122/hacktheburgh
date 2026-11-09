@@ -5,10 +5,9 @@ import json
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-PDK = ROOT / "data" / "pdk"
+from ..paths import PDK
+
 PREFIX = "sky130_fd_sc_hd__"
 PHYSICAL = re.compile(r"^(fill|decap|tapvpwrvgnd|tap|diode|fakediode)_")
 PG = ["VGND", "VNB", "VPB", "VPWR"]
@@ -164,7 +163,7 @@ def cell(name: str) -> Cell:
     f = PDK / f"{name}.json"
     if PHYSICAL.match(name) or not f.exists():
         if not PHYSICAL.match(name):
-            raise FileNotFoundError(f"no Liberty JSON for {name} (run python -m ingest.fetch)")
+            raise FileNotFoundError(f"no Liberty JSON for {name} (run python -m decap.ingest.fetch)")
         return Cell(name, base, [], {}, 0.0, physical=True)
     d = json.loads(f.read_text())
     pins = {k[4:]: v for k, v in d.items() if k.startswith("pin,")}

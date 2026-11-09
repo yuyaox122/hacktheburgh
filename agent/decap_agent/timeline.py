@@ -1,7 +1,7 @@
 """Witness timeline: a static page of real region-agent runs (DimOS-style look), built from transcripts.
 
     decap timeline runs/bench-dev-full.jsonl [--bench runs/bench-dev-full.json] [--ablation runs/ablation.json]
-                   -o decap/agent/prototypes/witness-timeline.html
+                   [-o agent/runs/witness-timeline.html]
 
 Every claim, verdict, counterexample and timing on the page comes from a transcript event (kind="claim") written by
 `decap explain` / `decap bench`. Only Yosys-checked runs are shown unless --include-fallback.
